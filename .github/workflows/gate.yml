@@ -1,0 +1,26 @@
+name: Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Clone
+      uses: actions/checkout@v4
+    
+    - name: Setup
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Build
+      run: time cargo build --verbose
+
+    - name: Test
+      run: time cargo test --verbose     
+
+    - name: Verbose Test
+      run: time RUST_BACKTRACE=1 cargo test -- --nocapture
