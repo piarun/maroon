@@ -4,12 +4,6 @@ use std::collections::BinaryHeap;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[cfg(test)]
-const DEBUG_MAROON_STATE_DUMP: bool = true;
-
-#[cfg(not(test))]
-const DEBUG_MAROON_STATE_DUMP: bool = false;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LogicalTimeAbsoluteMs(u64);
 
@@ -575,16 +569,16 @@ fn debug_validate_maroon_stack(stk: &Vec<MaroonTaskStackEntry>) {
 #[cfg(not(test))]
 fn debug_validate_maroon_stack(_: &Vec<MaroonTaskStackEntry>) {}
 
-pub async fn execute_pending_operations<T: Timer, W: Writer>(mut state: Arc<AppState<T, W>>) {
+pub async fn execute_pending_operations<T: Timer, W: Writer>(mut state: Arc<AppState<T, W>>, verbose: bool) {
   loop {
-    execute_pending_operations_inner(&mut state).await;
+    execute_pending_operations_inner(&mut state, verbose).await;
 
     // NOTE(dkorolev): I will eventually rewrite this w/o busy waiting.
     tokio::time::sleep(Duration::from_millis(10)).await;
   }
 }
 
-pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut Arc<AppState<T, W>>) {
+pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut Arc<AppState<T, W>>, verbose: bool) {
   loop {
     let mut fsm = state.fsm.lock().await;
     let scheduled_timestamp_cutoff: LogicalTimeAbsoluteMs = state.timer.millis_since_start();
@@ -601,7 +595,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut A
       let mut maroon_task =
         fsm.active_tasks.remove(&task_id).expect("The task just retrieved from `fsm.pending_operations` should exist.");
 
-      if DEBUG_MAROON_STATE_DUMP {
+      if verbose {
         println!("MAROON STEP AT T={scheduled_timestamp}ms");
         for e in &maroon_task.maroon_stack.maroon_stack_entries {
           match e {
@@ -648,7 +642,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut A
       }
 
       let step_result = global_step(current_state, vars, &mut maroon_task.maroon_heap);
-      if DEBUG_MAROON_STATE_DUMP {
+      if verbose {
         println!("MAROON STEP RESULT\n  {step_result:?}");
       }
       match step_result {
@@ -693,7 +687,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut A
           }
         }
       }
-      if DEBUG_MAROON_STATE_DUMP {
+      if verbose {
         println!("MAROON STEP DONE\n");
       }
     } else {

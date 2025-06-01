@@ -117,13 +117,13 @@ mod tests {
       .await;
 
     timer.set_time(225);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let expected1 = vec!["120ms:12%12==0", "180ms:12%6==0", "220ms:12%4==0", "225ms:HI after 225ms"].join(";");
     assert_eq!(expected1, writer.get_outputs_as_string());
 
     timer.set_time(1000);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let expected2 = vec![
       "120ms:12%12==0",
@@ -168,7 +168,7 @@ mod tests {
       )
       .await;
     timer.set_time(20_000);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let expected3 = vec![
       "10032ms:3%3==0",
@@ -222,16 +222,16 @@ mod tests {
       .await;
 
     timer.set_time(4);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
     assert_eq!("0ms:fib1[5]=1", writer.get_outputs_as_string());
 
     timer.set_time(10);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     assert_eq!("0ms:fib1[5]=1;5ms:fib2[5]=1", writer.get_outputs_as_string());
 
     timer.set_time(100);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let expected = vec!["0ms:fib1[5]=1", "5ms:fib2[5]=1", "15ms:fib3[5]=2", "30ms:fib4[5]=3", "50ms:fib5=5"].join(";");
 
@@ -269,13 +269,13 @@ mod tests {
       .await;
 
     timer.set_time(100);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let output_at_100 = writer.get_outputs_as_string();
     assert_eq!(output_at_100, "0ms:f(5)");
 
     timer.set_time(1000);
-    execute_pending_operations_inner(&mut app_state).await;
+    execute_pending_operations_inner(&mut app_state, true).await;
 
     let output_at_1000 = writer.get_outputs_as_string();
     assert_eq!(output_at_1000, "0ms:f(5);250ms:f(4);450ms:f(3);600ms:f(2);700ms:f(1);750ms:5!=120");

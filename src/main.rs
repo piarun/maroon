@@ -210,7 +210,7 @@ async fn main() {
 
   tokio::select! {
     _ = server.with_graceful_shutdown(shutdown) => {},
-    _ = execute_pending_operations(Arc::clone(&app_state)) => {
+    _ = execute_pending_operations(Arc::clone(&app_state), false) => {
       unreachable!();
     }
   }
