@@ -281,56 +281,6 @@ enum MaroonTaskHeap {
   Fibonacci(MaroonTaskHeapFibonacci),
 }
 
-#[cfg(not(test))]
-fn format_delayed_message(sleep_ms: LogicalTimeAbsoluteMs, message: &str) -> String {
-  format!("Delayed by {sleep_ms}ms: `{message}`.")
-}
-
-#[cfg(not(test))]
-fn format_divisor_found(n: u64, i: u64) -> String {
-  format!("A divisor of {n} is {i}.")
-}
-
-#[cfg(not(test))]
-fn format_divisors_done(n: u64) -> String {
-  format!("Done for {n}!")
-}
-
-#[cfg(not(test))]
-fn format_fibonacci_step(n: u64, index: u64, a: u64, _b: u64) -> String {
-  format!("Fibonacci({n}) for {index} : {a}.")
-}
-
-#[cfg(not(test))]
-fn format_fibonacci_result(n: u64, result: u64) -> String {
-  format!("Fibonacci[{n}] = {result}")
-}
-
-#[cfg(test)]
-fn format_delayed_message(_sleep_ms: LogicalTimeAbsoluteMs, message: &str) -> String {
-  message.to_string()
-}
-
-#[cfg(test)]
-fn format_divisor_found(n: u64, i: u64) -> String {
-  format!("{n}%{i}==0")
-}
-
-#[cfg(test)]
-fn format_divisors_done(n: u64) -> String {
-  format!("{n}!")
-}
-
-#[cfg(test)]
-fn format_fibonacci_step(n: u64, index: u64, a: u64, _b: u64) -> String {
-  format!("fib{index}[{n}]={a}")
-}
-
-#[cfg(test)]
-fn format_fibonacci_result(n: u64, result: u64) -> String {
-  format!("fib{n}={result}")
-}
-
 // TODO(dkorolev): Do not copy "stack vars" back and forth.
 #[derive(Debug)]
 enum MaroonStepResult {
@@ -368,12 +318,12 @@ fn global_step(
         (
           Some(MaroonTaskStackEntryValue::DelayInputMessage(msg)),
           Some(MaroonTaskStackEntryValue::DelayInputMs(delay_ms)),
-        ) => (msg.clone(), *delay_ms),
+        ) => (msg, *delay_ms),
         _ => panic!("Unexpected arguments in DelayedMessageTaskExecute: {:?}", vars),
       };
 
       MaroonStepResult::Write(
-        format_delayed_message(LogicalTimeAbsoluteMs::from_millis(delay_ms), &msg),
+        format!("{} after {}ms", &msg, delay_ms),
         vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
       )
     }
@@ -392,10 +342,7 @@ fn global_step(
           i -= 1;
         }
         if i == 0 {
-          MaroonStepResult::Write(
-            format_divisors_done(data.n),
-            vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
-          )
+          MaroonStepResult::Write(format!("{}!", data.n), vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)])
         } else {
           data.i = i;
           MaroonStepResult::Sleep(
@@ -410,7 +357,7 @@ fn global_step(
     MaroonTaskState::DivisorsPrintAndMoveOn => {
       if let MaroonTaskHeap::Divisors(data) = heap {
         let result = MaroonStepResult::Write(
-          format_divisor_found(data.n, data.i),
+          format!("{}%{}==0", data.n, data.i),
           vec![MaroonTaskStackEntry::State(MaroonTaskState::DivisorsTaskIteration)],
         );
         data.i -= 1;
@@ -423,7 +370,7 @@ fn global_step(
       if let MaroonTaskHeap::Fibonacci(data) = heap {
         if data.n <= 1 {
           MaroonStepResult::Write(
-            format_fibonacci_result(data.n, data.n),
+            format!("fib{}={}", data.n, data.n),
             vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
           )
         } else {
@@ -444,7 +391,7 @@ fn global_step(
           let delay = 5 * data.index;
           data.delay_ms = LogicalTimeDeltaMs::from_millis(delay);
           MaroonStepResult::Write(
-            format_fibonacci_step(data.n, data.index, data.b, data.a),
+            format!("fib{}[{}]={}", data.index, data.n, data.b),
             vec![MaroonTaskStackEntry::State(MaroonTaskState::FibonacciTaskStep)],
           )
         }
@@ -471,7 +418,7 @@ fn global_step(
     MaroonTaskState::FibonacciTaskResult => {
       if let MaroonTaskHeap::Fibonacci(data) = heap {
         MaroonStepResult::Write(
-          format_fibonacci_result(data.n, data.b),
+          format!("fib{}={}", data.n, data.b),
           vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
         )
       } else {
@@ -629,60 +576,6 @@ struct MaroonRuntime<W: Writer> {
   active_tasks: std::collections::HashMap<MaroonTaskId, MaroonTask<W>>,
 }
 
-async fn add_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path((a, b)): Path<(i32, i32)>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
-) -> impl IntoResponse {
-  ws.on_upgrade(move |socket| add_handler_ws(socket, a, b, state))
-}
-
-async fn add_handler_ws<T: Timer>(mut socket: WebSocket, a: i32, b: i32, _state: Arc<AppState<T, WebSocketWriter>>) {
-  let _ = socket.send(Message::Text(format!("{}", a + b).into())).await;
-}
-
-async fn ackermann_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path((a, b)): Path<(i64, i64)>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
-) -> impl IntoResponse {
-  ws.on_upgrade(move |socket| ackermann_handler_ws(socket, a, b, state))
-}
-
-// NOTE(dkorolev): Here is the reference implementation. We need it to be compiled into a state machine!
-#[allow(dead_code)]
-fn ackermann(m: u64, n: u64) -> u64 {
-  match (m, n) {
-    (0, n) => n + 1,
-    (m, 0) => ackermann(m - 1, 1),
-    (m, n) => ackermann(m - 1, ackermann(m, n - 1)),
-  }
-}
-
-async fn async_ack<W: Writer>(w: Arc<W>, m: i64, n: i64, indent: usize) -> Result<i64, Box<dyn std::error::Error>> {
-  let indentation = " ".repeat(indent);
-  if m == 0 {
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    w.write_text(format!("{indentation}ack({m},{n}) = {}", n + 1), None).await?;
-    Ok(n + 1)
-  } else {
-    w.write_text(format!("{}ack({m},{n}) ...", indentation), None).await?;
-
-    let r = match (m, n) {
-      (0, n) => n + 1,
-      (m, 0) => Box::pin(async_ack(Arc::clone(&w), m - 1, 1, indent + 2)).await?,
-      (m, n) => {
-        let inner_result = Box::pin(async_ack(Arc::clone(&w), m, n - 1, indent + 2)).await?;
-        Box::pin(async_ack(Arc::clone(&w), m - 1, inner_result, indent + 2)).await?
-      }
-    };
-
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    w.write_text(format!("{}ack({m},{n}) = {r}", indentation), None).await?;
-    Ok(r)
-  }
-}
-
-async fn ackermann_handler_ws<T: Timer>(socket: WebSocket, m: i64, n: i64, _state: Arc<AppState<T, WebSocketWriter>>) {
-  let _ = async_ack(Arc::new(WebSocketWriter::new(socket)), m, n, 0).await;
-}
-
 async fn delay_handler<T: Timer>(
   ws: WebSocketUpgrade, Path((t, s)): Path<(u64, String)>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
 ) -> impl IntoResponse {
@@ -750,7 +643,7 @@ async fn fibonacci_handler_ws<T: Timer>(
         delay_ms: LogicalTimeDeltaMs::from_millis(0),
       }),
       ts,
-      format!("Fibonacci number {n}"),
+      format!("Fibonacci number {}", n),
     )
     .await;
 }
@@ -775,7 +668,7 @@ async fn factorial_handler_ws<T: Timer>(
       },
       MaroonTaskHeap::Empty,
       ts,
-      format!("Factorial of {n}"),
+      format!("Factorial of {}", n),
     )
     .await;
 }
@@ -996,12 +889,10 @@ async fn main() {
 
   let app = Router::new()
     .route("/", get(root_handler))
-    .route("/add/{a}/{b}", get(add_handler))
     .route("/delay/{t}/{s}", get(delay_handler))
     .route("/divisors/{n}", get(divisors_handler))
     .route("/fibonacci/{n}", get(fibonacci_handler))
     .route("/factorial/{n}", get(factorial_handler))
-    .route("/ack/{m}/{n}", get(ackermann_handler)) // Do try `/ack/3/4`, but not `/ack/4/*`, hehe.
     .route("/state", get(state_handler))
     .route("/quit", get(quit_handler))
     .with_state(Arc::clone(&app_state));
@@ -1146,7 +1037,7 @@ mod tests {
     timer.set_time(225);
     execute_pending_operations_inner(&mut app_state).await;
 
-    let expected1 = vec!["120ms:12%12==0", "180ms:12%6==0", "220ms:12%4==0", "225ms:HI"].join(";");
+    let expected1 = vec!["120ms:12%12==0", "180ms:12%6==0", "220ms:12%4==0", "225ms:HI after 225ms"].join(";");
     assert_eq!(expected1, writer.get_outputs_as_string());
 
     timer.set_time(1000);
@@ -1156,10 +1047,10 @@ mod tests {
       "120ms:12%12==0",
       "180ms:12%6==0",
       "220ms:12%4==0",
-      "225ms:HI",
+      "225ms:HI after 225ms",
       "250ms:12%3==0",
       "270ms:12%2==0",
-      "275ms:BYE",
+      "275ms:BYE after 75ms",
       "280ms:12%1==0",
       "280ms:12!",
     ]

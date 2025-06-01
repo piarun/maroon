@@ -1,5 +1,5 @@
 [package]
-name = "ws_state_machine"
+name = "maroon"
 edition = "2024"
 
 [dependencies]
