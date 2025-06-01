@@ -18,7 +18,7 @@ impl LogicalTimeAbsoluteMs {
     Self(millis)
   }
 
-  #[cfg(test)]
+  #[allow(dead_code)]
   pub fn as_millis(&self) -> u64 {
     self.0
   }
@@ -134,9 +134,9 @@ impl Timer for WallTimeTimer {
 }
 
 pub trait Writer: Send + Sync + 'static {
-  async fn write_text(
+  fn write_text(
     &self, text: String, timestamp: Option<LogicalTimeAbsoluteMs>,
-  ) -> Result<(), Box<dyn std::error::Error>>
+  ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send
   where
     Self: Send;
 }
