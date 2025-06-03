@@ -1,0 +1,13 @@
+[package]
+name = "maroon"
+edition = "2024"
+
+[[test]]
+name = "smoke"
+path = "test/smoke.rs"
+
+[dependencies]
+axum = { version = "0.8.3", features = ["ws"] }
+chrono = "0.4"
+clap = { version = "4.0", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
