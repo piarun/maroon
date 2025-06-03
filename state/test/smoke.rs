@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-  use maroon::*;
+  use state::*;
   use std::sync::Arc;
   use tokio::sync::mpsc;
   struct MockTimer {
