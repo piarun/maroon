@@ -10,7 +10,7 @@ ifeq ($(VERBOSE),true)
 	NOCAPTURE := --nocapture
 endif
 
-.PHONY: fmt toolinstall test
+.PHONY: fmt toolinstall test build
 
 toolinstall:
 	cargo install taplo-cli
