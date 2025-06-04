@@ -17,10 +17,10 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
     
     - name: Build
-      run: time cargo build --verbose
+      run: time make build VERBOSE=true PROFILE=release
 
     - name: Test
-      run: time cargo test --verbose     
+      run: time make test PROFILE=release    
 
     - name: Verbose Test
-      run: time RUST_BACKTRACE=1 cargo test -- --nocapture
+      run: time RUST_BACKTRACE=1 make test VERBOSE=true PROFILE=release  

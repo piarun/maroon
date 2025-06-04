@@ -1,6 +1,6 @@
 [package]
-name = "state"
 edition = "2024"
+name = "state"
 
 [[test]]
 name = "smoke"
