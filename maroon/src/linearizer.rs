@@ -35,9 +35,7 @@ impl Linearizer for LogLineriazer {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use common::range_key::{
-    KeyOffset, KeyRange, U64BlobIdClosedInterval, unique_blob_id_from_range_and_offset,
-  };
+  use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, unique_blob_id_from_range_and_offset};
 
   #[test]
   fn test_linear() {
@@ -45,36 +43,16 @@ mod tests {
 
     linearizer.new_epoch(Epoch::new(
       vec![
-        U64BlobIdClosedInterval::new_from_range_and_offsets(
-          KeyRange(3),
-          KeyOffset(0),
-          KeyOffset(0),
-        ),
-        U64BlobIdClosedInterval::new_from_range_and_offsets(
-          KeyRange(0),
-          KeyOffset(0),
-          KeyOffset(2),
-        ),
-        U64BlobIdClosedInterval::new_from_range_and_offsets(
-          KeyRange(1),
-          KeyOffset(0),
-          KeyOffset(3),
-        ),
+        U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(3), KeyOffset(0), KeyOffset(0)),
+        U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(0), KeyOffset(2)),
+        U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(1), KeyOffset(0), KeyOffset(3)),
       ],
       None,
     ));
     linearizer.new_epoch(Epoch::new(
       vec![
-        U64BlobIdClosedInterval::new_from_range_and_offsets(
-          KeyRange(4),
-          KeyOffset(0),
-          KeyOffset(1),
-        ),
-        U64BlobIdClosedInterval::new_from_range_and_offsets(
-          KeyRange(0),
-          KeyOffset(3),
-          KeyOffset(5),
-        ),
+        U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(4), KeyOffset(0), KeyOffset(1)),
+        U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(3), KeyOffset(5)),
       ],
       None,
     ));

@@ -11,8 +11,8 @@ use common::{
   duplex_channel::Endpoint,
   invoker_handler::{HandlerInterface, RequestWrapper},
   range_key::{
-    self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId,
-    range_offset_from_unique_blob_id, unique_blob_id_from_range_and_offset,
+    self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
+    unique_blob_id_from_range_and_offset,
   },
   transaction::Transaction,
 };
@@ -64,9 +64,7 @@ pub struct App<L: Linearizer> {
 
 impl<L: Linearizer> App<L> {
   pub fn new(
-    peer_id: PeerId,
-    p2p_interface: Endpoint<Outbox, Inbox>,
-    state_interface: HandlerInterface<Request, Response>,
+    peer_id: PeerId, p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<Request, Response>,
     params: Params,
   ) -> Result<App<LogLineriazer>, Box<dyn std::error::Error>> {
     Ok(App {
@@ -143,18 +141,14 @@ impl<L: Linearizer> App<L> {
         recalculate_order(self.peer_id, &nodes);
       }
       Inbox::NewTransaction(tx) => {
-        if let Some((new_range, new_offset)) =
-          update_self_offset(&mut self.self_offsets, &mut self.transactions, tx)
-        {
+        if let Some((new_range, new_offset)) = update_self_offset(&mut self.self_offsets, &mut self.transactions, tx) {
           move_offset_pointer(&mut self.offsets, self.peer_id, new_range, new_offset);
         }
       }
       Inbox::MissingTx(txs) => {
-        for (new_range, new_offset) in update_self_offsets(
-          &mut self.self_offsets,
-          &mut self.transactions,
-          txs_to_range_tx_map(txs),
-        ) {
+        for (new_range, new_offset) in
+          update_self_offsets(&mut self.self_offsets, &mut self.transactions, txs_to_range_tx_map(txs))
+        {
           move_offset_pointer(&mut self.offsets, self.peer_id, new_range, new_offset);
         }
       }
@@ -191,9 +185,7 @@ impl<L: Linearizer> App<L> {
   fn advertise_offsets_and_request_missing(&mut self) {
     self.recalculate_consensus_offsets();
     debug!("broadcast_self_state: {:?}", self.self_offsets);
-    self.p2p_interface.send(Outbox::State(NodeState {
-      offsets: self.self_offsets.clone(),
-    }));
+    self.p2p_interface.send(Outbox::State(NodeState { offsets: self.self_offsets.clone() }));
 
     let delays = self_delays(&self.transactions, &self.self_offsets, &self.offsets);
     if delays.len() == 0 {
@@ -203,11 +195,7 @@ impl<L: Linearizer> App<L> {
     info!("delay detected: {:?}", delays);
 
     for (peer_id, intervals) in delays {
-      self
-        .p2p_interface
-        .sender
-        .send(Outbox::RequestMissingTxs((peer_id, intervals)))
-        .expect("dont drop channel");
+      self.p2p_interface.sender.send(Outbox::RequestMissingTxs((peer_id, intervals))).expect("dont drop channel");
     }
   }
 
@@ -250,8 +238,7 @@ impl<L: Linearizer> App<L> {
 }
 
 fn calculate_epoch_increments(
-  consensus_offset: &HashMap<KeyRange, KeyOffset>,
-  commited_offsets: &HashMap<KeyRange, KeyOffset>,
+  consensus_offset: &HashMap<KeyRange, KeyOffset>, commited_offsets: &HashMap<KeyRange, KeyOffset>,
 ) -> Vec<U64BlobIdClosedInterval> {
   let mut increments = Vec::new();
   for (range, offset) in consensus_offset {
@@ -264,9 +251,7 @@ fn calculate_epoch_increments(
       continue;
     }
 
-    increments.push(U64BlobIdClosedInterval::new_from_range_and_offsets(
-      *range, start, *offset,
-    ));
+    increments.push(U64BlobIdClosedInterval::new_from_range_and_offsets(*range, start, *offset));
   }
 
   increments
@@ -274,9 +259,7 @@ fn calculate_epoch_increments(
 
 /// moves offset pointer for a particular peerID(node)
 fn move_offset_pointer(
-  offsets: &mut HashMap<KeyRange, HashMap<PeerId, KeyOffset>>,
-  peer_id: PeerId,
-  new_range: KeyRange,
+  offsets: &mut HashMap<KeyRange, HashMap<PeerId, KeyOffset>>, peer_id: PeerId, new_range: KeyRange,
   new_offset: KeyOffset,
 ) {
   let Some(mut_range) = offsets.get_mut(&new_range) else {
@@ -289,23 +272,17 @@ fn move_offset_pointer(
 
 /// wrapper around `update_self_offsets`
 fn update_self_offset(
-  self_offsets: &mut HashMap<KeyRange, KeyOffset>,
-  transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
+  self_offsets: &mut HashMap<KeyRange, KeyOffset>, transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
   tx: Transaction,
 ) -> Option<(KeyRange, KeyOffset)> {
   let mut updates = update_self_offsets(self_offsets, transactions, txs_to_range_tx_map(vec![tx]));
-  if updates.len() == 0 {
-    None
-  } else {
-    updates.pop()
-  }
+  if updates.len() == 0 { None } else { updates.pop() }
 }
 
 /// inserts transactions, updates self_offset pointers if should
 /// returns changed offsets if there are any
 fn update_self_offsets(
-  self_offsets: &mut HashMap<KeyRange, KeyOffset>,
-  transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
+  self_offsets: &mut HashMap<KeyRange, KeyOffset>, transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
   range_transactions: HashMap<KeyRange, Vec<Transaction>>,
 ) -> Vec<(KeyRange, KeyOffset)> {
   let mut updates = Vec::<(KeyRange, KeyOffset)>::new();
@@ -353,17 +330,14 @@ fn update_self_offsets(
 /// calculates delays that current node (self_delays) has compare to other nodes `offsets`
 /// also uses transactions in order to reduce amount of requested transactions
 fn self_delays(
-  transactions: &HashMap<UniqueU64BlobId, Transaction>,
-  self_offsets: &HashMap<KeyRange, KeyOffset>,
+  transactions: &HashMap<UniqueU64BlobId, Transaction>, self_offsets: &HashMap<KeyRange, KeyOffset>,
   offsets: &HashMap<KeyRange, HashMap<PeerId, KeyOffset>>,
 ) -> HashMap<PeerId, Vec<U64BlobIdClosedInterval>> {
   let mut result = HashMap::<PeerId, Vec<U64BlobIdClosedInterval>>::new();
 
   for (range, nodes) in offsets {
-    let Some((peer_id, offset)) = nodes
-      .iter()
-      .max_by_key(|(_peer, v)| **v)
-      .map(|(peer, &offset)| (peer.clone(), offset))
+    let Some((peer_id, offset)) =
+      nodes.iter().max_by_key(|(_peer, v)| **v).map(|(peer, &offset)| (peer.clone(), offset))
     else {
       continue;
     };
@@ -416,10 +390,7 @@ fn self_delays(
 
 /// returns maximum offset among peers keeping in mind the `n_consensus`
 /// if `n_consensus` is 2 - it will find the maximum number that is present in at least 2 peers
-fn consensus_maximum(
-  map: &HashMap<PeerId, KeyOffset>,
-  n_consensus: NonZeroUsize,
-) -> Option<&KeyOffset> {
+fn consensus_maximum(map: &HashMap<PeerId, KeyOffset>, n_consensus: NonZeroUsize) -> Option<&KeyOffset> {
   let n = n_consensus.get();
   if map.len() < n {
     return None;
@@ -435,15 +406,10 @@ fn recalculate_order(self_id: PeerId, ids: &HashSet<PeerId>) {
   let mut peer_ids: Vec<&PeerId> = ids.iter().collect();
 
   peer_ids.sort();
-  let delay_factor = peer_ids
-    .iter()
-    .position(|e| **e == self_id)
-    .expect("self peer id should exist here. Otherwise it's stupid");
+  let delay_factor =
+    peer_ids.iter().position(|e| **e == self_id).expect("self peer id should exist here. Otherwise it's stupid");
 
-  info!(
-    "My delay factor is {}! Nodes order: {:?}",
-    delay_factor, peer_ids
-  );
+  info!("My delay factor is {}! Nodes order: {:?}", delay_factor, peer_ids);
 }
 
 fn txs_to_range_tx_map(txs: Vec<Transaction>) -> HashMap<KeyRange, Vec<Transaction>> {
@@ -480,20 +446,10 @@ mod tests {
     }
 
     let cases = [
+      Case { map: vec![], want: None },
+      Case { map: vec![(p_id_1, KeyOffset(10))], want: None },
       Case {
-        map: vec![],
-        want: None,
-      },
-      Case {
-        map: vec![(p_id_1, KeyOffset(10))],
-        want: None,
-      },
-      Case {
-        map: vec![
-          (p_id_1, KeyOffset(10)),
-          (p_id_2, KeyOffset(2)),
-          (p_id_3, KeyOffset(4)),
-        ],
+        map: vec![(p_id_1, KeyOffset(10)), (p_id_2, KeyOffset(2)), (p_id_3, KeyOffset(4))],
         want: Some(KeyOffset(4)),
       },
     ];
@@ -527,17 +483,11 @@ mod tests {
         label: "empty",
         initial_self_offsets: HashMap::new(),
         initial_transactions: HashMap::new(),
-        transaction: Transaction {
-          id: UniqueU64BlobId(0),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         expected_transactions: HashMap::from([(
           UniqueU64BlobId(0),
-          Transaction {
-            id: UniqueU64BlobId(0),
-            status: TxStatus::Pending,
-          },
+          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         )]),
       },
       Case {
@@ -545,22 +495,13 @@ mod tests {
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([(
           UniqueU64BlobId(0),
-          Transaction {
-            id: UniqueU64BlobId(0),
-            status: TxStatus::Pending,
-          },
+          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         )]),
-        transaction: Transaction {
-          id: UniqueU64BlobId(0),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         expected_transactions: HashMap::from([(
           UniqueU64BlobId(0),
-          Transaction {
-            id: UniqueU64BlobId(0),
-            status: TxStatus::Pending,
-          },
+          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         )]),
       },
       Case {
@@ -568,31 +509,13 @@ mod tests {
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([(
           UniqueU64BlobId(0),
-          Transaction {
-            id: UniqueU64BlobId(0),
-            status: TxStatus::Pending,
-          },
+          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         )]),
-        transaction: Transaction {
-          id: UniqueU64BlobId(1),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
         expected_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(1),
-            Transaction {
-              id: UniqueU64BlobId(1),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
         ]),
       },
       Case {
@@ -600,176 +523,56 @@ mod tests {
         initial_self_offsets: HashMap::from([]),
         initial_transactions: HashMap::from([(
           UniqueU64BlobId(1),
-          Transaction {
-            id: UniqueU64BlobId(1),
-            status: TxStatus::Pending,
-          },
+          Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
         )]),
-        transaction: Transaction {
-          id: UniqueU64BlobId(0),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
         expected_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(1),
-            Transaction {
-              id: UniqueU64BlobId(1),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
         ]),
       },
       Case {
         label: "add transaction, fill the gap, dont go till the end",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(2),
-            Transaction {
-              id: UniqueU64BlobId(2),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(4),
-            Transaction {
-              id: UniqueU64BlobId(4),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
+          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
         ]),
-        transaction: Transaction {
-          id: UniqueU64BlobId(1),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(2))]),
         expected_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(1),
-            Transaction {
-              id: UniqueU64BlobId(1),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(2),
-            Transaction {
-              id: UniqueU64BlobId(2),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(4),
-            Transaction {
-              id: UniqueU64BlobId(4),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
+          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
+          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
         ]),
       },
       Case {
         label: "add transaction, fill the gap but not in the beginning",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(2),
-            Transaction {
-              id: UniqueU64BlobId(2),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(4),
-            Transaction {
-              id: UniqueU64BlobId(4),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
+          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
         ]),
-        transaction: Transaction {
-          id: UniqueU64BlobId(3),
-          status: TxStatus::Pending,
-        },
+        transaction: Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending },
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         expected_transactions: HashMap::from([
-          (
-            UniqueU64BlobId(0),
-            Transaction {
-              id: UniqueU64BlobId(0),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(3),
-            Transaction {
-              id: UniqueU64BlobId(3),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(2),
-            Transaction {
-              id: UniqueU64BlobId(2),
-              status: TxStatus::Pending,
-            },
-          ),
-          (
-            UniqueU64BlobId(4),
-            Transaction {
-              id: UniqueU64BlobId(4),
-              status: TxStatus::Pending,
-            },
-          ),
+          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
+          (UniqueU64BlobId(3), Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending }),
+          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
+          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
         ]),
       },
     ];
 
     for case in cases {
       let mut case = case;
-      update_self_offset(
-        &mut case.initial_self_offsets,
-        &mut case.initial_transactions,
-        case.transaction,
-      );
-      assert_eq!(
-        case.expected_self_offsets, case.initial_self_offsets,
-        "{}",
-        case.label,
-      );
-      assert_eq!(
-        case.expected_transactions, case.initial_transactions,
-        "{}",
-        case.label,
-      );
+      update_self_offset(&mut case.initial_self_offsets, &mut case.initial_transactions, case.transaction);
+      assert_eq!(case.expected_self_offsets, case.initial_self_offsets, "{}", case.label,);
+      assert_eq!(case.expected_transactions, case.initial_transactions, "{}", case.label,);
     }
   }
 
@@ -799,37 +602,19 @@ mod tests {
         self_offsets: HashMap::from([(KeyRange(0), KeyOffset(5)), (KeyRange(2), KeyOffset(3))]),
         transactions: HashMap::new(),
         offsets: HashMap::from([
-          (
-            KeyRange(0),
-            HashMap::from([(peer_id_0, KeyOffset(5)), (peer_id_1, KeyOffset(2))]),
-          ),
-          (
-            KeyRange(2),
-            HashMap::from([(peer_id_0, KeyOffset(1)), (peer_id_1, KeyOffset(2))]),
-          ),
+          (KeyRange(0), HashMap::from([(peer_id_0, KeyOffset(5)), (peer_id_1, KeyOffset(2))])),
+          (KeyRange(2), HashMap::from([(peer_id_0, KeyOffset(1)), (peer_id_1, KeyOffset(2))])),
         ]),
         expected_ranges: HashMap::new(),
       },
       Case {
         label: "self behind few and few gaps in txs",
         self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1)), (KeyRange(2), KeyOffset(1))]),
-        transactions: HashMap::from([
-          (UniqueU64BlobId(5), test_tx(5)),
-          (UniqueU64BlobId(6), test_tx(6)),
-        ]),
+        transactions: HashMap::from([(UniqueU64BlobId(5), test_tx(5)), (UniqueU64BlobId(6), test_tx(6))]),
         offsets: HashMap::from([
-          (
-            KeyRange(0),
-            HashMap::from([(peer_id_0, KeyOffset(8)), (peer_id_1, KeyOffset(2))]),
-          ),
-          (
-            KeyRange(2),
-            HashMap::from([(peer_id_0, KeyOffset(3)), (peer_id_1, KeyOffset(1))]),
-          ),
-          (
-            KeyRange(3),
-            HashMap::from([(peer_id_0, KeyOffset(1)), (peer_id_1, KeyOffset(3))]),
-          ),
+          (KeyRange(0), HashMap::from([(peer_id_0, KeyOffset(8)), (peer_id_1, KeyOffset(2))])),
+          (KeyRange(2), HashMap::from([(peer_id_0, KeyOffset(3)), (peer_id_1, KeyOffset(1))])),
+          (KeyRange(3), HashMap::from([(peer_id_0, KeyOffset(1)), (peer_id_1, KeyOffset(3))])),
         ]),
         expected_ranges: HashMap::from([
           (
@@ -837,20 +622,12 @@ mod tests {
             vec![
               U64BlobIdClosedInterval::new(2, 4),
               U64BlobIdClosedInterval::new(7, 8),
-              U64BlobIdClosedInterval::new_from_range_and_offsets(
-                KeyRange(2),
-                KeyOffset(2),
-                KeyOffset(3),
-              ),
+              U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(2), KeyOffset(2), KeyOffset(3)),
             ],
           ),
           (
             peer_id_1,
-            vec![U64BlobIdClosedInterval::new_from_range_and_offsets(
-              KeyRange(3),
-              KeyOffset(0),
-              KeyOffset(3),
-            )],
+            vec![U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(3), KeyOffset(0), KeyOffset(3))],
           ),
         ]),
       },
@@ -899,23 +676,14 @@ mod tests {
       },
       Case {
         label: "progress in some",
-        consensus_offset: [
-          (KeyRange(0), KeyOffset(10)),
-          (KeyRange(1), KeyOffset(2)),
-          (KeyRange(2), KeyOffset(6)),
-        ]
-        .into(),
-        commited_offsets: [
-          (KeyRange(0), KeyOffset(6)),
-          (KeyRange(1), KeyOffset(2)),
-          (KeyRange(2), KeyOffset(8)),
-        ]
-        .into(),
+        consensus_offset: [(KeyRange(0), KeyOffset(10)), (KeyRange(1), KeyOffset(2)), (KeyRange(2), KeyOffset(6))]
+          .into(),
+        commited_offsets: [(KeyRange(0), KeyOffset(6)), (KeyRange(1), KeyOffset(2)), (KeyRange(2), KeyOffset(8))]
+          .into(),
         expected_increments: vec![U64BlobIdClosedInterval::new(7, 10)],
       },
     ] {
-      let mut increments =
-        calculate_epoch_increments(&case.consensus_offset, &case.commited_offsets);
+      let mut increments = calculate_epoch_increments(&case.consensus_offset, &case.commited_offsets);
       increments.sort();
       assert_eq!(case.expected_increments, increments, "{}", case.label);
     }

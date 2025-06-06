@@ -5,9 +5,7 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::{InvokerInterface, create_invoker_handler_pair};
 
 pub fn create_stack(
-  node_urls: Vec<String>,
-  self_url: String,
-  params: Params,
+  node_urls: Vec<String>, self_url: String, params: Params,
 ) -> Result<(App<LogLineriazer>, InvokerInterface<Request, Response>), Box<dyn std::error::Error>> {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
 
@@ -22,8 +20,5 @@ pub fn create_stack(
 
   let (state_invoker, state_handler) = create_invoker_handler_pair();
 
-  Ok((
-    App::<LogLineriazer>::new(my_id, b2a_endpoint, state_handler, params)?,
-    state_invoker,
-  ))
+  Ok((App::<LogLineriazer>::new(my_id, b2a_endpoint, state_handler, params)?, state_invoker))
 }

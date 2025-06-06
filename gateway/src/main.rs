@@ -10,19 +10,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   env_logger::init();
 
   let node_urls: Vec<String> = std::env::var("NODE_URLS")
-    .unwrap_or(
-      "/ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002".to_string(),
-    )
+    .unwrap_or("/ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002".to_string())
     .split(',')
     .map(String::from)
     .collect();
 
-  let key_range = KeyRange(
-    std::env::var("KEY_RANGE")
-      .unwrap_or("0".to_string())
-      .parse::<u64>()
-      .unwrap(),
-  );
+  let key_range = KeyRange(std::env::var("KEY_RANGE").unwrap_or("0".to_string()).parse::<u64>().unwrap());
 
   let mut gw = gateway::core::Gateway::new(node_urls)?;
   gw.start_in_background().await;
