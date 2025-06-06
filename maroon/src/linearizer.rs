@@ -41,7 +41,7 @@ mod tests {
   fn test_linear() {
     let mut linearizer = LogLineriazer::new();
 
-    linearizer.new_epoch(Epoch::new(
+    linearizer.new_epoch(Epoch::next(
       vec![
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(3), KeyOffset(0), KeyOffset(0)),
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(0), KeyOffset(2)),
@@ -49,7 +49,7 @@ mod tests {
       ],
       None,
     ));
-    linearizer.new_epoch(Epoch::new(
+    linearizer.new_epoch(Epoch::next(
       vec![
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(4), KeyOffset(0), KeyOffset(1)),
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(3), KeyOffset(5)),

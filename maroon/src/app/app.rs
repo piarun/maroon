@@ -215,8 +215,8 @@ impl<L: Linearizer> App<L> {
   fn commit_epoch_if_needed(&mut self) {
     let increments = calculate_epoch_increments(&self.consensus_offset, &self.commited_offsets);
 
-    let prev_hash = self.epochs.last().map(|e| e.hash);
-    let new_epoch = Epoch::new(increments, prev_hash);
+    let prev_epoch = self.epochs.last().map(|e| e);
+    let new_epoch = Epoch::next(increments, prev_epoch);
     info!("NEW EPOCH: {}", &new_epoch);
 
     self.linearizer.new_epoch(new_epoch.clone());
