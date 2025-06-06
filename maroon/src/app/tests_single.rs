@@ -34,11 +34,7 @@ async fn app_calculates_consensus_offset() {
     .send(Inbox::State((
       n1_peer_id,
       NodeState {
-        offsets: HashMap::from([
-          (KeyRange(1), KeyOffset(3)),
-          (KeyRange(2), KeyOffset(7)),
-          (KeyRange(4), KeyOffset(1)),
-        ]),
+        offsets: HashMap::from([(KeyRange(1), KeyOffset(3)), (KeyRange(2), KeyOffset(7)), (KeyRange(4), KeyOffset(1))]),
       },
     )))
     .unwrap();
@@ -46,9 +42,7 @@ async fn app_calculates_consensus_offset() {
     .sender
     .send(Inbox::State((
       n2_peer_id,
-      NodeState {
-        offsets: HashMap::from([(KeyRange(1), KeyOffset(2)), (KeyRange(2), KeyOffset(9))]),
-      },
+      NodeState { offsets: HashMap::from([(KeyRange(1), KeyOffset(2)), (KeyRange(2), KeyOffset(9))]) },
     )))
     .unwrap();
 
@@ -86,32 +80,20 @@ async fn app_gets_missing_transaction() {
       3,
       Duration::from_millis(5),
       &state_invoker,
-      CurrentOffsets {
-        self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        consensus_offset: HashMap::new(),
-      }
+      CurrentOffsets { self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]), consensus_offset: HashMap::new() }
     )
     .await
   );
 
   // and now app gets missing transaction
-  a2b_endpoint.send(Inbox::MissingTx(vec![
-    test_tx(3),
-    test_tx(4),
-    test_tx(2),
-    test_tx(0),
-    test_tx(1),
-  ]));
+  a2b_endpoint.send(Inbox::MissingTx(vec![test_tx(3), test_tx(4), test_tx(2), test_tx(0), test_tx(1)]));
 
   assert!(
     reaches_state(
       3,
       Duration::from_millis(5),
       &state_invoker,
-      CurrentOffsets {
-        self_offsets: HashMap::from([(KeyRange(0), KeyOffset(5))]),
-        consensus_offset: HashMap::new(),
-      }
+      CurrentOffsets { self_offsets: HashMap::from([(KeyRange(0), KeyOffset(5))]), consensus_offset: HashMap::new() }
     )
     .await
   );
@@ -139,10 +121,7 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
       3,
       Duration::from_millis(5),
       &state_invoker,
-      CurrentOffsets {
-        self_offsets: HashMap::from([(KeyRange(0), KeyOffset(4))]),
-        consensus_offset: HashMap::new(),
-      }
+      CurrentOffsets { self_offsets: HashMap::from([(KeyRange(0), KeyOffset(4))]), consensus_offset: HashMap::new() }
     )
     .await
   );
@@ -150,10 +129,7 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
   let rnd_peer = PeerId::random();
   a2b_endpoint
     .sender
-    .send(Inbox::RequestMissingTxs((
-      rnd_peer,
-      vec![U64BlobIdClosedInterval::new(1, 3)],
-    )))
+    .send(Inbox::RequestMissingTxs((rnd_peer, vec![U64BlobIdClosedInterval::new(1, 3)])))
     .expect("channel shouldnt be dropped");
 
   while let Some(outbox) = a2b_endpoint.receiver.recv().await {
@@ -186,10 +162,7 @@ async fn app_detects_that_its_behind_and_makes_request() {
       3,
       Duration::from_millis(5),
       &state_invoker,
-      CurrentOffsets {
-        self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        consensus_offset: HashMap::new(),
-      }
+      CurrentOffsets { self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]), consensus_offset: HashMap::new() }
     )
     .await
   );
@@ -197,12 +170,7 @@ async fn app_detects_that_its_behind_and_makes_request() {
   let rnd_peer = PeerId::random();
   a2b_endpoint
     .sender
-    .send(Inbox::State((
-      rnd_peer,
-      NodeState {
-        offsets: HashMap::from([(KeyRange(0), KeyOffset(8))]),
-      },
-    )))
+    .send(Inbox::State((rnd_peer, NodeState { offsets: HashMap::from([(KeyRange(0), KeyOffset(8))]) })))
     .expect("dont drop");
 
   while let Some(outbox) = a2b_endpoint.receiver.recv().await {
@@ -210,13 +178,7 @@ async fn app_detects_that_its_behind_and_makes_request() {
       continue;
     };
     assert_eq!(rnd_peer, peer);
-    assert_eq!(
-      requested_intervals,
-      vec![
-        U64BlobIdClosedInterval::new(1, 3),
-        U64BlobIdClosedInterval::new(5, 8),
-      ]
-    );
+    assert_eq!(requested_intervals, vec![U64BlobIdClosedInterval::new(1, 3), U64BlobIdClosedInterval::new(5, 8),]);
 
     break;
   }

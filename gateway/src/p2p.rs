@@ -1,9 +1,7 @@
 use common::{
   duplex_channel::Endpoint,
   gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response},
-  meta_exchange::{
-    self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role,
-  },
+  meta_exchange::{self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role},
 };
 use derive_more::From;
 use futures::StreamExt;
@@ -48,15 +46,13 @@ pub struct P2P {
 
 impl P2P {
   pub fn new(
-    node_urls: Vec<String>,
-    interface_endpoint: Endpoint<Response, Request>,
+    node_urls: Vec<String>, interface_endpoint: Endpoint<Response, Request>,
   ) -> Result<P2P, Box<dyn std::error::Error>> {
     let kp = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(kp.public());
     info!("Local peer id: {:?}", peer_id);
 
-    let auth_config =
-      NoiseConfig::new(&kp).map_err(|e: NoiseError| format!("noise config error: {}", e))?;
+    let auth_config = NoiseConfig::new(&kp).map_err(|e: NoiseError| format!("noise config error: {}", e))?;
 
     let transport = TcpTokioTransport::new(TcpConfig::default().nodelay(true))
       .upgrade(upgrade::Version::V1)
@@ -66,9 +62,7 @@ impl P2P {
 
     let behaviour = GatewayBehaviour {
       ping: PingBehaviour::new(
-        PingConfig::new()
-          .with_interval(Duration::from_secs(5))
-          .with_timeout(Duration::from_secs(10)),
+        PingConfig::new().with_interval(Duration::from_secs(5)).with_timeout(Duration::from_secs(10)),
       ),
       request_response: gm_request_response::create_behaviour(ProtocolSupport::Outbound),
       meta_exchange: meta_exchange::create_behaviour(),
@@ -81,19 +75,13 @@ impl P2P {
       SwarmConfig::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(60)),
     );
 
-    Ok(P2P {
-      node_urls,
-      swarm,
-      interface_endpoint,
-    })
+    Ok(P2P { node_urls, swarm, interface_endpoint })
   }
 
   /// starts listening and performs all the bindings but doesn't react yeat
   pub fn prepare(&mut self) -> Result<(), Box<dyn std::error::Error>> {
     for url in &self.node_urls {
-      let addr: Multiaddr = url
-        .parse()
-        .map_err(|e| format!("parse url: {}: {}", url, e))?;
+      let addr: Multiaddr = url.parse().map_err(|e| format!("parse url: {}: {}", url, e))?;
       debug!("Dialing {addr} …");
       self.swarm.dial(addr)?;
     }
@@ -132,9 +120,7 @@ impl P2P {
 }
 
 fn handle_swarm_event(
-  swarm: &mut Swarm<GatewayBehaviour>,
-  event: SwarmEvent<GatewayEvent>,
-  sender: &UnboundedSender<Response>,
+  swarm: &mut Swarm<GatewayBehaviour>, event: SwarmEvent<GatewayEvent>, sender: &UnboundedSender<Response>,
   maroon_peer_ids: &mut HashSet<PeerId>,
 ) {
   match event {
@@ -142,10 +128,7 @@ fn handle_swarm_event(
       debug!("RequestResponse: {:?}", gm_request_response);
       match gm_request_response {
         GMEvent::Message { message, .. } => match message {
-          RequestResponseMessage::Response {
-            request_id,
-            response,
-          } => {
+          RequestResponseMessage::Response { request_id, response } => {
             debug!("Response: {:?}, {:?}", request_id, response);
             sender.send(response).unwrap();
           }
@@ -158,19 +141,11 @@ fn handle_swarm_event(
       debug!("MetaExchange: {:?}", meta_exchange);
       match meta_exchange {
         MEEvent::Message { message, .. } => match message {
-          RequestResponseMessage::Response {
-            request_id,
-            response,
-          } => {
+          RequestResponseMessage::Response { request_id, response } => {
             debug!("MetaExchangeResponse: {:?} {:?}", request_id, response);
           }
           RequestResponseMessage::Request { channel, .. } => {
-            let res = swarm.behaviour_mut().meta_exchange.send_response(
-              channel,
-              MEResponse {
-                role: Role::Gateway,
-              },
-            );
+            let res = swarm.behaviour_mut().meta_exchange.send_response(channel, MEResponse { role: Role::Gateway });
             debug!("MetaExchangeRequestRes: {:?}", res);
           }
         },
@@ -189,11 +164,7 @@ fn handle_swarm_event(
       debug!("disconnected from {}", peer_id);
     }
 
-    SwarmEvent::OutgoingConnectionError {
-      peer_id,
-      connection_id,
-      error,
-    } => {
+    SwarmEvent::OutgoingConnectionError { peer_id, connection_id, error } => {
       debug!("OutgoingConnectionError: {peer_id:?} {connection_id} {error}");
     }
     _ => {}

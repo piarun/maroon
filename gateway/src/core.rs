@@ -18,10 +18,7 @@ impl Gateway {
     // I need to create some sort of state/flags or block the thread that can prevent sending requests before initialization even happened
     p2p.prepare().map_err(|e| format!("prepare: {}", e))?;
 
-    Ok(Gateway {
-      p2p_channels: a2b_endpoint,
-      p2p: Some(p2p),
-    })
+    Ok(Gateway { p2p_channels: a2b_endpoint, p2p: Some(p2p) })
   }
 
   pub async fn start_in_background(&mut self) {
@@ -32,10 +29,7 @@ impl Gateway {
     });
   }
 
-  pub async fn send_request(
-    &mut self,
-    request: Request,
-  ) -> Result<MEResponse, Box<dyn std::error::Error>> {
+  pub async fn send_request(&mut self, request: Request) -> Result<MEResponse, Box<dyn std::error::Error>> {
     self.p2p_channels.send(request);
 
     // TODO: that one doesn't work correctly. I need to listen to a related rx_response to get the right info

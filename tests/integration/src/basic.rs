@@ -30,28 +30,19 @@ async fn basic() {
   // create nodes and gateway
 
   let (mut node0, state_invoker_0) = stack::create_stack(
-    vec![
-      "/ip4/127.0.0.1/tcp/3001".to_string(),
-      "/ip4/127.0.0.1/tcp/3002".to_string(),
-    ],
+    vec!["/ip4/127.0.0.1/tcp/3001".to_string(), "/ip4/127.0.0.1/tcp/3002".to_string()],
     "/ip4/0.0.0.0/tcp/3000".to_string(),
     params.clone(),
   )
   .unwrap();
   let (mut node1, state_invoker_1) = stack::create_stack(
-    vec![
-      "/dns4/localhost/tcp/3000".to_string(),
-      "/dns4/localhost/tcp/3002".to_string(),
-    ],
+    vec!["/dns4/localhost/tcp/3000".to_string(), "/dns4/localhost/tcp/3002".to_string()],
     "/ip4/0.0.0.0/tcp/3001".to_string(),
     params.clone(),
   )
   .unwrap();
   let (mut node2, state_invoker_2) = stack::create_stack(
-    vec![
-      "/ip4/127.0.0.1/tcp/3000".to_string(),
-      "/ip4/127.0.0.1/tcp/3001".to_string(),
-    ],
+    vec!["/ip4/127.0.0.1/tcp/3000".to_string(), "/ip4/127.0.0.1/tcp/3001".to_string()],
     "/ip4/0.0.0.0/tcp/3002".to_string(),
     params,
   )
@@ -76,31 +67,20 @@ async fn basic() {
   tokio::time::sleep(Duration::from_secs(1)).await;
 
   // send requests from gateway
-  _ = gw
-    .send_request(Request::NewTransaction(Transaction {
-      id: UniqueU64BlobId(1),
-      status: TxStatus::Created,
-    }))
-    .await;
-  _ = gw
-    .send_request(Request::NewTransaction(Transaction {
-      id: UniqueU64BlobId(0),
-      status: TxStatus::Created,
-    }))
-    .await;
+  _ = gw.send_request(Request::NewTransaction(Transaction { id: UniqueU64BlobId(1), status: TxStatus::Created })).await;
+  _ = gw.send_request(Request::NewTransaction(Transaction { id: UniqueU64BlobId(0), status: TxStatus::Created })).await;
 
   // check results
   let (mut node0_correct, mut node1_correct, mut node2_correct) = (false, false, false);
 
-  let get_state_and_compare = async |interface: &InvokerInterface<AppRequest, AppResponse>,
-                                     offsets: &CurrentOffsets|
-         -> bool {
-    let app_state_response = interface.request(AppRequest::GetState).await;
-    println!("got app: {app_state_response:?}");
+  let get_state_and_compare =
+    async |interface: &InvokerInterface<AppRequest, AppResponse>, offsets: &CurrentOffsets| -> bool {
+      let app_state_response = interface.request(AppRequest::GetState).await;
+      println!("got app: {app_state_response:?}");
 
-    let AppResponse::State(app_state) = app_state_response;
-    app_state == *offsets
-  };
+      let AppResponse::State(app_state) = app_state_response;
+      app_state == *offsets
+    };
   let desired_state = CurrentOffsets {
     self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
     consensus_offset: HashMap::from([(KeyRange(0), KeyOffset(1))]),
