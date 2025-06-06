@@ -12,6 +12,12 @@ jobs:
     steps:
     - name: Clone
       uses: actions/checkout@v4
+
+    # TODO: put image with protobuf and make it available to speed up tests
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
     
     - name: Setup
       uses: dtolnay/rust-toolchain@stable
