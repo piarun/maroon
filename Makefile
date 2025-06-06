@@ -19,7 +19,12 @@ build:
 	cargo build $(PROFILE_FLAG) $(VERBOSE_RUN)
 
 test:
-	cargo test --workspace $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
+	cargo test --workspace --exclude integration $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
+
+integtest:
+	RUST_LOG=maroon=info,gateway=debug \
+		cargo test -p integration $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+
 
 fmt:
 	cargo fmt --all
