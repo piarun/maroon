@@ -48,6 +48,15 @@ run-gateway: # runs gateway imitation
 	RUST_LOG=gateway=debug \
 		cargo run -p gateway $(PROFILE_FLAG)
 
+shutdown-etcd: # shutdown and clean up local etcd cluster
+	docker compose -f deploy/etcd/docker-compose.yaml down --remove-orphans
+	docker network rm etcd
+
+start-etcd: # run etcd for local development
+	docker network create etcd
+	docker compose -f deploy/etcd/docker-compose.yaml up -d
+
+
 fmt: # formatter
 	cargo fmt --all
 	taplo format
