@@ -28,5 +28,5 @@ jobs:
     - name: Test
       run: time make test PROFILE=release    
 
-    - name: Verbose Test
-      run: time RUST_BACKTRACE=1 make test VERBOSE=true PROFILE=release  
+    - name: Integration tests
+      run: time make integtest
