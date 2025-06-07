@@ -6,6 +6,7 @@ version = "0.1.0"
 [dependencies]
 common = { path = "../../common" }
 env_logger = { workspace = true }
+etcd-client = { workspace = true }
 futures = { workspace = true }
 gateway = { path = "../../gateway" }
 libp2p = { workspace = true }

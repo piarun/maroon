@@ -9,7 +9,7 @@ chrono = "0.4.41"
 common = { path = "../common" }
 derive_more = { version = "2.0.1", features = ["from", "display"] }
 env_logger = { workspace = true }
-etcd-client = "0.14.1"
+etcd-client = { workspace = true }
 futures = { workspace = true }
 libp2p = { workspace = true }
 libp2p-request-response = { workspace = true }
