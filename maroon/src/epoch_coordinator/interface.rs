@@ -7,7 +7,10 @@ use std::fmt;
 // if yes - add an interface
 // if no - where to download it? p2p? s3?
 
-pub type EpochCoordinatorInterface = Endpoint<EpochUpdates, EpochRequest>;
+// TODO: Don't like these names, I think it makes sense to have them.
+// It provides a bit more clarity and clearnes, but should think more no naming
+pub type B2AEndpoint = Endpoint<EpochUpdates, EpochRequest>;
+pub type A2BEndpoint = Endpoint<EpochRequest, EpochUpdates>;
 
 #[derive(Debug)]
 pub struct EpochRequest {

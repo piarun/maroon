@@ -1,5 +1,5 @@
 use super::epoch::Epoch;
-use crate::epoch_coordinator::interface::{EpochCoordinatorInterface, EpochRequest, EpochUpdates};
+use crate::epoch_coordinator::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use log::debug;
@@ -30,11 +30,11 @@ const MAROON_HISTORY: &str = "/maroon/history";
 
 pub struct EtcdEpochCoordinator {
   etcd_endpoints: Vec<String>,
-  interface: EpochCoordinatorInterface,
+  interface: B2AEndpoint,
 }
 
 impl EtcdEpochCoordinator {
-  pub fn new(etcd_endpoints: &Vec<String>, interface: EpochCoordinatorInterface) -> EtcdEpochCoordinator {
+  pub fn new(etcd_endpoints: &Vec<String>, interface: B2AEndpoint) -> EtcdEpochCoordinator {
     EtcdEpochCoordinator { etcd_endpoints: etcd_endpoints.clone(), interface }
   }
 
@@ -71,7 +71,7 @@ struct EpochObject {
   epoch: Epoch,
 }
 
-fn handle_watch_message(interface: &mut EpochCoordinatorInterface, message: WatchResponse) {
+fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
   debug!("etcd watch got: {} messages", message.events().len());
   for event in message.events() {
     if let Some(kv) = event.kv() {
