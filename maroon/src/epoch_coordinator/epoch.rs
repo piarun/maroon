@@ -1,9 +1,10 @@
 use common::range_key::U64BlobIdClosedInterval;
 use derive_more::Display;
+use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Display, Serialize, Deserialize)]
+#[derive(Debug, Clone, Display, Serialize, Deserialize, PartialEq, Eq)]
 #[display("Epoch {{ increments: {:?}, hash: 0x{:X} }}", increments, hash.iter().fold(0u128, |acc, &x| (acc << 8) | x as u128))]
 pub struct Epoch {
   /// order number of an epoch
@@ -11,11 +12,13 @@ pub struct Epoch {
   pub sequence_number: u64,
 
   pub increments: Vec<U64BlobIdClosedInterval>,
+
+  pub creator: PeerId,
   hash: [u8; 32],
 }
 
 impl Epoch {
-  pub fn next(increments: Vec<U64BlobIdClosedInterval>, prev_epoch: Option<&Epoch>) -> Epoch {
+  pub fn next(creator: PeerId, increments: Vec<U64BlobIdClosedInterval>, prev_epoch: Option<&Epoch>) -> Epoch {
     let mut hasher = Sha256::new();
 
     let mut sequence_number = 0;
@@ -31,8 +34,10 @@ impl Epoch {
       hasher.update(interval.end().0.to_le_bytes());
     }
 
+    hasher.update(creator.to_bytes());
+
     let hash = hasher.finalize().into();
 
-    Epoch { sequence_number, increments, hash }
+    Epoch { creator, sequence_number, increments, hash }
   }
 }

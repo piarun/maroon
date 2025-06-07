@@ -216,7 +216,7 @@ impl<L: Linearizer> App<L> {
     let increments = calculate_epoch_increments(&self.consensus_offset, &self.commited_offsets);
 
     let prev_epoch = self.epochs.last().map(|e| e);
-    let new_epoch = Epoch::next(increments, prev_epoch);
+    let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch);
     info!("NEW EPOCH: {}", &new_epoch);
 
     self.linearizer.new_epoch(new_epoch.clone());

@@ -36,12 +36,15 @@ impl Linearizer for LogLineriazer {
 mod tests {
   use super::*;
   use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, unique_blob_id_from_range_and_offset};
+  use libp2p::PeerId;
 
   #[test]
   fn test_linear() {
     let mut linearizer = LogLineriazer::new();
+    let peer_id = PeerId::random();
 
     linearizer.new_epoch(Epoch::next(
+      peer_id,
       vec![
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(3), KeyOffset(0), KeyOffset(0)),
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(0), KeyOffset(2)),
@@ -50,6 +53,7 @@ mod tests {
       None,
     ));
     linearizer.new_epoch(Epoch::next(
+      peer_id,
       vec![
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(4), KeyOffset(0), KeyOffset(1)),
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(3), KeyOffset(5)),
