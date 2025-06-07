@@ -9,6 +9,10 @@ Pieces so far:
 * https://github.com/akantsevoi/test-environment
 * https://github.com/dimacurrentai/migrator
 
+# Visualisation-demonstration of messages inside the system
+
+https://dkorolev.github.io/maroon/
+
 ## Run instructions
 
 ```
