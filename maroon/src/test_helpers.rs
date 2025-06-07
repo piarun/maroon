@@ -1,4 +1,6 @@
 use crate::app::{App, CurrentOffsets, Params, Request as AppStateRequest, Response as AppStateResponse};
+#[cfg(test)]
+use crate::epoch_coordinator::interface::A2BEndpoint;
 use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox};
 use common::invoker_handler::HandlerInterface;
@@ -14,8 +16,9 @@ use std::time::Duration;
 #[cfg(test)]
 pub fn new_test_instance(
   p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
+  epoch_coordinator: A2BEndpoint,
 ) -> App<LogLineriazer> {
-  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, Params::default())
+  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, Params::default())
     .expect("failed to create test App instance")
 }
 

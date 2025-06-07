@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::app::interface::CurrentOffsets;
+use crate::epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use crate::network::*;
 use crate::test_helpers::{new_test_instance, reaches_state, test_tx};
 use common::duplex_channel::create_a_b_duplex_pair;
@@ -18,8 +19,9 @@ use tokio::sync::oneshot;
 #[tokio::test(flavor = "multi_thread")]
 async fn app_calculates_consensus_offset() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
+  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   let n1_peer_id = PeerId::random();
@@ -63,8 +65,9 @@ async fn app_calculates_consensus_offset() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transaction() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
+  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -102,8 +105,9 @@ async fn app_gets_missing_transaction() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transactions_that_smbd_else_requested() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
+  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -146,8 +150,9 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_detects_that_its_behind_and_makes_request() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
+  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {

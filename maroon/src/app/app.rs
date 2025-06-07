@@ -3,7 +3,7 @@ use super::{
   params::Params,
 };
 use crate::{
-  epoch_coordinator::epoch::Epoch,
+  epoch_coordinator::{self, epoch::Epoch},
   linearizer::{Linearizer, LogLineriazer},
   network::{Inbox, NodeState, Outbox},
 };
@@ -60,12 +60,13 @@ pub struct App<L: Linearizer> {
   transactions: HashMap<UniqueU64BlobId, Transaction>,
 
   linearizer: L,
+  epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
 }
 
 impl<L: Linearizer> App<L> {
   pub fn new(
     peer_id: PeerId, p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<Request, Response>,
-    params: Params,
+    epoch_coordinator: epoch_coordinator::interface::A2BEndpoint, params: Params,
   ) -> Result<App<LogLineriazer>, Box<dyn std::error::Error>> {
     Ok(App {
       params,
@@ -79,6 +80,7 @@ impl<L: Linearizer> App<L> {
       epochs: Vec::new(),
       transactions: HashMap::new(),
       linearizer: LogLineriazer::new(),
+      epoch_coordinator,
     })
   }
 
