@@ -1,5 +1,12 @@
 [workspace]
-members = ["state", "common", "gateway", "maroon", "tests/integration"]
+members = [
+  "state",
+  "common",
+  "gateway",
+  "maroon",
+  "tests/integration",
+  "tests/integration-dockerized",
+]
 resolver = "3"
 
 [workspace.dependencies]

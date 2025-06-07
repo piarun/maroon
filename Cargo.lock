@@ -1720,6 +1720,20 @@ version = "0.1.0"
 dependencies = [
  "common",
  "env_logger",
+ "futures",
+ "gateway",
+ "libp2p",
+ "maroon",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
+name = "integration-dockerized"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "env_logger",
  "etcd-client",
  "futures",
  "gateway",

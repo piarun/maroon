@@ -16,7 +16,7 @@ ifeq ($(VERBOSE),true)
 	NOCAPTURE := --nocapture
 endif
 
-.PHONY: help fmt toolinstall test build integtest run-local run-gateway
+.PHONY: help fmt toolinstall test build integtest integtest-dockerized integtest-all run-local run-gateway
 
 help:
 	@echo "Available targets:"
@@ -29,11 +29,19 @@ build:
 	cargo build $(PROFILE_FLAG) $(VERBOSE_RUN)
 
 test: # runs unit tests
-	cargo test --workspace --exclude integration $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
+	cargo test --workspace --exclude integration --exclude integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
 
-integtest: # runs integration tests
+integtest: # runs integration tests (excluding dockerized tests)
 	RUST_LOG=maroon=info,gateway=debug \
 		cargo test -p integration $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+
+integtest-dockerized: # runs dockerized integration tests that require docker services (etcd, etc.)
+	RUST_LOG=maroon=info,gateway=debug \
+		cargo test -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+
+integtest-all: # runs all integration tests including dockerized ones
+	RUST_LOG=maroon=info,gateway=debug \
+		cargo test -p integration -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 run-local: # runs maroon node locally on a specified port
 	NODE_URLS=/ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002 \
