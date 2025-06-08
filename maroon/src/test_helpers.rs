@@ -22,6 +22,14 @@ pub fn new_test_instance(
     .expect("failed to create test App instance")
 }
 
+pub fn new_test_instance_with_params(
+  p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
+  epoch_coordinator: A2BEndpoint, params: Params,
+) -> App<LogLineriazer> {
+  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, params)
+    .expect("failed to create test App instance")
+}
+
 #[cfg(test)]
 pub fn test_tx(id: u64) -> Transaction {
   Transaction { id: UniqueU64BlobId(id), status: TxStatus::Pending }

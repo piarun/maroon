@@ -3,6 +3,7 @@ use std::{num::NonZeroUsize, time::Duration};
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
   /// how often node will send state info to other nodes
+  /// consensus offset is recalculated on this tick
   pub advertise_period: std::time::Duration,
   /// minimum amount of nodes that should have the same transactions(+ current one) in order to confirm them
   /// TODO: separate pub struct ConsensusAlgoParams in a separate lib/consensus crate with its own test suite?
