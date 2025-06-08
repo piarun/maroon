@@ -258,7 +258,7 @@ fn calculate_epoch_increments(
       start = *prev + KeyOffset(1);
     }
 
-    if start >= *offset {
+    if start > *offset {
       continue;
     }
 
@@ -674,10 +674,22 @@ mod tests {
         expected_increments: vec![U64BlobIdClosedInterval::new(0, 2)],
       },
       Case {
+        label: "only one tx",
+        consensus_offset: [(KeyRange(0), KeyOffset(0))].into(),
+        commited_offsets: [].into(),
+        expected_increments: vec![U64BlobIdClosedInterval::new(0, 0)],
+      },
+      Case {
         label: "no progress",
         consensus_offset: [(KeyRange(0), KeyOffset(2))].into(),
         commited_offsets: [(KeyRange(0), KeyOffset(2))].into(),
         expected_increments: vec![],
+      },
+      Case {
+        label: "one progress",
+        consensus_offset: [(KeyRange(0), KeyOffset(3))].into(),
+        commited_offsets: [(KeyRange(0), KeyOffset(2))].into(),
+        expected_increments: vec![U64BlobIdClosedInterval::new(3, 3)],
       },
       Case {
         label: "consensus delayed by any reasons",
