@@ -3,7 +3,11 @@ use super::{
   params::Params,
 };
 use crate::{
-  epoch_coordinator::{self, epoch::Epoch},
+  epoch_coordinator::{
+    self,
+    epoch::Epoch,
+    interface::{EpochRequest, EpochUpdates},
+  },
   linearizer::{Linearizer, LogLineriazer},
   network::{Inbox, NodeState, Outbox},
 };
@@ -96,6 +100,7 @@ impl<L: Linearizer> App<L> {
             self.advertise_offsets_and_request_missing();
           },
           _ = commit_epoch_ticker.tick() => {
+            // TODO: check if enough ticks has been passed(even if I'm the first - not each tick I want to publish)
             self.commit_epoch_if_needed();
           },
           Option::Some(req_wrapper) = self.state_interface.receiver.recv() => {
@@ -103,6 +108,9 @@ impl<L: Linearizer> App<L> {
           },
           Some(payload) = self.p2p_interface.receiver.recv() => {
             self.handle_inbox_message(payload);
+          },
+          Some(updates)= self.epoch_coordinator.receiver.recv() => {
+            self.handle_epoch_coordinator_updates(updates);
           },
           _ = &mut shutdown =>{
             info!("TODO: shutdown the app");
@@ -126,6 +134,21 @@ impl<L: Linearizer> App<L> {
     }
 
     info!("consensus_offset:{}", str);
+  }
+
+  fn handle_epoch_coordinator_updates(&mut self, updates: EpochUpdates) {
+    match updates {
+      EpochUpdates::New(new_epoch) => {
+        self.linearizer.new_epoch(new_epoch.clone());
+        {
+          for interval in &new_epoch.increments {
+            let (range, new_offset) = range_offset_from_unique_blob_id(interval.end());
+            self.commited_offsets.insert(range, new_offset);
+          }
+          self.epochs.push(new_epoch);
+        }
+      }
+    }
   }
 
   fn handle_inbox_message(&mut self, msg: Inbox) {
@@ -219,23 +242,9 @@ impl<L: Linearizer> App<L> {
 
     let prev_epoch = self.epochs.last().map(|e| e);
     let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch);
+
     info!("NEW EPOCH: {}", &new_epoch);
-
-    self.linearizer.new_epoch(new_epoch.clone());
-
-    {
-      // TODO: in the future the code below won't exist
-      // it won't be pushed here immediately into the local variables, it will be pushed to etcd
-      // and if there is a success it will be returned back to the node and added to epochs
-      // maybe there will be some "optimistic" epochs chain for some form of optimisations, I don't know, let's see
-      // maybe all these local variables wouldn't make any sense
-
-      for interval in &new_epoch.increments {
-        let (range, new_offset) = range_offset_from_unique_blob_id(interval.end());
-        self.commited_offsets.insert(range, new_offset);
-      }
-      self.epochs.push(new_epoch);
-    }
+    self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });
   }
 }
 
