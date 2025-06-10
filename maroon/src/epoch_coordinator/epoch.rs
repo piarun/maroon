@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Display, Serialize, Deserialize, PartialEq, Eq)]
-#[display("Epoch {{ increments: {:?}, hash: 0x{:X} }}", increments, hash.iter().fold(0u128, |acc, &x| (acc << 8) | x as u128))]
+#[display("Epoch {{ sn: {:?} increments: {:?}, hash: 0x{:X} }}", sequence_number, increments, hash.iter().fold(0u128, |acc, &x| (acc << 8) | x as u128))]
 pub struct Epoch {
   /// order number of an epoch
   /// starts with 0

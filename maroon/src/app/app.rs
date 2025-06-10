@@ -139,6 +139,7 @@ impl<L: Linearizer> App<L> {
   fn handle_epoch_coordinator_updates(&mut self, updates: EpochUpdates) {
     match updates {
       EpochUpdates::New(new_epoch) => {
+        debug!("got epoch updates seq_n: {}", new_epoch.sequence_number);
         self.linearizer.new_epoch(new_epoch.clone());
         {
           for interval in &new_epoch.increments {

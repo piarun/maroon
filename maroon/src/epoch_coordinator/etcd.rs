@@ -2,7 +2,7 @@ use super::epoch::Epoch;
 use crate::epoch_coordinator::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -40,6 +40,8 @@ impl EtcdEpochCoordinator {
 
   /// starts infinite loop. After this all the communications with corrdinator only through `EpochCoordinatorInterface`
   pub async fn start(self) -> Result<(), Error> {
+    info!("start epoch coordinator");
+
     let mut client = Client::connect(self.etcd_endpoints, None).await?;
 
     let (watcher, mut watch_stream) = client.watch(MAROON_LATEST, Some(WatchOptions::new().with_prefix())).await?;
@@ -82,19 +84,23 @@ fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
   }
 }
 
+// TODO: return here an error and write a dockerized-test to set/update latest
+// because right now the logic is not covered reliably
 async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochRequest) {
   debug!("Got message to send to etcd: {:?}", &epoch_request);
+
+  let seq_number = epoch_request.epoch.sequence_number;
   let new_epoch = EpochObject { epoch: epoch_request.epoch };
-
   let resp = client
-    .txn(Txn::new().when(vec![Compare::version(format!("{}/{}", MAROON_HISTORY, 0), CompareOp::Equal, 0)]).and_then(
-      vec![
-        TxnOp::put(MAROON_LATEST, serde_json::to_vec(&new_epoch).unwrap(), None),
-        TxnOp::put(format!("{}/{}", MAROON_HISTORY, 0), serde_json::to_vec(&new_epoch).unwrap(), None),
-      ],
-    ))
-    .await
-    .unwrap();
+    .txn(
+      Txn::new()
+        .when(vec![Compare::version(format!("{}/{}", MAROON_HISTORY, seq_number), CompareOp::Equal, 0)])
+        .and_then(vec![
+          TxnOp::put(MAROON_LATEST, serde_json::to_vec(&new_epoch).unwrap(), None),
+          TxnOp::put(format!("{}/{}", MAROON_HISTORY, seq_number), serde_json::to_vec(&new_epoch).unwrap(), None),
+        ]),
+    )
+    .await;
 
-  debug!("NewEpochResponse succeed: {}. Details: {:?}", resp.succeeded(), resp);
+  debug!("NewEpochResponse. Details: {:?}", resp);
 }
