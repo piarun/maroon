@@ -13,17 +13,11 @@ Pieces so far:
 
 https://dkorolev.github.io/maroon/
 
-## Run instructions
+# Useful run scenarious
 
-```
-cargo build
-```
+## Local test in a single node mode
 
-```
-RUST_BACKTRACE=1 cargo test -- --nocapture
-```
-
-Run in a single-node mode. When you don't need other nodes => no consensus, no durability but good for high-level testing
+Run in a single-node mode. When you need to test logic, but can sacrifice durability and don't want to start etcd cluster.
 ```bash
 make run-local PORT=3000 CONSENSUS_NODES=1
 ```
@@ -51,7 +45,7 @@ make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
   - [x] epoch coordinator interface
   - [x] set up etcd
   - [x] write epochs to etcd
-  // TODO: update instructions on how to local run it properly
+  // TODO: update instructions on how to local run it properly. Explain why docerized tests exist. How to run them, etc.
   - [ ] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd
