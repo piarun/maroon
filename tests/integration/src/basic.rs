@@ -31,18 +31,21 @@ async fn basic() {
 
   let (mut node0, state_invoker_0) = stack::create_stack(
     vec!["/ip4/127.0.0.1/tcp/3001".to_string(), "/ip4/127.0.0.1/tcp/3002".to_string()],
+    vec![],
     "/ip4/0.0.0.0/tcp/3000".to_string(),
     params.clone(),
   )
   .unwrap();
   let (mut node1, state_invoker_1) = stack::create_stack(
     vec!["/dns4/localhost/tcp/3000".to_string(), "/dns4/localhost/tcp/3002".to_string()],
+    vec![],
     "/ip4/0.0.0.0/tcp/3001".to_string(),
     params.clone(),
   )
   .unwrap();
   let (mut node2, state_invoker_2) = stack::create_stack(
     vec!["/ip4/127.0.0.1/tcp/3000".to_string(), "/ip4/127.0.0.1/tcp/3001".to_string()],
+    vec![],
     "/ip4/0.0.0.0/tcp/3002".to_string(),
     params,
   )

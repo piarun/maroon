@@ -4,6 +4,8 @@ PROFILE ?= debug
 VERBOSE ?= ""
 PORT ?= 3000
 NODE_URLS ?= /ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002
+ETCD_URLS ?= http://localhost:2379,http://localhost:2380,http://localhost:2381
+
 KEY_RANGE ?= 0
 CONSENSUS_NODES ?= 2
 
@@ -36,7 +38,7 @@ integtest: # runs integration tests (excluding dockerized tests)
 		cargo test -p integration $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 integtest-dockerized: # runs dockerized integration tests that require docker services (etcd, etc.)
-	RUST_LOG=maroon=info,gateway=debug \
+	RUST_LOG=maroon=debug,gateway=debug \
 		cargo test -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 integtest-all: # runs all integration tests including dockerized ones
@@ -44,7 +46,8 @@ integtest-all: # runs all integration tests including dockerized ones
 		cargo test -p integration -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 run-local: # runs maroon node locally on a specified port
-	NODE_URLS=/ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002 \
+	NODE_URLS=${NODE_URLS} \
+	ETCD_URLS=${ETCD_URLS} \
 	SELF_URL=/ip4/127.0.0.1/tcp/${PORT} \
 	RUST_LOG=maroon=debug \
 	CONSENSUS_NODES=${CONSENSUS_NODES} \

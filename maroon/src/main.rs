@@ -9,6 +9,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let node_urls: Vec<String> =
     std::env::var("NODE_URLS").map_err(|e| format!("NODE_URLS not set: {}", e))?.split(',').map(String::from).collect();
+  let etcd_urls: Vec<String> =
+    std::env::var("ETCD_URLS").map_err(|e| format!("ETCD_URLS not set: {}", e))?.split(',').map(String::from).collect();
 
   let self_url: String = std::env::var("SELF_URL").map_err(|e| format!("SELF_URL not set: {}", e))?;
 
@@ -25,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
-  let (mut app, _) = maroon::stack::create_stack(node_urls, self_url, params)?;
+  let (mut app, _) = maroon::stack::create_stack(node_urls, etcd_urls, self_url, params)?;
   app.loop_until_shutdown(shutdown_rx).await;
 
   Ok(())

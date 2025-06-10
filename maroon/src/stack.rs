@@ -7,12 +7,12 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::{InvokerInterface, create_invoker_handler_pair};
 
 pub fn create_stack(
-  node_urls: Vec<String>, self_url: String, params: Params,
+  node_urls: Vec<String>, etcd_urls: Vec<String>, self_url: String, params: Params,
 ) -> Result<(App<LogLineriazer>, InvokerInterface<Request, Response>), Box<dyn std::error::Error>> {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
 
-  let epoch_coordinator = EtcdEpochCoordinator::new(&vec![], b2a_epoch);
+  let epoch_coordinator = EtcdEpochCoordinator::new(&etcd_urls, b2a_epoch);
 
   let mut p2p = P2P::new(node_urls, self_url, a2b_endpoint)?;
   let my_id = p2p.peer_id;
