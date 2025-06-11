@@ -28,7 +28,7 @@ toolinstall: # installs tools
 	cargo install taplo-cli
 
 build:
-	cargo build $(PROFILE_FLAG) $(VERBOSE_RUN)
+	cargo build --all $(PROFILE_FLAG) $(VERBOSE_RUN)
 
 test: # runs unit tests
 	cargo test --workspace --exclude integration --exclude integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
