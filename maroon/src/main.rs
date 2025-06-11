@@ -1,7 +1,7 @@
 use maroon::app::Params;
+use std::future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use tokio::sync::oneshot;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,10 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let params = Params::default().set_consensus_nodes(consensus_nodes);
 
-  let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+  let (maroon_stack, _stack_remote_control) = maroon::stack::MaroonStack::new(node_urls, etcd_urls, self_url, params)?;
+  let _shutdown = maroon_stack.start();
 
-  let (mut app, _) = maroon::stack::create_stack(node_urls, etcd_urls, self_url, params)?;
-  app.loop_until_shutdown(shutdown_rx).await;
+  // forever pause current state in order to prevent killing the process
+  // later will be replaced with something else. Don't know with what
+  future::pending::<()>().await;
 
   Ok(())
 }

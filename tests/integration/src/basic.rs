@@ -21,29 +21,25 @@ use tokio::sync::oneshot;
 async fn basic() {
   _ = env_logger::try_init();
 
-  let (_shutdown_tx_0, shutdown_rx_0) = oneshot::channel();
-  let (_shutdown_tx_1, shutdown_rx_1) = oneshot::channel();
-  let (_shutdown_tx_2, shutdown_rx_2) = oneshot::channel();
-
   let params = Params::default().set_advertise_period(Duration::from_millis(500));
 
   // create nodes and gateway
 
-  let (mut node0, state_invoker_0) = stack::create_stack(
+  let (stack0, remote_control_0) = stack::MaroonStack::new(
     vec!["/ip4/127.0.0.1/tcp/3001".to_string(), "/ip4/127.0.0.1/tcp/3002".to_string()],
     vec![],
     "/ip4/0.0.0.0/tcp/3000".to_string(),
     params.clone(),
   )
   .unwrap();
-  let (mut node1, state_invoker_1) = stack::create_stack(
+  let (stack1, remote_control_1) = stack::MaroonStack::new(
     vec!["/dns4/localhost/tcp/3000".to_string(), "/dns4/localhost/tcp/3002".to_string()],
     vec![],
     "/ip4/0.0.0.0/tcp/3001".to_string(),
     params.clone(),
   )
   .unwrap();
-  let (mut node2, state_invoker_2) = stack::create_stack(
+  let (stack2, remote_control_2) = stack::MaroonStack::new(
     vec!["/ip4/127.0.0.1/tcp/3000".to_string(), "/ip4/127.0.0.1/tcp/3001".to_string()],
     vec![],
     "/ip4/0.0.0.0/tcp/3002".to_string(),
@@ -60,9 +56,9 @@ async fn basic() {
 
   // run nodes and gateway
 
-  tokio::spawn(async move { node0.loop_until_shutdown(shutdown_rx_0).await });
-  tokio::spawn(async move { node1.loop_until_shutdown(shutdown_rx_1).await });
-  tokio::spawn(async move { node2.loop_until_shutdown(shutdown_rx_2).await });
+  let _s0 = stack0.start();
+  let _s1 = stack1.start();
+  let _s2 = stack2.start();
 
   gw.start_in_background().await;
 
@@ -90,9 +86,9 @@ async fn basic() {
   };
 
   for _ in 0..3 {
-    node0_correct = get_state_and_compare(&state_invoker_0, &desired_state).await;
-    node1_correct = get_state_and_compare(&state_invoker_1, &desired_state).await;
-    node2_correct = get_state_and_compare(&state_invoker_2, &desired_state).await;
+    node0_correct = get_state_and_compare(&remote_control_0.state_invoker, &desired_state).await;
+    node1_correct = get_state_and_compare(&remote_control_1.state_invoker, &desired_state).await;
+    node2_correct = get_state_and_compare(&remote_control_2.state_invoker, &desired_state).await;
     if node0_correct && node1_correct && node2_correct {
       break;
     }
