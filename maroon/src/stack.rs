@@ -1,10 +1,10 @@
 use crate::app::{App, Params, Request, Response};
-use crate::epoch_coordinator::etcd::EtcdEpochCoordinator;
-use crate::epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox, P2P};
 use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::{InvokerInterface, create_invoker_handler_pair};
+use epoch_coordinator::etcd::EtcdEpochCoordinator;
+use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use log::{debug, info};
 use tokio::sync::oneshot;
 

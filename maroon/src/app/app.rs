@@ -3,11 +3,6 @@ use super::{
   params::Params,
 };
 use crate::{
-  epoch_coordinator::{
-    self,
-    epoch::Epoch,
-    interface::{EpochRequest, EpochUpdates},
-  },
   linearizer::{Linearizer, LogLineriazer},
   network::{Inbox, NodeState, Outbox},
 };
@@ -19,6 +14,11 @@ use common::{
     unique_blob_id_from_range_and_offset,
   },
   transaction::Transaction,
+};
+use epoch_coordinator::{
+  self,
+  epoch::Epoch,
+  interface::{EpochRequest, EpochUpdates},
 };
 use libp2p::PeerId;
 use log::{debug, error, info};

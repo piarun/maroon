@@ -1,5 +1,5 @@
 use super::epoch::Epoch;
-use crate::epoch_coordinator::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
+use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use log::{debug, info};

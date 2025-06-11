@@ -1,11 +1,11 @@
 use crate::app::Params;
 use crate::app::interface::CurrentOffsets;
-use crate::epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use crate::network::*;
 use crate::test_helpers::{new_test_instance, new_test_instance_with_params, reaches_state, test_tx};
 use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::create_invoker_handler_pair;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
+use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use libp2p::PeerId;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;

@@ -944,6 +944,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "epoch_coordinator"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "common",
+ "derive_more",
+ "env_logger",
+ "etcd-client",
+ "futures",
+ "libp2p",
+ "libp2p-request-response",
+ "log",
+ "rand 0.9.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2303,6 +2323,7 @@ dependencies = [
  "common",
  "derive_more",
  "env_logger",
+ "epoch_coordinator",
  "etcd-client",
  "futures",
  "libp2p",

@@ -1,5 +1,5 @@
-use crate::epoch_coordinator::epoch::Epoch;
 use common::range_key::UniqueU64BlobId;
+use epoch_coordinator::epoch::Epoch;
 use log::debug;
 
 pub trait Linearizer {

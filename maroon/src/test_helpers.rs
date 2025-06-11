@@ -1,6 +1,4 @@
 use crate::app::{App, CurrentOffsets, Params, Request as AppStateRequest, Response as AppStateResponse};
-#[cfg(test)]
-use crate::epoch_coordinator::interface::A2BEndpoint;
 use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox};
 use common::invoker_handler::HandlerInterface;
@@ -10,6 +8,8 @@ use common::{
   range_key::UniqueU64BlobId,
   transaction::{Transaction, TxStatus},
 };
+#[cfg(test)]
+use epoch_coordinator::interface::A2BEndpoint;
 use libp2p::PeerId;
 use std::time::Duration;
 

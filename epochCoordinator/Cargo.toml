@@ -1,13 +1,12 @@
 [package]
 edition = "2024"
-name = "maroon"
+name = "epoch_coordinator"
 rust-version = "1.86.0"
 version = "0.1.0"
 
 [dependencies]
 chrono = "0.4.41"
 common = { path = "../common" }
-epoch_coordinator = { path = "../epochCoordinator" }
 derive_more = { version = "2.0.1", features = ["from", "display"] }
 env_logger = { workspace = true }
 etcd-client = { workspace = true }
