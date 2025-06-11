@@ -167,6 +167,7 @@ impl<L: Linearizer> App<L> {
         recalculate_order(self.peer_id, &nodes);
       }
       Inbox::NewTransaction(tx) => {
+        debug!("got new tx: {tx:?}");
         if let Some((new_range, new_offset)) = update_self_offset(&mut self.self_offsets, &mut self.transactions, tx) {
           move_offset_pointer(&mut self.offsets, self.peer_id, new_range, new_offset);
         }

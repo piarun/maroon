@@ -12,25 +12,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Clone
-      uses: actions/checkout@v4
+      - name: Clone
+        uses: actions/checkout@v4
 
-    # TODO: put image with protobuf and make it available to speed up tests
-    - name: Install protoc
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-    
-    - name: Setup
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Build
-      run: time make build VERBOSE=true PROFILE=release
+      # TODO: put image with protobuf and make it available to speed up tests
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
-    - name: Test
-      run: time make test PROFILE=release    
+      - name: Setup
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Integration tests
-      run: time make integtest
+      - name: Build
+        run: time make build VERBOSE=true PROFILE=release
+
+      - name: Test
+        run: time make test PROFILE=release
+
+      - name: Integration tests
+        run: time make integtest PROFILE=release
