@@ -31,7 +31,7 @@ build:
 	cargo build --all-targets $(PROFILE_FLAG) $(VERBOSE_RUN)
 
 test: # runs unit tests
-	cargo test --workspace --exclude integration --exclude integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
+	cargo test --workspace --exclude integration --exclude epoch_coordinator $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
 
 integtest: # runs integration tests (excluding dockerized tests)
 	RUST_LOG=maroon=info,gateway=debug \
@@ -39,7 +39,7 @@ integtest: # runs integration tests (excluding dockerized tests)
 
 integtest-dockerized: # runs dockerized integration tests that require docker services (etcd, etc.)
 	RUST_LOG=maroon=debug,gateway=debug \
-		cargo test -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+		cargo test -p epoch_coordinator $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 integtest-all: # runs all integration tests including dockerized ones
 	RUST_LOG=maroon=info,gateway=debug \
@@ -60,12 +60,12 @@ run-gateway: # runs gateway imitation
 		cargo run -p gateway $(PROFILE_FLAG)
 
 shutdown-test-etcd: # shutdown and clean up local etcd cluster
-	docker compose -f tests/deploy/etcd/docker-compose.yaml down --remove-orphans
+	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml down --remove-orphans
 	docker network rm etcd
 
 start-test-etcd: # run etcd for local development
 	docker network create etcd
-	docker compose -f tests/deploy/etcd/docker-compose.yaml up -d
+	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml up -d
 
 fmt: # formatter
 	cargo fmt --all

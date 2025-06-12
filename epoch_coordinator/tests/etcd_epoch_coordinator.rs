@@ -2,16 +2,17 @@
 
 use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
 use common::range_key::U64BlobIdClosedInterval;
-use etcd_client::{Client, Compare, CompareOp, DeleteOptions, Error, Txn, TxnOp, WatchOptions, WatchResponse};
-use libp2p::PeerId;
-use maroon::epoch_coordinator::etcd::MAROON_PREFIX;
-use maroon::epoch_coordinator::{
+use epoch_coordinator::etcd::MAROON_PREFIX;
+use epoch_coordinator::{
   epoch::Epoch,
   etcd::EtcdEpochCoordinator,
   interface::{EpochRequest, EpochUpdates},
 };
+use etcd_client::{Client, Compare, CompareOp, DeleteOptions, Error, Txn, TxnOp, WatchOptions, WatchResponse};
+use libp2p::PeerId;
 use std::time::Duration;
 
+/// Testing that when we send tx to etcd we'll get it back through "watch" api
 #[tokio::test(flavor = "multi_thread")]
 async fn etcd_epoch_coordinator() {
   _ = env_logger::try_init();
@@ -31,18 +32,16 @@ async fn etcd_epoch_coordinator() {
   let peer_id_1 = PeerId::random();
   let coordinator = EtcdEpochCoordinator::new(&node_urls, b2a);
 
-  let task = tokio::spawn(async move {
-    while let Some(v) = receiver.recv().await {
-      return Some(v);
-    }
-    None
-  });
   coordinator.start_on_background();
 
   let epoch = Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(0, 13)], None);
+  let epoch2 = Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(14, 16)], Some(&epoch));
+
   _ = sender.send(EpochRequest { epoch: epoch.clone() });
-
-  let updates = task.await.unwrap().unwrap();
-
+  let updates = receiver.recv().await.expect("can it be None?");
   assert_eq!(EpochUpdates::New(epoch), updates);
+
+  _ = sender.send(EpochRequest { epoch: epoch2.clone() });
+  let updates = receiver.recv().await.expect("can it be None?");
+  assert_eq!(EpochUpdates::New(epoch2), updates);
 }

@@ -45,7 +45,7 @@ make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
   - [x] epoch coordinator interface
   - [x] set up etcd
   - [x] write epochs to etcd
-  // TODO: update instructions on how to local run it properly. Explain why docerized tests exist. How to run them, etc.
+  // TODO: update instructions on how to local run it properly
   - [ ] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd

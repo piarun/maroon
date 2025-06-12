@@ -5,8 +5,7 @@ members = [
   "gateway",
   "maroon",
   "tests/integration",
-  "tests/integration-dockerized",
-  "epochCoordinator",
+  "epoch_coordinator",
 ]
 resolver = "3"
 
