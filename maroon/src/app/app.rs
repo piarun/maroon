@@ -3,10 +3,12 @@ use super::{
   params::Params,
 };
 use crate::{
+  app::decider::{Decider, new_decider},
   linearizer::{Linearizer, LogLineriazer},
   network::{Inbox, NodeState, Outbox},
 };
 use common::{
+  clock::SystemClock,
   duplex_channel::Endpoint,
   invoker_handler::{HandlerInterface, RequestWrapper},
   range_key::{
@@ -65,6 +67,9 @@ pub struct App<L: Linearizer> {
 
   linearizer: L,
   epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
+
+  /// keeps logic that calculates if it's time to send a new epoch or not
+  send_decider: Decider<SystemClock>,
 }
 
 impl<L: Linearizer> App<L> {
@@ -72,6 +77,7 @@ impl<L: Linearizer> App<L> {
     peer_id: PeerId, p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<Request, Response>,
     epoch_coordinator: epoch_coordinator::interface::A2BEndpoint, params: Params,
   ) -> Result<App<LogLineriazer>, Box<dyn std::error::Error>> {
+    let epoch_period = params.epoch_period;
     Ok(App {
       params,
       peer_id,
@@ -85,6 +91,7 @@ impl<L: Linearizer> App<L> {
       transactions: HashMap::new(),
       linearizer: LogLineriazer::new(),
       epoch_coordinator,
+      send_decider: new_decider(peer_id, epoch_period),
     })
   }
 
@@ -146,6 +153,8 @@ impl<L: Linearizer> App<L> {
             let (range, new_offset) = range_offset_from_unique_blob_id(interval.end());
             self.commited_offsets.insert(range, new_offset);
           }
+
+          self.send_decider.update_latest_epoch(new_epoch.creator, new_epoch.creation_time);
           self.epochs.push(new_epoch);
         }
       }
@@ -164,7 +173,7 @@ impl<L: Linearizer> App<L> {
         }
       }
       Inbox::Nodes(nodes) => {
-        recalculate_order(self.peer_id, &nodes);
+        self.recalculate_order(&nodes);
       }
       Inbox::NewTransaction(tx) => {
         debug!("got new tx: {tx:?}");
@@ -240,6 +249,10 @@ impl<L: Linearizer> App<L> {
   }
 
   fn commit_epoch_if_needed(&mut self) {
+    if !self.send_decider.should_send() {
+      return;
+    }
+
     let increments = calculate_epoch_increments(&self.consensus_offset, &self.commited_offsets);
 
     let prev_epoch = self.epochs.last().map(|e| e);
@@ -247,6 +260,10 @@ impl<L: Linearizer> App<L> {
 
     info!("NEW EPOCH: {}", &new_epoch);
     self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });
+  }
+
+  fn recalculate_order(&mut self, ids: &HashSet<PeerId>) {
+    self.send_decider.update_node_ids(ids);
   }
 }
 
@@ -413,16 +430,6 @@ fn consensus_maximum(map: &HashMap<PeerId, KeyOffset>, n_consensus: NonZeroUsize
   refs.sort_unstable_by(|a, b| b.cmp(a));
 
   Some(refs[n - 1])
-}
-
-fn recalculate_order(self_id: PeerId, ids: &HashSet<PeerId>) {
-  let mut peer_ids: Vec<&PeerId> = ids.iter().collect();
-
-  peer_ids.sort();
-  let delay_factor =
-    peer_ids.iter().position(|e| **e == self_id).expect("self peer id should exist here. Otherwise it's stupid");
-
-  info!("My delay factor is {}! Nodes order: {:?}", delay_factor, peer_ids);
 }
 
 fn txs_to_range_tx_map(txs: Vec<Transaction>) -> HashMap<KeyRange, Vec<Transaction>> {

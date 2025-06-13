@@ -217,12 +217,10 @@ async fn app_sends_epochs_to_epoch_coordinator() {
 
   tokio::spawn(async move {
     while let Some(v) = b2a_epoch.receiver.recv().await {
-      println!("GOT: {:?}", v);
-
       let mut guard = incs_spawn.lock().await;
       guard.push(v.epoch.increments.clone());
 
-      // get and immediately "accept" a new epoch if it's not empty
+      // get and immediately "accept" a new epoch
       b2a_epoch.send(EpochUpdates::New(v.epoch));
     }
   });
@@ -242,7 +240,7 @@ async fn app_sends_epochs_to_epoch_coordinator() {
       break;
     }
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
   }
 
   let guard_collected = increments.lock().await;
