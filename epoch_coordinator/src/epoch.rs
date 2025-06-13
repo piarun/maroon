@@ -3,6 +3,7 @@ use derive_more::Display;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Display, Serialize, Deserialize, PartialEq, Eq)]
 #[display("Epoch {{ sn: {:?} increments: {:?}, hash: 0x{:X} }}", sequence_number, increments, hash.iter().fold(0u128, |acc, &x| (acc << 8) | x as u128))]
@@ -14,6 +15,9 @@ pub struct Epoch {
   pub increments: Vec<U64BlobIdClosedInterval>,
 
   pub creator: PeerId,
+
+  pub creation_time: Duration,
+
   hash: [u8; 32],
 }
 
@@ -38,6 +42,12 @@ impl Epoch {
 
     let hash = hasher.finalize().into();
 
-    Epoch { creator, sequence_number, increments, hash }
+    Epoch {
+      creator,
+      sequence_number,
+      increments,
+      hash,
+      creation_time: SystemTime::now().duration_since(UNIX_EPOCH).expect("it's way after unix epoch start"),
+    }
   }
 }
