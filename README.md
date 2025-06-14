@@ -29,6 +29,32 @@ Runs imitation of gateway with the given key-range
 make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 ```
 
+## +- realistic run scenarious
+
+1. Run etcd:
+- `make start-test-etcd`
+
+2. Run in a separate terminal sessions(if you need different ports, provide correct NODE_URLS as well):
+- `make run-local PORT=3000`
+- `make run-local PORT=3001`
+- `make run-local PORT=3002`
+
+3. Now if you open another terminal session you can see updates in etcd:
+- `etcdctl --endpoints=http://localhost:2379 get --prefix /maroon/history`
+- [check out more](./epoch_coordinator/docker/etcd/Readme.md)
+
+you should see published epochs but with empty increments
+
+4. In order to start publishing transactions - use [gateway](./docs/gateway.md).
+
+Right now it's very dumb implementation that can only publish empty transactions from a given [key-range](./docs/keys-range.md). To run:
+```sh
+make run-gateway KEY_RANGE=2 NODE_URLS=/ip4/127.0.0.1/tcp/3000
+```
+
+NODE_URLS should contain at least one valid node url, in that case transaction will reach out all nodes in cluster eventually
+
+
 # to-do list
 - [X] local run of etcd in docker compose
     - [X] add possibility to introduce delays between etcd nodes
@@ -45,8 +71,7 @@ make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
   - [x] epoch coordinator interface
   - [x] set up etcd
   - [x] write epochs to etcd
-  // TODO: update instructions on how to local run it properly
-  - [ ] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
+  - [x] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd
 - [ ] dump data to s3?? (??: what exactly we need to persist? Format? Easy to bootstrap later??)

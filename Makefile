@@ -62,6 +62,7 @@ run-gateway: # runs gateway imitation
 shutdown-test-etcd: # shutdown and clean up local etcd cluster
 	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml down --remove-orphans
 	docker network rm etcd
+	docker volume rm etcd_etcd-data
 
 start-test-etcd: # run etcd for local development
 	docker network create etcd
