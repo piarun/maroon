@@ -203,7 +203,7 @@ async fn app_sends_epochs_to_epoch_coordinator() {
     a2b_epoch,
     Params::default()
       .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
-      .set_epoch_period(Duration::from_millis(500))
+      .set_epoch_period(Duration::from_millis(200))
       .set_advertise_period(Duration::from_millis(100)),
   );
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -226,7 +226,10 @@ async fn app_sends_epochs_to_epoch_coordinator() {
   });
 
   a2b_endpoint.sender.send(Inbox::NewTransaction(test_tx(0))).unwrap();
-  tokio::time::sleep(Duration::from_millis(500)).await; // need this one to send tx in two different epochs
+  // need this sleep in order to send tx in two different epochs
+  // epoch period is much lower now(200ms) than this sleep, so probably it will happen in two different epochs
+  // TODO: use tokio time manipulation techniques for making this test more reliable
+  tokio::time::sleep(Duration::from_millis(1000)).await;
   a2b_endpoint.sender.send(Inbox::NewTransaction(test_tx(1))).unwrap();
 
   let mut has_expected_tx = false;
@@ -239,6 +242,7 @@ async fn app_sends_epochs_to_epoch_coordinator() {
       has_expected_tx = true;
       break;
     }
+    drop(guard);
 
     tokio::time::sleep(Duration::from_millis(500)).await;
   }
