@@ -3,7 +3,7 @@ use super::{
   params::Params,
 };
 use crate::{
-  app::decider::{Decider, new_decider},
+  epoch_decision_engine::{EpochDecisionEngine, new_decider},
   linearizer::{Linearizer, LogLineriazer},
   network::{Inbox, NodeState, Outbox},
 };
@@ -69,7 +69,7 @@ pub struct App<L: Linearizer> {
   epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
 
   /// keeps logic that calculates if it's time to send a new epoch or not
-  send_decider: Decider<SystemClock>,
+  send_decider: EpochDecisionEngine<SystemClock>,
 }
 
 impl<L: Linearizer> App<L> {

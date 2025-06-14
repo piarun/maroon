@@ -3,7 +3,7 @@ use libp2p::PeerId;
 use std::{collections::HashSet, time::Duration, u128, usize};
 
 /// takes signals(node updates, timer ticks, latest epoch time, etc) and makes decision if it's time to send new epoch or not
-pub struct Decider<C: Clock> {
+pub struct EpochDecisionEngine<C: Clock> {
   id: PeerId,
   nodes: Vec<PeerId>, // sorted
 
@@ -15,13 +15,13 @@ pub struct Decider<C: Clock> {
   clock: C,
 }
 
-pub fn new_decider(id: PeerId, tick_delta: Duration) -> Decider<SystemClock> {
-  Decider::<SystemClock>::new(id, tick_delta, SystemClock {})
+pub fn new_decider(id: PeerId, tick_delta: Duration) -> EpochDecisionEngine<SystemClock> {
+  EpochDecisionEngine::<SystemClock>::new(id, tick_delta, SystemClock {})
 }
 
-impl<C: Clock> Decider<C> {
-  pub fn new(id: PeerId, tick_delta: Duration, clock: C) -> Decider<C> {
-    Decider { id, nodes: vec![], latest_epoch: None, tick_delta: tick_delta.as_millis(), clock }
+impl<C: Clock> EpochDecisionEngine<C> {
+  pub fn new(id: PeerId, tick_delta: Duration, clock: C) -> EpochDecisionEngine<C> {
+    EpochDecisionEngine { id, nodes: vec![], latest_epoch: None, tick_delta: tick_delta.as_millis(), clock }
   }
 
   pub fn update_node_ids(&mut self, ids: &HashSet<PeerId>) {
@@ -81,13 +81,13 @@ fn calculate_position(nodes: &Vec<PeerId>, self_id: PeerId, latest_commiter_id: 
 
 #[cfg(test)]
 mod tests {
-  use crate::app::decider::calculate_position;
+  use crate::epoch_decision_engine::calculate_position;
 
   use super::*;
   use common::clock::test_helpers::MockClock;
 
-  fn new_test(id: PeerId, tick_delta: Duration, now: Duration) -> Decider<MockClock> {
-    Decider::new(id, tick_delta, MockClock::new(now))
+  fn new_test(id: PeerId, tick_delta: Duration, now: Duration) -> EpochDecisionEngine<MockClock> {
+    EpochDecisionEngine::new(id, tick_delta, MockClock::new(now))
   }
 
   #[test]
