@@ -7,9 +7,9 @@ version = "0.1.0"
 [dependencies]
 chrono = "0.4.41"
 common = { path = "../common" }
-epoch_coordinator = { path = "../epoch_coordinator" }
 derive_more = { version = "2.0.1", features = ["from", "display"] }
 env_logger = { workspace = true }
+epoch_coordinator = { path = "../epoch_coordinator" }
 futures = { workspace = true }
 libp2p = { workspace = true }
 libp2p-request-response = { workspace = true }
