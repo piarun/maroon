@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Emitter Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #4a4a4a;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .load-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .play-btn {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+            color: white;
+        }
+
+        .pause-btn {
+            background: linear-gradient(45deg, #FF9800, #F57C00);
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 20px;
+        }
+
+        .speed-slider {
+            width: 150px;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .speed-slider:hover {
+            opacity: 1;
+        }
+
+        .timeline {
+            background: rgba(240, 240, 240, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #ccc;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+        }
+
+        .visualization {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: radial-gradient(circle at center, #f8f9fa 0%, #e9ecef 100%);
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .entity {
+            position: absolute;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .entity:hover {
+            transform: scale(1.1);
+        }
+
+        .node {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+            width: 80px;
+            height: 80px;
+            font-size: 12px;
+        }
+
+        .gateway {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            width: 90px;
+            height: 90px;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .message {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .gateway-to-node {
+            background: radial-gradient(circle, #FFD700, #FFA500);
+            width: 15px;
+            height: 15px;
+        }
+
+        .node-to-node {
+            background: radial-gradient(circle, #FF69B4, #FF1493);
+            width: 15px;
+            height: 15px;
+        }
+
+        .node-broadcast {
+            background: radial-gradient(circle, #9C27B0, #673AB7);
+            width: 18px;
+            height: 18px;
+            border: 2px solid #fff;
+        }
+
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .loaded {
+            color: #4CAF50;
+        }
+
+        .playing {
+            color: #2196F3;
+        }
+
+        .paused {
+            color: #FF9800;
+        }
+
+        .stopped {
+            color: #666;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .legend-circle {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .legend-node {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+        }
+
+        .legend-gateway {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+        }
+
+        .legend-msg-gw {
+            background: radial-gradient(circle, #FFD700, #FFA500);
+        }
+
+        .legend-msg-node {
+            background: radial-gradient(circle, #FF69B4, #FF1493);
+        }
+
+        .legend-msg-broadcast {
+            background: radial-gradient(circle, #9C27B0, #673AB7);
+        }
+
+        .offset-display {
+            position: absolute;
+            top: 85px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: pre-wrap;
+            min-width: 60px;
+            max-width: 300px;
+            width: max-content;
+            text-align: left;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 5;
+        }
+
+        .offset-updated {
+            animation: offsetPulse 0.5s ease-in-out;
+        }
+
+        @keyframes offsetPulse {
+            0% {
+                background-color: rgba(255, 215, 0, 0.9);
+            }
+
+            100% {
+                background-color: rgba(0, 0, 0, 0.8);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Event Emitter Visualization</h1>
+        <div class="controls">
+            <button class="play-btn" id="startBtn">Start</button>
+        </div>
+        <div class="status" id="status">Stopped</div>
+        <div class="visualization" id="visualization"></div>
+    </div>
+
+    <script>
+        class EventEmitter {
+            constructor(name, minDelay, maxDelay, onMessage) {
+                this.name = name;
+                this.minDelay = minDelay;
+                this.maxDelay = maxDelay;
+                this.counter = 0;
+                this.interval = null;
+                this.onMessage = onMessage;
+            }
+
+            start() {
+                this.emit();
+            }
+
+            stop() {
+                if (this.interval) {
+                    clearTimeout(this.interval);
+                    this.interval = null;
+                }
+            }
+
+            emit() {
+                const message = {
+                    emitter: this.name,
+                    value: ++this.counter,
+                    timestamp: Date.now()
+                };
+                
+                this.onMessage(message);
+                
+                const delay = Math.random() * (this.maxDelay - this.minDelay) + this.minDelay;
+                this.interval = setTimeout(() => this.emit(), delay * 1000);
+            }
+        }
+
+        class WorldTick {
+            constructor(interval = 5000, onTick) {
+                this.interval = interval;
+                this.timer = null;
+                this.heap = [];
+                this.publishedMessages = [];
+                this.lastTickTime = Date.now();
+                this.onTick = onTick;
+            }
+
+            start() {
+                this.tick();
+            }
+
+            stop() {
+                if (this.timer) {
+                    clearTimeout(this.timer);
+                    this.timer = null;
+                }
+            }
+
+            tick() {
+                const now = Date.now();
+                const messages = this.heap.splice(0);
+                
+                if (messages.length > 0) {
+                    const published = this.publishMessages(messages);
+                    this.onTick(published);
+                }
+
+                this.lastTickTime = now;
+                this.timer = setTimeout(() => this.tick(), this.interval);
+            }
+
+            addToHeap(message) {
+                this.heap.push(message);
+            }
+
+            publishMessages(messages) {
+                const published = messages.map((msg, index) => ({
+                    ...msg,
+                    publishedIndex: this.publishedMessages.length + index
+                }));
+                this.publishedMessages.push(...published);
+                return published;
+            }
+        }
+
+        class Visualizer {
+            constructor() {
+                this.container = document.getElementById('visualization');
+                this.status = document.getElementById('status');
+                this.startBtn = document.getElementById('startBtn');
+                
+                this.setupLayout();
+                this.setupEventListeners();
+                
+                // Initialize clock hand at top position
+                this.clockHand.style.transform = 'translateX(-50%) translateY(-100%) rotate(0deg)';
+                this.epochCounter.textContent = '0';
+                
+                this.worldTick = new WorldTick(5000, (publishedMessages) => {
+                    publishedMessages.forEach(message => {
+                        this.createMessage(message, true);
+                    });
+                });
+                
+                this.emitterA = new EventEmitter('A', 1, 2, (message) => {
+                    this.worldTick.addToHeap(message);
+                    this.createMessage(message, false);
+                });
+                
+                this.emitterB = new EventEmitter('B', 2, 3, (message) => {
+                    this.worldTick.addToHeap(message);
+                    this.createMessage(message, false);
+                });
+                
+                this.emitterC = new EventEmitter('C', 3, 4, (message) => {
+                    this.worldTick.addToHeap(message);
+                    this.createMessage(message, false);
+                });
+            }
+
+            setupLayout() {
+                // Create emitters
+                const emitterContainer = document.createElement('div');
+                emitterContainer.style.position = 'absolute';
+                emitterContainer.style.left = '20px';
+                emitterContainer.style.top = '20px';
+                emitterContainer.style.display = 'flex';
+                emitterContainer.style.flexDirection = 'column';
+                emitterContainer.style.gap = '20px';
+                
+                ['A', 'B', 'C'].forEach((name, index) => {
+                    const emitter = document.createElement('div');
+                    emitter.className = 'emitter-box';
+                    emitter.style.width = '160px';
+                    emitter.style.height = '60px';
+                    emitter.style.background = this.getEmitterColor(name);
+                    emitter.style.borderRadius = '8px';
+                    emitter.style.display = 'flex';
+                    emitter.style.alignItems = 'center';
+                    emitter.style.justifyContent = 'center';
+                    emitter.style.color = 'white';
+                    emitter.style.fontWeight = 'bold';
+                    emitter.style.fontSize = '24px';
+                    emitter.style.whiteSpace = 'nowrap';
+                    emitter.textContent = `Emitter ${name}`;
+                    emitterContainer.appendChild(emitter);
+                });
+                
+                // Create gateway
+                const gateway = document.createElement('div');
+                gateway.className = 'gateway';
+                gateway.style.position = 'absolute';
+                gateway.style.left = '50%';
+                gateway.style.top = '50%';
+                gateway.style.transform = 'translate(-50%, -50%)';
+                gateway.style.width = '200px';
+                gateway.style.height = '80px';
+                gateway.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+                gateway.style.borderRadius = '12px';
+                gateway.style.display = 'flex';
+                gateway.style.alignItems = 'center';
+                gateway.style.justifyContent = 'center';
+                gateway.style.color = 'white';
+                gateway.style.fontWeight = 'bold';
+                gateway.style.fontSize = '24px';
+                gateway.style.zIndex = '100';
+                gateway.style.textAlign = 'center';
+                gateway.textContent = 'Maroon Engine';
+                
+                // Create message stack container
+                const messageStack = document.createElement('div');
+                messageStack.id = 'messageStack';
+                messageStack.style.position = 'absolute';
+                messageStack.style.left = 'calc(50% + 120px)';
+                messageStack.style.top = '50%';
+                messageStack.style.transform = 'translateY(-50%)';
+                messageStack.style.width = '200px';
+                messageStack.style.height = '300px';
+                messageStack.style.display = 'flex';
+                messageStack.style.flexDirection = 'column-reverse';
+                messageStack.style.gap = '10px';
+                messageStack.style.padding = '10px';
+                messageStack.style.background = 'rgba(255, 255, 255, 0.9)';
+                messageStack.style.borderRadius = '8px';
+                messageStack.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                messageStack.style.overflowY = 'auto';
+                
+                // Create epoch clock
+                const clockContainer = document.createElement('div');
+                clockContainer.style.position = 'absolute';
+                clockContainer.style.bottom = '200px';
+                clockContainer.style.right = '20px';
+                clockContainer.style.width = '180px';
+                clockContainer.style.height = '180px';
+                clockContainer.style.background = '#f0f0f0';
+                clockContainer.style.borderRadius = '50%';
+                clockContainer.style.display = 'flex';
+                clockContainer.style.alignItems = 'center';
+                clockContainer.style.justifyContent = 'center';
+                clockContainer.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.1)';
+                
+                // Create clock face
+                const clockFace = document.createElement('div');
+                clockFace.style.position = 'relative';
+                clockFace.style.width = '100%';
+                clockFace.style.height = '100%';
+                clockFace.style.borderRadius = '50%';
+                clockFace.style.background = 'white';
+                
+                // Create vertical line
+                const verticalLine = document.createElement('div');
+                verticalLine.style.position = 'absolute';
+                verticalLine.style.left = '50%';
+                verticalLine.style.top = '50%';
+                verticalLine.style.width = '2px';
+                verticalLine.style.height = '50%';
+                verticalLine.style.borderLeft = '2px dashed #666';
+                verticalLine.style.transform = 'translateX(-50%) translateY(-100%)';
+                
+                // Create clock hand
+                this.clockHand = document.createElement('div');
+                this.clockHand.style.position = 'absolute';
+                this.clockHand.style.left = '50%';
+                this.clockHand.style.top = '50%';
+                this.clockHand.style.width = '6px';
+                this.clockHand.style.height = '45%';
+                this.clockHand.style.background = '#ff4444';
+                this.clockHand.style.transformOrigin = '50% 100%';
+                this.clockHand.style.transform = 'translateX(-50%) translateY(-100%)';
+                this.clockHand.style.transition = 'transform 0.1s linear';
+                
+                // Create epoch display
+                const epochDisplay = document.createElement('div');
+                epochDisplay.style.position = 'absolute';
+                epochDisplay.style.bottom = '-40px';
+                epochDisplay.style.left = '50%';
+                epochDisplay.style.transform = 'translateX(-50%)';
+                epochDisplay.style.background = 'white';
+                epochDisplay.style.padding = '8px 24px';
+                epochDisplay.style.minWidth = '120px';
+                epochDisplay.style.textAlign = 'center';
+                epochDisplay.style.borderRadius = '8px';
+                epochDisplay.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                epochDisplay.style.fontSize = '18px';
+                epochDisplay.style.fontWeight = 'bold';
+                epochDisplay.style.color = '#333';
+                this.epochCounter = document.createElement('span');
+                this.epochCounter.textContent = '0';
+                epochDisplay.appendChild(document.createTextNode('Epoch: '));
+                epochDisplay.appendChild(this.epochCounter);
+                
+                clockFace.appendChild(verticalLine);
+                clockFace.appendChild(this.clockHand);
+                clockContainer.appendChild(clockFace);
+                clockContainer.appendChild(epochDisplay);
+                
+                this.container.appendChild(emitterContainer);
+                this.container.appendChild(gateway);
+                this.container.appendChild(messageStack);
+                this.container.appendChild(clockContainer);
+            }
+
+            startClockAnimation() {
+                const duration = 5000; // 5 seconds per rotation
+                const startTime = Date.now();
+                let currentEpoch = 0;
+                let lastRotation = 0;
+                let animationFrameId;
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const rotation = (elapsed / duration) * 360;
+                    
+                    this.clockHand.style.transform = `translateX(-50%) translateY(-100%) rotate(${rotation}deg)`;
+                    
+                    // Check if we've crossed the vertical line (rotation % 360 crosses 0)
+                    const currentRotation = Math.floor(rotation / 360);
+                    if (currentRotation > lastRotation) {
+                        lastRotation = currentRotation;
+                        currentEpoch++;
+                        this.epochCounter.textContent = currentEpoch.toString();
+                        
+                        // Clear message stack at the start of each epoch
+                        const messageStack = document.getElementById('messageStack');
+                        messageStack.innerHTML = '';
+                    }
+                    
+                    animationFrameId = requestAnimationFrame(animate);
+                };
+                
+                animate();
+                return animationFrameId;
+            }
+
+            createMessage(message, isPublished) {
+                const element = document.createElement('div');
+                element.className = 'message';
+                element.style.position = 'absolute';
+                element.style.width = '30px';
+                element.style.height = '30px';
+                element.style.background = this.getEmitterColor(message.emitter);
+                element.style.borderRadius = '50%';
+                element.style.display = 'flex';
+                element.style.alignItems = 'center';
+                element.style.justifyContent = 'center';
+                element.style.color = 'white';
+                element.style.fontWeight = 'bold';
+                element.style.fontSize = '14px';
+                element.textContent = message.value;
+                
+                // Start position (emitter)
+                const emitterIndex = ['A', 'B', 'C'].indexOf(message.emitter);
+                const startX = 100;
+                const startY = 50 + emitterIndex * 80;
+                
+                // End position (gateway)
+                const endX = this.container.clientWidth / 2;
+                const endY = this.container.clientHeight / 2;
+                
+                element.style.left = `${startX}px`;
+                element.style.top = `${startY}px`;
+                
+                this.container.appendChild(element);
+                
+                // Animate to gateway
+                const duration = 2000;
+                const startTime = Date.now();
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    const currentX = startX + (endX - startX) * progress;
+                    const currentY = startY + (endY - startY) * progress;
+                    
+                    element.style.left = `${currentX}px`;
+                    element.style.top = `${currentY}px`;
+                    
+                    // Check if message has visually hit the Maroon Engine
+                    const engineX = this.container.clientWidth / 2;
+                    const engineY = this.container.clientHeight / 2;
+                    const distance = Math.sqrt(
+                        Math.pow(currentX - engineX, 2) + 
+                        Math.pow(currentY - engineY, 2)
+                    );
+                    
+                    if (distance < 50 && !element.dataset.reached) {
+                        element.dataset.reached = 'true';
+                        if (isPublished) {
+                            // Add to message stack
+                            const stackElement = document.createElement('div');
+                            stackElement.style.width = '30px';
+                            stackElement.style.height = '30px';
+                            stackElement.style.background = this.getEmitterColor(message.emitter);
+                            stackElement.style.borderRadius = '50%';
+                            stackElement.style.display = 'flex';
+                            stackElement.style.alignItems = 'center';
+                            stackElement.style.justifyContent = 'center';
+                            stackElement.style.color = 'white';
+                            stackElement.style.fontWeight = 'bold';
+                            stackElement.style.fontSize = '14px';
+                            stackElement.textContent = message.value;
+                            
+                            const messageStack = document.getElementById('messageStack');
+                            messageStack.insertBefore(stackElement, messageStack.firstChild);
+                        }
+                    }
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        element.remove();
+                    }
+                };
+                
+                animate();
+            }
+
+            getEmitterColor(emitter) {
+                const colors = {
+                    'A': 'linear-gradient(45deg, #2196F3, #1976D2)',
+                    'B': 'linear-gradient(45deg, #FF9800, #F57C00)',
+                    'C': 'linear-gradient(45deg, #9C27B0, #673AB7)'
+                };
+                return colors[emitter] || '#ccc';
+            }
+
+            setupEventListeners() {
+                this.startBtn.addEventListener('click', () => this.start());
+            }
+
+            start() {
+                this.status.textContent = 'Running';
+                this.status.className = 'status playing';
+                
+                this.emitterA.start();
+                this.emitterB.start();
+                this.emitterC.start();
+                this.worldTick.start();
+                this.animationFrameId = this.startClockAnimation();
+                
+                this.startBtn.disabled = true;
+            }
+        }
+
+        const visualizer = new Visualizer();
+    </script>
+</body>
+
+</html>
