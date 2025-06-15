@@ -258,7 +258,7 @@ impl<L: Linearizer> App<L> {
     let prev_epoch = self.epochs.last().map(|e| e);
     let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch);
 
-    info!("NEW EPOCH: {}", &new_epoch);
+    info!("attempt to commit new_epoch: {}", &new_epoch);
     self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });
   }
 

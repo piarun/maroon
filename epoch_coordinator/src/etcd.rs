@@ -2,7 +2,7 @@ use super::epoch::Epoch;
 use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
-use log::{debug, info};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -74,10 +74,10 @@ struct EpochObject {
 }
 
 fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
-  debug!("etcd watch got: {} messages", message.events().len());
   for event in message.events() {
     if let Some(kv) = event.kv() {
       if let Ok(epoch_obj) = serde_json::from_slice::<EpochObject>(kv.value()) {
+        info!("etcd watch got {} epoch", epoch_obj.epoch.sequence_number);
         interface.send(EpochUpdates::New(epoch_obj.epoch));
       }
     }
@@ -87,8 +87,6 @@ fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
 // TODO: return here an error and write a dockerized-test to set/update latest
 // because right now the logic is not covered reliably
 async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochRequest) {
-  debug!("Got message to send to etcd: {:?}", &epoch_request);
-
   let seq_number = epoch_request.epoch.sequence_number;
   let new_epoch = EpochObject { epoch: epoch_request.epoch };
   let resp = client
@@ -102,5 +100,5 @@ async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochReques
     )
     .await;
 
-  debug!("NewEpochResponse. Details: {:?}", resp);
+  info!("commit {} epoch success: {:?}", seq_number, resp.unwrap().succeeded());
 }

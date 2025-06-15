@@ -1,5 +1,6 @@
 use common::clock::{Clock, SystemClock};
 use libp2p::PeerId;
+use log::debug;
 use std::{collections::HashSet, time::Duration, u128, usize};
 
 /// takes signals(node updates, timer ticks, latest epoch time, etc) and makes decision if it's time to send new epoch or not
@@ -34,23 +35,22 @@ impl<C: Clock> EpochDecisionEngine<C> {
   }
 
   pub fn should_send(&self) -> bool {
-    let next_publish_timestamp: u128 = match self.latest_epoch {
-      Some((latest_commiter, latest_commited_time)) => {
-        let position = calculate_position(&self.nodes, self.id, Some(latest_commiter)) as u128;
+    let start_time = self.latest_epoch.map(|x| x.1).unwrap_or(0);
+    let latest_commiter_id = self.latest_epoch.map(|x| x.0);
 
-        latest_commited_time + (position + 1) * self.tick_delta
-      }
-      None => {
-        let position = calculate_position(&self.nodes, self.id, None) as u128;
+    let position = calculate_position(&self.nodes, self.id, latest_commiter_id);
+    let delta_time = (position as u128 + 1) * self.tick_delta;
 
-        (position + 1) * self.tick_delta
-      }
-    };
+    let next_publish_timestamp = start_time + delta_time;
 
     let current_timestamp = self.clock.now().as_millis();
 
-    println!("{current_timestamp}, {next_publish_timestamp}");
-    current_timestamp > next_publish_timestamp
+    let distance = next_publish_timestamp.abs_diff(current_timestamp);
+    let should = current_timestamp > next_publish_timestamp;
+    let count = self.nodes.len();
+
+    debug!("[{position} of {count}:{should}:{distance}] cur: {current_timestamp} next: {next_publish_timestamp}");
+    should
   }
 }
 
