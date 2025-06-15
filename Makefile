@@ -21,8 +21,10 @@ endif
 .PHONY: help fmt toolinstall test build integtest integtest-dockerized integtest-all run-local run-gateway
 
 help:
-	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":"} /^[a-zA-Z_-]+:/ { target = $$1; if ($$0 ~ /#/) { match($$0, /.*#[ \t]*(.*)/, arr); help = arr[1] } else { help = "no help" } printf "  %-15s %s\n", target, help }' $(MAKEFILE_LIST)
+	@echo "Synopsis:"
+	@(grep -E '^[a-zA-Z0-9_-]+:.*#.*' $(MAKEFILE_LIST) \
+	  | sed 's/^\([^:]*\):.*#\(.*\)/\1\t\2/' \
+	  | awk -F'\t' '{ printf "  make \033[1;36m%23s\033[0m :%s\n", $$1, $$2 }')
 
 toolinstall: # installs tools
 	cargo install taplo-cli
