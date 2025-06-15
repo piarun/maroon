@@ -2,7 +2,7 @@ use super::epoch::Epoch;
 use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
-use log::info;
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -42,22 +42,46 @@ impl EtcdEpochCoordinator {
   pub async fn start(self) -> Result<(), Error> {
     info!("start epoch coordinator");
 
-    let mut client = Client::connect(self.etcd_endpoints, None).await?;
-
-    let (watcher, mut watch_stream) = client.watch(MAROON_LATEST, Some(WatchOptions::new().with_prefix())).await?;
-    // Keep watcher alive within the task scope
-    let _watcher = watcher;
-
     let mut interface = self.interface;
 
+    let mut client = Client::connect(self.etcd_endpoints, None).await?;
+    let mut last_rev: Option<i64> = None;
+
     loop {
-      tokio::select! {
-        Some(payload) = interface.receiver.recv() => {
-          handle_commit_new_epoch(&mut client, payload).await;
-        },
-        Ok(Some(message)) = watch_stream.message() => {
-          handle_watch_message(&mut interface, message);
-        },
+      let options = {
+        let mut w = WatchOptions::new().with_prefix();
+        if let Some(r) = last_rev {
+          w = w.with_start_revision(r);
+        }
+        w
+      };
+      let (watcher, mut watch_stream) = client.watch(MAROON_LATEST, Some(options)).await?;
+      // Keep watcher alive within the task scope
+      let _watcher = watcher;
+
+      loop {
+        tokio::select! {
+          Some(payload) = interface.receiver.recv() => {
+            handle_commit_new_epoch(&mut client, payload).await;
+          },
+          watch_result = watch_stream.message() => match watch_result{
+            Ok(Some(message)) => {
+              if let Some(h) = message.header() {
+                last_rev = Some(h.revision());
+              }
+              handle_watch_message(&mut interface, message);
+            }
+            Ok(None) => {
+              // Server cleanly closed the watch (EOF)
+              warn!("etcd watch stream closed by server; reconnecting...");
+              break; // breaks inner loop - reconnect
+            }
+            Err(e) => {
+              error!("etcd watch error: {e}; reconnecting...");
+              break; // breaks inner loop - reconnect
+            },
+          },
+        }
       }
     }
   }
@@ -100,5 +124,8 @@ async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochReques
     )
     .await;
 
-  info!("commit {} epoch success: {:?}", seq_number, resp.unwrap().succeeded());
+  match resp {
+    Ok(result) => info!("commit {} epoch success: {:?}", seq_number, result.succeeded()),
+    Err(e) => info!("commit {} epoch err: {:?}", seq_number, e),
+  }
 }
