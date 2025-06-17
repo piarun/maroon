@@ -6,6 +6,7 @@ members = [
   "maroon",
   "tests/integration",
   "epoch_coordinator",
+  "util",
 ]
 resolver = "3"
 
