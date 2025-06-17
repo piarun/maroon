@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Maroon Visualizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .tab-container {
+            margin-bottom: 20px;
+        }
+        .tab-button {
+            padding: 10px 20px;
+            border: none;
+            background: #f0f0f0;
+            cursor: pointer;
+        }
+        .tab-button.active {
+            background: #007bff;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .nested-tab-container {
+            margin: 20px 0 0 0;
+        }
+        .nested-tab-button {
+            padding: 8px 16px;
+            border: none;
+            background: #f0f0f0;
+            cursor: pointer;
+            margin-right: 4px;
+        }
+        .nested-tab-button.active {
+            background: #007bff;
+            color: white;
+        }
+        .nested-tab-content {
+            display: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+        .nested-tab-content.active {
+            display: block;
+        }
+        #log-editor {
+            width: 100%;
+            height: 400px;
+            font-family: monospace;
+        }
+        #timeline-container {
+            margin: 20px 0;
+        }
+        #timeline {
+            width: 100%;
+            margin: 10px 0;
+        }
+        #timeline-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #current-event {
+            min-height: 200px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            background: #f8f9fa;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .speed-control {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        #timestamp-display {
+            margin: 10px 0;
+        }
+        #timestamp-display .rel-time {
+            font-weight: bold;
+            font-size: 1.1em;
+            display: block;
+        }
+        #timestamp-display .abs-time {
+            font-size: 1em;
+            color: #666;
+            display: block;
+        }
+        .control-button {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+        }
+        .control-button:hover:not(:disabled) {
+            background: #f0f0f0;
+        }
+        .control-button:active:not(:disabled) {
+            background: #e0e0e0;
+        }
+        .control-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .play-icon {
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 6px 0 6px 10px;
+            border-color: transparent transparent transparent #000;
+            margin-left: 2px;
+        }
+        .pause-icon {
+            width: 12px;
+            height: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pause-icon::before,
+        .pause-icon::after {
+            content: '';
+            width: 4px;
+            height: 12px;
+            background-color: #000;
+        }
+        .slider-container {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .slider-container label {
+            min-width: 60px;
+        }
+        #time-slider, #event-slider {
+            flex: 1;
+        }
+        #diagram-container, #current-event {
+            min-height: 200px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        #diagram-visual {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 250px;
+            background: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 20px 40px;
+        }
+        .clients-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+        }
+        .client-box {
+            min-width: 140px;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 20px;
+            color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            position: relative;
+        }
+        .client-color-0 { background: #2196f3; }
+        .client-color-1 { background: #ff9800; }
+        .client-color-2 { background: #8e24aa; }
+        .client-color-3 { background: #43a047; }
+        .client-color-4 { background: #e53935; }
+        .client-color-5 { background: #00bcd4; }
+        .gateway-box {
+            min-width: 180px;
+            min-height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 24px;
+            color: #fff;
+            background: #43a047;
+            border-radius: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            position: relative;
+        }
+        .balls-layer {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+        .message-ball {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+            z-index: 10;
+        }
+        .ball-color-0 { background: #2196f3; }
+        .ball-color-1 { background: #ff9800; }
+        .ball-color-2 { background: #8e24aa; }
+        .ball-color-3 { background: #43a047; }
+        .ball-color-4 { background: #e53935; }
+        .ball-color-5 { background: #00bcd4; }
+    </style>
+</head>
+<body>
+    <div class="tab-container">
+        <button class="tab-button active" onclick="switchTab('animation')">Animation</button>
+        <button class="tab-button" onclick="switchTab('log')">Log</button>
+    </div>
+
+    <div id="animation-tab" class="tab-content active">
+        <div id="timeline-container">
+            <div id="timeline-controls">
+                <button id="play-button" class="control-button" onclick="play()">
+                    <div class="play-icon"></div>
+                </button>
+                <button id="pause-button" class="control-button" onclick="pause()" style="display: none;">
+                    <div class="pause-icon"></div>
+                </button>
+                <button class="control-button" onclick="stepBackward(1)" id="back-1s">-1s</button>
+                <button class="control-button" onclick="stepForward(1)" id="forward-1s">+1s</button>
+                <button class="control-button" onclick="stepBackward(5)" id="back-5s">-5s</button>
+                <button class="control-button" onclick="stepForward(5)" id="forward-5s">+5s</button>
+                <button class="control-button" onclick="stepBackward(60)" id="back-1m">-1m</button>
+                <button class="control-button" onclick="stepForward(60)" id="forward-1m">+1m</button>
+                <button class="control-button" onclick="stepBackwardEvent()" id="back-event">-1 event</button>
+                <button class="control-button" onclick="stepForwardEvent()" id="forward-event">+1 event</button>
+            </div>
+            <div id="timestamp-display"></div>
+            <div class="slider-container">
+                <label>Time:</label>
+                <input type="range" id="time-slider" min="0" max="100" value="0" step="0.04">
+            </div>
+            <div class="slider-container">
+                <label>Events:</label>
+                <input type="range" id="event-slider" min="0" max="100" value="0">
+            </div>
+        </div>
+
+        <div class="nested-tab-container">
+            <button class="nested-tab-button active" onclick="switchNestedTab('diagram')">Diagram</button>
+            <button class="nested-tab-button" onclick="switchNestedTab('state')">State</button>
+            <button class="nested-tab-button" onclick="switchNestedTab('event')">Event</button>
+        </div>
+
+        <div id="diagram-tab" class="nested-tab-content active">
+            <div id="diagram-visual"></div>
+        </div>
+        <div id="state-tab" class="nested-tab-content">
+            <div id="diagram-container"></div>
+        </div>
+        <div id="event-tab" class="nested-tab-content">
+            <div id="current-event"></div>
+        </div>
+    </div>
+
+    <div id="log-tab" class="tab-content">
+        <textarea id="log-editor"></textarea>
+        <button onclick="parseEvents()">Apply</button>
+    </div>
+
+    <script>
+        let log_one_json_per_line = `
+{"timestamp_micros":1750127559083502,"body":{"GatewayUp":{"gid":2798998593252663}}}
+{"timestamp_micros":1750127560083502,"body":{"ClientConnected":{"cid":1619249945651533}}}
+{"timestamp_micros":1750127560283502,"body":{"ClientConnected":{"cid":1775528327622364}}}
+{"timestamp_micros":1750127560483502,"body":{"ClientConnected":{"cid":1005953054738169}}}
+{"timestamp_micros":1750127561183502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9541764480225355,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127561283502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9317080523880397,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127561383502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9009910487110500,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127561483502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9014264582009213,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127561583502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9253712414901038,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127561683502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9774118548372858,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127561783502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9054155475831209,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127561883502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9061516475596519,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127561983502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9635811799803682,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127562083502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9484566074449680,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127562183502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9408085790752813,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127562283502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9970305543469634,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127562383502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9460385074404654,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127562483502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9958208498283193,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127562583502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9154842325978752,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127562683502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9844824761203284,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127562783502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9886886905481001,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127562883502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9724961934403936,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127562983502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9773674482531666,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127563083502,"body":{"ClientSentCommand":{"cid":1619249945651533,"eid":9985981395104635,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127563183502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9541764480225355,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127563283502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9317080523880397,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127563383502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9009910487110500,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127563483502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9014264582009213,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127563583502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9253712414901038,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127563683502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9774118548372858,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127563783502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9054155475831209,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127563883502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9061516475596519,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127563983502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9635811799803682,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127564083502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9484566074449680,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127564183502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9408085790752813,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127564283502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9970305543469634,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127564383502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9460385074404654,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127564483502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9958208498283193,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127564583502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9154842325978752,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127564683502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9844824761203284,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127564783502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9886886905481001,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127564883502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9724961934403936,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127564983502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9773674482531666,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127565083502,"body":{"ClientSentCommand":{"cid":1775528327622364,"eid":9985981395104635,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127565183502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9541764480225355,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127565283502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9317080523880397,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127565383502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9009910487110500,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127565483502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9014264582009213,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127565583502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9253712414901038,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127565683502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9774118548372858,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127565783502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9054155475831209,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127565883502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9061516475596519,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127565983502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9635811799803682,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127566083502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9484566074449680,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127566183502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9408085790752813,"gid":2798998593252663,"body":{"TextMessageCommand":"Hello gateway!"}}}}
+{"timestamp_micros":1750127566283502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9970305543469634,"gid":2798998593252663,"body":{"TextMessageCommand":"How are you?"}}}}
+{"timestamp_micros":1750127566383502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9460385074404654,"gid":2798998593252663,"body":{"TextMessageCommand":"What's the weather like?"}}}}
+{"timestamp_micros":1750127566483502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9958208498283193,"gid":2798998593252663,"body":{"TextMessageCommand":"Can you help me?"}}}}
+{"timestamp_micros":1750127566583502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9154842325978752,"gid":2798998593252663,"body":{"TextMessageCommand":"I need assistance"}}}}
+{"timestamp_micros":1750127566683502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9844824761203284,"gid":2798998593252663,"body":{"TextMessageCommand":"Is everything ok?"}}}}
+{"timestamp_micros":1750127566783502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9886886905481001,"gid":2798998593252663,"body":{"TextMessageCommand":"Just checking in"}}}}
+{"timestamp_micros":1750127566883502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9724961934403936,"gid":2798998593252663,"body":{"TextMessageCommand":"Any updates?"}}}}
+{"timestamp_micros":1750127566983502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9773674482531666,"gid":2798998593252663,"body":{"TextMessageCommand":"Status report please"}}}}
+{"timestamp_micros":1750127567083502,"body":{"ClientSentCommand":{"cid":1005953054738169,"eid":9985981395104635,"gid":2798998593252663,"body":{"TextMessageCommand":"Are you there?"}}}}
+{"timestamp_micros":1750127568183502,"body":{"ClientDisconnected":{"cid":1619249945651533}}}
+{"timestamp_micros":1750127568483502,"body":{"ClientDisconnected":{"cid":1775528327622364}}}
+{"timestamp_micros":1750127568783502,"body":{"ClientDisconnected":{"cid":1005953054738169}}}
+{"timestamp_micros":1750127571083502,"body":{"GatewayDown":{"gid":2798998593252663}}}
+`;
+
+        let events = [];
+        let isPlaying = false;
+        let currentIndex = 0;
+        let startTime = 0;
+        let animationFrameId = null;
+        let animatedBalls = [];
+        let lastAnimatedEvent = -1;
+        let eventsPlayed = 0;
+
+        function formatTimestamp(micros) {
+            const date = new Date(micros / 1000);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = (date.getSeconds() + date.getMilliseconds() / 1000).toFixed(1);
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+
+        function formatRelativeTime(micros) {
+            const seconds = (micros - events[0].timestamp_micros) / 1000000;
+            return seconds.toFixed(1) + 's';
+        }
+
+        function updateTimestampDisplay(currentTime) {
+            const relativeTime = formatRelativeTime(currentTime);
+            const absoluteTime = formatTimestamp(currentTime);
+            let html = `<span class="rel-time">${relativeTime}</span>`;
+            html += `<span class="abs-time">${absoluteTime}`;
+            if (currentIndex > 0 && events.length > 0 && currentIndex <= events.length) {
+                const evt = events[currentIndex - 1];
+                const eventRelTime = ((evt.timestamp_micros - events[0].timestamp_micros) / 1000000).toFixed(1) + 's';
+                html += `, event ${currentIndex}/${events.length} @ ${eventRelTime}, ${formatTimestamp(evt.timestamp_micros)}`;
+            }
+            html += `</span>`;
+            document.getElementById('timestamp-display').innerHTML = html;
+        }
+
+        function findEventByTime(targetTime) {
+            let left = 0;
+            let right = events.length - 1;
+            let result = -1;
+            while (left <= right) {
+                const mid = Math.floor((left + right) / 2);
+                if (events[mid].timestamp_micros <= targetTime) {
+                    result = mid;
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }
+            // result is the last index where event.timestamp_micros <= targetTime
+            // number of events processed is result + 1 (could be 0)
+            return result + 1;
+        }
+
+        function updatePlayback() {
+            if (!isPlaying) return;
+
+            const now = performance.now();
+            const elapsedFrames = (now - startTime) / 40; // 40ms per frame, now as float for smooth movement
+            const targetTime = events[0].timestamp_micros + (elapsedFrames * 0.04 * 1000000);
+
+            // Play events whose timestamp <= targetTime, and trigger animation for each
+            let prevEventsPlayed = eventsPlayed;
+            while (eventsPlayed < events.length && events[eventsPlayed].timestamp_micros <= targetTime) {
+                // Trigger animation for ClientSentCommand
+                const evt = events[eventsPlayed];
+                if (evt && evt.body && evt.body.ClientSentCommand) {
+                    const cid = evt.body.ClientSentCommand.cid;
+                    const clientIdx = getClientIndex(cid, eventsPlayed);
+                    animatedBalls.push({
+                        cid,
+                        clientIdx,
+                        colorIdx: clientIdx % 6,
+                        startTime: performance.now(),
+                        duration: 350, // ms, high speed
+                        progress: 0,
+                        from: null,
+                        to: null,
+                        label: '',
+                    });
+                }
+                eventsPlayed++;
+            }
+            currentIndex = eventsPlayed;
+
+            // Smooth slider progress based on elapsed time
+            const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+            const playedSeconds = (targetTime - events[0].timestamp_micros) / 1000000;
+            let timeProgress = Math.max(0, Math.min(100, (playedSeconds / totalDuration) * 100));
+            document.getElementById('time-slider').value = timeProgress;
+            document.getElementById('event-slider').value = currentIndex;
+            updateEventDisplay(currentIndex);
+            updateTimestampDisplay(targetTime);
+
+            renderAnimatedBalls();
+            // Only stop if we've reached the last event
+            if (eventsPlayed >= events.length) {
+                pause();
+                return;
+            }
+            animationFrameId = requestAnimationFrame(updatePlayback);
+        }
+
+        function getClientIndex(cid, upToIndex) {
+            // Find the order of this client among active clients at this point in the log
+            const activeClients = [];
+            for (let i = 0; i <= upToIndex; i++) {
+                const evt = events[i];
+                if (evt.body.ClientConnected) {
+                    if (!activeClients.includes(evt.body.ClientConnected.cid)) {
+                        activeClients.push(evt.body.ClientConnected.cid);
+                    }
+                } else if (evt.body.ClientDisconnected) {
+                    const idx = activeClients.indexOf(evt.body.ClientDisconnected.cid);
+                    if (idx !== -1) activeClients.splice(idx, 1);
+                }
+            }
+            return activeClients.indexOf(cid);
+        }
+
+        function renderAnimatedBalls() {
+            const ballsLayer = document.getElementById('balls-layer');
+            if (!ballsLayer) return;
+            ballsLayer.innerHTML = '';
+            // Get positions
+            const diagram = document.getElementById('diagram-visual');
+            const diagramRect = diagram.getBoundingClientRect();
+            const gatewayBox = document.getElementById('gateway-box');
+            let gatewayRect = null;
+            if (gatewayBox) gatewayRect = gatewayBox.getBoundingClientRect();
+            const gap = 8;
+            const ballSize = 36;
+            animatedBalls = animatedBalls.filter(ball => {
+                // Find client box
+                const clientBox = document.querySelector(`#client-box-${ball.cid}`);
+                if (!clientBox || !gatewayRect) return false;
+                const clientRect = clientBox.getBoundingClientRect();
+                // Start: right edge of client, vertically centered
+                const fromX = clientRect.left - diagramRect.left + clientRect.width + gap;
+                const fromY = clientRect.top - diagramRect.top + (clientRect.height / 2) - (ballSize / 2);
+                // End: left edge of gateway, vertically centered
+                const toX = gatewayRect.left - diagramRect.left - gap - ballSize;
+                const toY = gatewayRect.top - diagramRect.top + (gatewayRect.height / 2) - (ballSize / 2);
+                if (!ball.from) {
+                    ball.from = {x: fromX, y: fromY};
+                    ball.to = {x: toX, y: toY};
+                    ball.label = '';
+                }
+                // Progress
+                const elapsed = performance.now() - ball.startTime;
+                let progress = Math.min(elapsed / ball.duration, 1);
+                ball.progress = progress;
+                // Interpolate
+                const x = ball.from.x + (ball.to.x - ball.from.x) * progress;
+                const y = ball.from.y + (ball.to.y - ball.from.y) * progress;
+                ballsLayer.innerHTML += `<div class="message-ball ball-color-${ball.colorIdx}" style="top:${y}px;left:${x}px;"></div>`;
+                return progress < 1;
+            });
+        }
+
+        function startPlayback() {
+            startTime = performance.now();
+            animationFrameId = requestAnimationFrame(updatePlayback);
+        }
+
+        function stopPlayback() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        function updateEventDisplay(index) {
+            let event = null;
+            if (index > 0 && index <= events.length) event = events[index - 1];
+            if (event) {
+                let jsonText = JSON.stringify(event.body, null, 2);
+                let ts = new Date(event.timestamp_micros / 1000).toISOString();
+                document.getElementById('current-event').textContent = jsonText + '\n\n' + ts;
+            } else {
+                document.getElementById('current-event').textContent = '';
+            }
+
+            // Update diagram/state
+            const activeGateways = new Set();
+            const activeClients = new Set();
+            const clientMessageCounts = new Map();
+            const gatewayMessageCounts = new Map();
+            const clientMessageTimestamps = new Map();
+            
+            // Process all events up to currentIndex-1 to build state
+            for (let i = 0; i < index; i++) {
+                const evt = events[i];
+                if (evt.body.GatewayUp) {
+                    activeGateways.add(evt.body.GatewayUp.gid);
+                    if (!gatewayMessageCounts.has(evt.body.GatewayUp.gid)) {
+                        gatewayMessageCounts.set(evt.body.GatewayUp.gid, 0);
+                    }
+                } else if (evt.body.GatewayDown) {
+                    activeGateways.delete(evt.body.GatewayDown.gid);
+                } else if (evt.body.ClientConnected) {
+                    activeClients.add(evt.body.ClientConnected.cid);
+                    if (!clientMessageCounts.has(evt.body.ClientConnected.cid)) {
+                        clientMessageCounts.set(evt.body.ClientConnected.cid, 0);
+                    }
+                    if (!clientMessageTimestamps.has(evt.body.ClientConnected.cid)) {
+                        clientMessageTimestamps.set(evt.body.ClientConnected.cid, []);
+                    }
+                } else if (evt.body.ClientDisconnected) {
+                    activeClients.delete(evt.body.ClientDisconnected.cid);
+                } else if (evt.body.ClientSentCommand) {
+                    const cid = evt.body.ClientSentCommand.cid;
+                    const gid = evt.body.ClientSentCommand.gid;
+                    clientMessageCounts.set(cid, (clientMessageCounts.get(cid) || 0) + 1);
+                    gatewayMessageCounts.set(gid, (gatewayMessageCounts.get(gid) || 0) + 1);
+                    if (!clientMessageTimestamps.has(cid)) clientMessageTimestamps.set(cid, []);
+                    clientMessageTimestamps.get(cid).push(i);
+                }
+            }
+            
+            // Diagram visual (clients left, gateway right)
+            const clientIds = Array.from(activeClients);
+            const gatewayIds = Array.from(activeGateways);
+            let diagramVisualHtml = '<div class="clients-column" id="clients-column">';
+            clientIds.forEach((cid, idx) => {
+                const label = `Client ${String.fromCharCode(65 + idx)}`;
+                diagramVisualHtml += `<div class="client-box client-color-${idx % 6}" id="client-box-${cid}">${label}</div>`;
+            });
+            diagramVisualHtml += '</div>';
+            diagramVisualHtml += '<div style="flex:1"></div>';
+            if (gatewayIds.length > 0) {
+                diagramVisualHtml += `<div class="gateway-box" id="gateway-box">Gateway</div>`;
+            }
+            diagramVisualHtml += '<div class="balls-layer" id="balls-layer"></div>';
+            document.getElementById('diagram-visual').innerHTML = diagramVisualHtml;
+
+            // Render balls (static mode: right edge of client boxes)
+            if (!isPlaying) {
+                const ballsLayer = document.getElementById('balls-layer');
+                ballsLayer.innerHTML = '';
+                if (event && event.body && event.body.ClientSentCommand) {
+                    const cid = event.body.ClientSentCommand.cid;
+                    const idx = clientIds.indexOf(cid);
+                    if (idx !== -1) {
+                        const box = document.getElementById(`client-box-${cid}`);
+                        if (box) {
+                            const diagram = document.getElementById('diagram-visual');
+                            const diagramRect = diagram.getBoundingClientRect();
+                            const boxRect = box.getBoundingClientRect();
+                            const gap = 8;
+                            const ballSize = 36;
+                            const top = boxRect.top - diagramRect.top + (boxRect.height / 2) - (ballSize / 2);
+                            const left = boxRect.left - diagramRect.left + boxRect.width + gap;
+                            ballsLayer.innerHTML = `<div class="message-ball ball-color-${idx % 6}" style="top:${top}px;left:${left}px;"></div>`;
+                        }
+                    }
+                }
+            }
+
+            const diagramHtml = `
+                <h3>Active Gateways (${activeGateways.size})</h3>
+                <ul>
+                    ${Array.from(activeGateways).map(gid => 
+                        `<li>Gateway ${gid} - Received ${gatewayMessageCounts.get(gid) || 0} messages</li>`
+                    ).join('')}
+                </ul>
+                <h3>Active Clients (${activeClients.size})</h3>
+                <ul>
+                    ${Array.from(activeClients).map(cid => 
+                        `<li>Client ${cid} - Sent ${clientMessageCounts.get(cid) || 0} messages</li>`
+                    ).join('')}
+                </ul>
+            `;
+            document.getElementById('diagram-container').innerHTML = diagramHtml;
+        }
+
+        function updateControlsState() {
+            const controls = [
+                'back-1s', 'forward-1s', 'back-5s', 'forward-5s',
+                'back-1m', 'forward-1m', 'back-event', 'forward-event',
+                'time-slider', 'event-slider'
+            ];
+            controls.forEach(id => {
+                document.getElementById(id).disabled = isPlaying;
+            });
+            document.getElementById('play-button').style.display = isPlaying ? 'none' : 'inline-flex';
+            document.getElementById('pause-button').style.display = isPlaying ? 'inline-flex' : 'none';
+        }
+
+        function play() {
+            if (!isPlaying) {
+                // If at the end, reset to the beginning
+                if (eventsPlayed >= events.length) {
+                    eventsPlayed = 0;
+                    currentIndex = 0;
+                    document.getElementById('event-slider').value = 0;
+                    document.getElementById('time-slider').value = 0;
+                    startTime = performance.now();
+                    updateEventDisplay(0);
+                    updateTimestampDisplay(events[0]?.timestamp_micros || 0);
+                }
+                isPlaying = true;
+                updateControlsState();
+                
+                // Get current time position from the time slider
+                const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+                const frameCount = Math.ceil(totalDuration / 0.04);
+                const currentFrame = Math.floor((parseInt(document.getElementById('time-slider').value) / 100) * frameCount);
+                const currentTime = events[0].timestamp_micros + (currentFrame * 0.04 * 1000000);
+                
+                // Set start time to be offset by the current position
+                startTime = performance.now() - (currentFrame * 40); // 40ms per frame
+                animatedBalls = [];
+                lastAnimatedEvent = currentIndex - 1;
+                // Set eventsPlayed to match the current time
+                eventsPlayed = findEventByTime(currentTime);
+                animationFrameId = requestAnimationFrame(updatePlayback);
+            }
+        }
+
+        function pause() {
+            if (isPlaying) {
+                isPlaying = false;
+                updateControlsState();
+                stopPlayback();
+                animatedBalls = [];
+            }
+        }
+
+        function stepForward(seconds) {
+            pause();
+            const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+            const frameCount = Math.ceil(totalDuration / 0.04);
+            const currentFrame = Math.floor((parseInt(document.getElementById('time-slider').value) / 100) * frameCount);
+            const targetFrame = Math.min(currentFrame + Math.ceil(seconds / 0.04), frameCount);
+            const timeProgress = (targetFrame / frameCount) * 100;
+            
+            const targetTime = events[0].timestamp_micros + (targetFrame * 0.04 * 1000000);
+            currentIndex = findEventByTime(targetTime);
+            
+            document.getElementById('time-slider').value = timeProgress;
+            document.getElementById('event-slider').value = (currentIndex / (events.length - 1)) * 100;
+            updateEventDisplay(currentIndex);
+            updateTimestampDisplay(targetTime);
+        }
+
+        function stepBackward(seconds) {
+            pause();
+            const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+            const frameCount = Math.ceil(totalDuration / 0.04);
+            const currentFrame = Math.floor((parseInt(document.getElementById('time-slider').value) / 100) * frameCount);
+            const targetFrame = Math.max(currentFrame - Math.ceil(seconds / 0.04), 0);
+            const timeProgress = (targetFrame / frameCount) * 100;
+            
+            const targetTime = events[0].timestamp_micros + (targetFrame * 0.04 * 1000000);
+            currentIndex = findEventByTime(targetTime);
+            
+            document.getElementById('time-slider').value = timeProgress;
+            document.getElementById('event-slider').value = (currentIndex / (events.length - 1)) * 100;
+            updateEventDisplay(currentIndex);
+            updateTimestampDisplay(targetTime);
+        }
+
+        function stepForwardEvent() {
+            pause();
+            if (currentIndex < events.length - 1) {
+                currentIndex++;
+                const eventTime = events[currentIndex].timestamp_micros;
+                const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+                const frameCount = Math.ceil(totalDuration / 0.04);
+                const currentFrame = Math.floor((eventTime - events[0].timestamp_micros) / (0.04 * 1000000));
+                const timeProgress = (currentFrame / frameCount) * 100;
+                
+                document.getElementById('time-slider').value = timeProgress;
+                document.getElementById('event-slider').value = (currentIndex / (events.length - 1)) * 100;
+                updateEventDisplay(currentIndex);
+                updateTimestampDisplay(eventTime);
+            }
+        }
+
+        function stepBackwardEvent() {
+            pause();
+            if (currentIndex > 0) {
+                currentIndex--;
+                const eventTime = events[currentIndex].timestamp_micros;
+                const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+                const frameCount = Math.ceil(totalDuration / 0.04);
+                const currentFrame = Math.floor((eventTime - events[0].timestamp_micros) / (0.04 * 1000000));
+                const timeProgress = (currentFrame / frameCount) * 100;
+                
+                document.getElementById('time-slider').value = timeProgress;
+                document.getElementById('event-slider').value = (currentIndex / (events.length - 1)) * 100;
+                updateEventDisplay(currentIndex);
+                updateTimestampDisplay(eventTime);
+            }
+        }
+
+        function updateFromTimeSlider(progress) {
+            const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+            const frameCount = Math.ceil(totalDuration / 0.04);
+            const currentFrame = Math.floor((progress / 100) * frameCount);
+            const targetTime = events[0].timestamp_micros + (currentFrame * 0.04 * 1000000);
+            
+            currentIndex = findEventByTime(targetTime);
+            eventsPlayed = currentIndex;
+            document.getElementById('event-slider').value = currentIndex;
+            updateEventDisplay(currentIndex);
+            updateTimestampDisplay(targetTime);
+        }
+
+        function updateFromEventSlider(value) {
+            // value is 0..events.length
+            const index = parseInt(value, 10);
+            currentIndex = index;
+            eventsPlayed = currentIndex;
+            let eventTime = (events.length > 0 && index > 0) ? events[index - 1].timestamp_micros : (events[0]?.timestamp_micros || 0);
+            const totalDuration = (events[events.length - 1].timestamp_micros - events[0].timestamp_micros) / 1000000;
+            const frameCount = Math.ceil(totalDuration / 0.04);
+            const currentFrame = eventTime && events.length > 0 ? Math.floor((eventTime - events[0].timestamp_micros) / (0.04 * 1000000)) : 0;
+            const timeProgress = (currentFrame / frameCount) * 100;
+            document.getElementById('time-slider').value = timeProgress;
+            updateEventDisplay(currentIndex);
+            if (eventTime) updateTimestampDisplay(eventTime);
+        }
+
+        document.getElementById('time-slider').addEventListener('input', (e) => {
+            updateFromTimeSlider(parseInt(e.target.value));
+        });
+
+        document.getElementById('event-slider').addEventListener('input', (e) => {
+            updateFromEventSlider(e.target.value);
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            // If the animation tab is now active, and the diagram tab is also active, re-render diagram/balls
+            setTimeout(() => {
+                const diagramTab = document.getElementById('diagram-tab');
+                if (diagramTab && diagramTab.classList.contains('active')) {
+                    if (isPlaying) {
+                        for (let ball of animatedBalls) {
+                            ball.from = null;
+                            ball.to = null;
+                        }
+                        renderAnimatedBalls();
+                    } else {
+                        updateEventDisplay(currentIndex);
+                    }
+                }
+            }, 0);
+        }
+
+        function switchNestedTab(tabName) {
+            document.querySelectorAll('.nested-tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nested-tab-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            document.querySelector(`[onclick="switchNestedTab('${tabName}')"]`).classList.add('active');
+            // If switching to Diagram tab, re-render diagram and balls
+            setTimeout(() => {
+                const diagramTab = document.getElementById('diagram-tab');
+                if (tabName === 'diagram' && diagramTab && diagramTab.classList.contains('active')) {
+                    if (isPlaying) {
+                        for (let ball of animatedBalls) {
+                            ball.from = null;
+                            ball.to = null;
+                        }
+                        renderAnimatedBalls();
+                    } else {
+                        updateEventDisplay(currentIndex);
+                    }
+                }
+            }, 0);
+        }
+
+        function parseEvents() {
+            const logText = document.getElementById('log-editor').value;
+            events = logText.split('\n')
+                .filter(line => line.trim())
+                .map(line => JSON.parse(line))
+                .sort((a, b) => a.timestamp_micros - b.timestamp_micros);
+
+            document.getElementById('time-slider').value = 0;
+            document.getElementById('event-slider').min = 0;
+            document.getElementById('event-slider').max = events.length;
+            document.getElementById('event-slider').value = 0;
+            updateEventDisplay(0);
+        }
+
+        // Initialize with default log
+        document.getElementById('log-editor').value = log_one_json_per_line;
+        parseEvents();
+        updateControlsState();
+        updateTimestampDisplay(events[0].timestamp_micros);
+    </script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 [package]
+edition = "2021"
 name = "util"
 version = "0.1.0"
-edition = "2021"
 
 [[bin]]
 name = "gen_demo_log"
 path = "gen_demo_log.rs"
 
 [dependencies]
-common = { path = "../common" }
 rand = "0.8"
-serde_json = "1.0" 
+schema = { path = "../schema" }
+serde_json = "1.0"
