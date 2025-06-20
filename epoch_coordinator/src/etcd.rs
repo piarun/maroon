@@ -3,7 +3,14 @@ use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use log::{error, info, warn};
+use opentelemetry::{KeyValue, global, metrics::Counter};
 use serde::{Deserialize, Serialize};
+use std::{sync::OnceLock, time::Duration};
+
+fn counter_requests() -> &'static Counter<u64> {
+  static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
+  COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_requests").build())
+}
 
 pub const MAROON_PREFIX: &str = "/maroon";
 const MAROON_LATEST: &str = "/maroon/latest";
@@ -47,6 +54,8 @@ impl EtcdEpochCoordinator {
     let mut client = Client::connect(self.etcd_endpoints, None).await?;
     let mut last_rev: Option<i64> = None;
 
+    let mut watcher_creation_timeout = Duration::from_millis(50);
+
     loop {
       let options = {
         let mut w = WatchOptions::new().with_prefix();
@@ -55,7 +64,25 @@ impl EtcdEpochCoordinator {
         }
         w
       };
-      let (watcher, mut watch_stream) = client.watch(MAROON_LATEST, Some(options)).await?;
+      let watch_result = client.watch(MAROON_LATEST, Some(options)).await;
+
+      let (watcher, mut watch_stream) = match watch_result {
+        Ok(res) => {
+          watcher_creation_timeout = Duration::from_millis(50);
+          res
+        }
+        Err(e) => {
+          error!("create watcher err: {:?}", e);
+          counter_requests().add(1, &[KeyValue::new("error", true)]);
+          if watcher_creation_timeout <= Duration::from_secs(5) {
+            watcher_creation_timeout = watcher_creation_timeout * 2;
+          }
+          tokio::time::sleep(watcher_creation_timeout).await;
+          continue;
+        }
+      };
+
+      // let (watcher, mut watch_stream) = watch_result.unwrap();
       // Keep watcher alive within the task scope
       let _watcher = watcher;
 
@@ -125,7 +152,13 @@ async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochReques
     .await;
 
   match resp {
-    Ok(result) => info!("commit {} epoch success: {:?}", seq_number, result.succeeded()),
-    Err(e) => info!("commit {} epoch err: {:?}", seq_number, e),
+    Ok(result) => {
+      info!("commit {} epoch success: {:?}", seq_number, result.succeeded());
+      counter_requests().add(1, &[KeyValue::new("success", result.succeeded())]);
+    }
+    Err(e) => {
+      error!("commit {} epoch err: {:?}", seq_number, e);
+      counter_requests().add(1, &[KeyValue::new("error", true)]);
+    }
   }
 }

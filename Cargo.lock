@@ -956,6 +956,7 @@ dependencies = [
  "libp2p",
  "libp2p-request-response",
  "log",
+ "opentelemetry",
  "serde",
  "serde_json",
  "sha2",
