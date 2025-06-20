@@ -22,6 +22,17 @@ services:
     image: grafana/grafana:latest
     ports:
       - "4000:3000"
+    volumes:
+      - ./datasources:/etc/grafana/provisioning/datasources:ro
+      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/default.json
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SERVER_DISABLE_GRAVATAR=true
+      - GF_USERS_ALLOW_SIGN_UP=false
     depends_on:
       - prometheus
 
