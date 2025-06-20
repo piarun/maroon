@@ -31,6 +31,7 @@ use libp2p::{
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info, warn};
+use opentelemetry::{KeyValue, global, metrics::Counter};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt::Debug, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
@@ -64,6 +65,8 @@ pub struct P2P {
   node_p2p_topic: TopicHash,
 
   interface_endpoint: Endpoint<Inbox, Outbox>,
+
+  counter_requests: Counter<u64>,
 }
 
 impl P2P {
@@ -73,6 +76,9 @@ impl P2P {
     let kp = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(kp.public());
     info!("Local peer id: {:?}", peer_id);
+
+    let meter = global::meter("p2p_network");
+    let counter_requests = meter.u64_counter("requests").build();
 
     let auth_config = NoiseConfig::new(&kp).map_err(|e: NoiseError| format!("noise config error: {}", e))?;
 
@@ -114,12 +120,21 @@ impl P2P {
       SwarmConfig::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(60)),
     );
 
-    Ok(P2P { node_urls, self_url, peer_id, swarm, node_p2p_topic: node_p2p_topic.hash().clone(), interface_endpoint })
+    Ok(P2P {
+      node_urls,
+      self_url,
+      peer_id,
+      swarm,
+      node_p2p_topic: node_p2p_topic.hash().clone(),
+      interface_endpoint,
+      counter_requests,
+    })
   }
 
   /// starts listening and performs all the bindings but doesn't react yeat
   pub fn prepare(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-    self.swarm.listen_on(self.self_url.parse()?).map_err(|e| format!("swarm.listen {e}"))?;
+    println!("URL: {}", self.self_url);
+    self.swarm.listen_on(self.self_url.parse()?).map_err(|e| format!("swarm.listen err: {e}"))?;
 
     for url in self.node_urls.clone() {
       if url == self.self_url {
@@ -159,6 +174,7 @@ impl P2P {
           },
           event = swarm.select_next_some() => {
               handle_swarm_event(
+                  &self.counter_requests,
                   &mut swarm,
                   event,
                   &to_app,
@@ -197,11 +213,12 @@ fn handle_receiver_outbox(
 }
 
 fn handle_swarm_event(
-  swarm: &mut Swarm<MaroonBehaviour>, event: SwarmEvent<MaroonEvent>, to_app: &UnboundedSender<Inbox>,
-  alive_peer_ids: &mut HashSet<PeerId>, alive_gateway_ids: &mut HashSet<PeerId>,
+  counter_requests: &Counter<u64>, swarm: &mut Swarm<MaroonBehaviour>, event: SwarmEvent<MaroonEvent>,
+  to_app: &UnboundedSender<Inbox>, alive_peer_ids: &mut HashSet<PeerId>, alive_gateway_ids: &mut HashSet<PeerId>,
 ) {
   match event {
     SwarmEvent::Behaviour(MaroonEvent::Gossipsub(GossipsubEvent::Message { message, .. })) => {
+      counter_requests.add(1, &[KeyValue::new("type", "gossip")]);
       match serde_json::from_slice::<GossipMessage>(&message.data) {
         Ok(p2p_message) => match p2p_message.payload {
           GossipPayload::State(state) => {
@@ -214,15 +231,18 @@ fn handle_swarm_event(
       }
     }
     SwarmEvent::Behaviour(MaroonEvent::MetaExchange(meta_exchange)) => {
+      counter_requests.add(1, &[KeyValue::new("type", "meta_exchange")]);
       handle_meta_exchange(swarm, meta_exchange, alive_peer_ids, alive_gateway_ids, to_app);
     }
     SwarmEvent::Behaviour(MaroonEvent::Ping(PingEvent { .. })) => {
       // TODO: have an idea to use result.duration for calculating logical time between nodes. let's see
     }
     SwarmEvent::Behaviour(MaroonEvent::RequestResponse(gm_request_response)) => {
+      counter_requests.add(1, &[KeyValue::new("type", "request_response")]);
       handle_request_response(swarm, &to_app, gm_request_response);
     }
     SwarmEvent::Behaviour(MaroonEvent::M2MReqRes(m2m_request_response)) => {
+      counter_requests.add(1, &[KeyValue::new("type", "m2m_request_response")]);
       handle_m2m_req_res(swarm, &to_app, m2m_request_response);
     }
     SwarmEvent::ConnectionEstablished { peer_id, .. } => {

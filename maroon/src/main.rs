@@ -1,4 +1,6 @@
+use log::error;
 use maroon::app::Params;
+use maroon::metrics;
 use std::future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -6,6 +8,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
   env_logger::init();
+  let meter_provider = metrics::init_meter_provider()?;
 
   let node_urls: Vec<String> =
     std::env::var("NODE_URLS").map_err(|e| format!("NODE_URLS not set: {}", e))?.split(',').map(String::from).collect();
@@ -31,6 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   // forever pause current state in order to prevent killing the process
   // later will be replaced with something else. Don't know with what
   future::pending::<()>().await;
+
+  if let Err(e) = meter_provider.shutdown() {
+    error!("meter provider shutdown: {e}");
+  }
 
   Ok(())
 }

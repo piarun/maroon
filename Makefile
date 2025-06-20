@@ -48,6 +48,9 @@ integtest-all: # runs all integration tests including dockerized ones
 		cargo test -p integration -p integration-dockerized $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
 
 run-local: # runs maroon node locally on a specified port
+	OTEL_EXPORTER_OTLP_GRPC_ENDPOINT=http://localhost:4317 \
+	OTEL_RESOURCE_ATTRIBUTES=service.name=maroon \
+	OTEL_METRIC_EXPORT_INTERVAL=10000 \
 	NODE_URLS=${NODE_URLS} \
 	ETCD_URLS=${ETCD_URLS} \
 	SELF_URL=/ip4/127.0.0.1/tcp/${PORT} \
@@ -62,13 +65,20 @@ run-gateway: # runs gateway imitation
 		cargo run -p gateway $(PROFILE_FLAG)
 
 shutdown-test-etcd: # shutdown and clean up local etcd cluster
-	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml down --remove-orphans
+	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml down -v --remove-orphans
 	docker network rm etcd
-	docker volume rm etcd_etcd-data
 
 start-test-etcd: # run etcd for local development
 	docker network create etcd
 	docker compose -f epoch_coordinator/docker/etcd/docker-compose.yaml up -d
+
+.PHONY: start-metrics-stack
+start-metrics-stack: # starts OTLP collector, prometheus, grafana
+	docker compose -f metrics/docker-compose.yaml up -d
+
+.PHONY: shutdown-metrics-stack
+shutdown-metrics-stack: # shuts down OTLP collector, prometheus, grafana
+	docker compose -f metrics/docker-compose.yaml down -v
 
 fmt: # formatter
 	cargo fmt --all
