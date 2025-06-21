@@ -8,7 +8,6 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
   env_logger::init();
-  let meter_provider = metrics::init_meter_provider()?;
 
   let node_urls: Vec<String> =
     std::env::var("NODE_URLS").map_err(|e| format!("NODE_URLS not set: {}", e))?.split(',').map(String::from).collect();
@@ -29,6 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let params = Params::default().set_consensus_nodes(consensus_nodes);
 
   let (maroon_stack, _stack_remote_control) = maroon::stack::MaroonStack::new(node_urls, etcd_urls, self_url, params)?;
+  let meter_provider = metrics::init_meter_provider(maroon_stack.id)?;
+
   let _shutdown = maroon_stack.start();
 
   // forever pause current state in order to prevent killing the process

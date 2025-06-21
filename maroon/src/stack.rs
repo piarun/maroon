@@ -5,10 +5,12 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::{InvokerInterface, create_invoker_handler_pair};
 use epoch_coordinator::etcd::EtcdEpochCoordinator;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
+use libp2p::PeerId;
 use log::{debug, info};
 use tokio::sync::oneshot;
 
 pub struct MaroonStack {
+  pub id: PeerId,
   p2p: P2P,
   epoch_coordinator: EtcdEpochCoordinator,
   app: App<LogLineriazer>,
@@ -32,12 +34,12 @@ impl MaroonStack {
     let epoch_coordinator = EtcdEpochCoordinator::new(&etcd_urls, b2a_epoch);
 
     let p2p = P2P::new(node_urls, self_url, a2b_endpoint)?;
-    let my_id = p2p.peer_id;
+    let id = p2p.peer_id;
 
     let (state_invoker, state_handler) = create_invoker_handler_pair();
-    let app = App::<LogLineriazer>::new(my_id, b2a_endpoint, state_handler, a2b_epoch, params)?;
+    let app = App::<LogLineriazer>::new(id, b2a_endpoint, state_handler, a2b_epoch, params)?;
 
-    Ok((MaroonStack { p2p, epoch_coordinator, app: app }, StackRemoteControl { state_invoker }))
+    Ok((MaroonStack { id, p2p, epoch_coordinator, app: app }, StackRemoteControl { state_invoker }))
   }
 
   /// starts listening and network operations in a separate tokio threads
@@ -45,7 +47,8 @@ impl MaroonStack {
   pub fn start(self) -> impl FnOnce() {
     let (shutdown_tx, app_shutdown_rx) = oneshot::channel();
 
-    let MaroonStack { mut p2p, epoch_coordinator, mut app } = self;
+    let MaroonStack { id, mut p2p, epoch_coordinator, mut app } = self;
+    _ = id;
 
     p2p.prepare().expect("if error occured - it won't work");
 
