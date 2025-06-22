@@ -2,14 +2,14 @@
 
 add_delays() {
     local delay_ms=${1:-50}
-    for node in $(docker ps --filter "name=etcd-0*" --format "{{.Names}}"); do
+    for node in $(docker ps --filter "name=etcd-etcd-0*" --format "{{.Names}}"); do
         echo "Adding ${delay_ms}ms delay to $node"
         docker exec "$node" tc qdisc add dev eth0 root netem delay "${delay_ms}ms"
     done
 }
 
 remove_delays() {
-    for node in $(docker ps --filter "name=etcd-0*" --format "{{.Names}}"); do
+    for node in $(docker ps --filter "name=etcd-etcd-0*" --format "{{.Names}}"); do
         echo "Removing delay from $node"
         docker exec "$node" tc qdisc del dev eth0 root || true
     done

@@ -3,13 +3,31 @@ use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use log::{error, info, warn};
-use opentelemetry::{KeyValue, global, metrics::Counter};
+use opentelemetry::{
+  KeyValue, global,
+  metrics::{Counter, Histogram},
+};
 use serde::{Deserialize, Serialize};
 use std::{sync::OnceLock, time::Duration};
+use tokio::time::Instant;
 
 fn counter_requests() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
   COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_requests").build())
+}
+
+fn histogram_etcd_latency() -> &'static Histogram<u64> {
+  static COUNTER: OnceLock<Histogram<u64>> = OnceLock::new();
+
+  // in milliseconds
+  COUNTER.get_or_init(|| {
+    global::meter("etcd_epoch_coordinator")
+      .u64_histogram("etcd_commit_ms")
+      .with_boundaries(vec![
+        5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0, 2500.0, 5000.0, 7500.0, 10000.0,
+      ])
+      .build()
+  })
 }
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -73,7 +91,7 @@ impl EtcdEpochCoordinator {
         }
         Err(e) => {
           error!("create watcher err: {:?}", e);
-          counter_requests().add(1, &[KeyValue::new("error", true)]);
+          counter_requests().add(1, &[KeyValue::new("success", "error")]);
           if watcher_creation_timeout <= Duration::from_secs(5) {
             watcher_creation_timeout = watcher_creation_timeout * 2;
           }
@@ -138,6 +156,8 @@ fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
 // TODO: return here an error and write a dockerized-test to set/update latest
 // because right now the logic is not covered reliably
 async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochRequest) {
+  let start = Instant::now();
+
   let seq_number = epoch_request.epoch.sequence_number;
   let new_epoch = EpochObject { epoch: epoch_request.epoch };
   let resp = client
@@ -151,14 +171,17 @@ async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochReques
     )
     .await;
 
-  match resp {
+  let labels = match resp {
     Ok(result) => {
       info!("commit {} epoch success: {:?}", seq_number, result.succeeded());
-      counter_requests().add(1, &[KeyValue::new("success", result.succeeded())]);
+      vec![KeyValue::new("success", result.succeeded())]
     }
     Err(e) => {
       error!("commit {} epoch err: {:?}", seq_number, e);
-      counter_requests().add(1, &[KeyValue::new("error", true)]);
+      vec![KeyValue::new("success", "error")]
     }
-  }
+  };
+
+  counter_requests().add(1, &labels);
+  histogram_etcd_latency().record(start.elapsed().as_millis() as u64, &labels);
 }
