@@ -14,7 +14,10 @@ pub struct Endpoint<A, B> {
 }
 
 impl<A, B> Endpoint<A, B> {
-  pub fn send(&self, message: A) {
+  pub fn send(
+    &self,
+    message: A,
+  ) {
     let res = self.sender.send(message);
     if let Err(unsent) = res {
       // TODO: should I panic here?

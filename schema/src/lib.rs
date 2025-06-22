@@ -35,17 +35,26 @@ impl Eid {
 }
 
 impl fmt::Display for Cid {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     write!(f, "{:015}", self.0)
   }
 }
 impl fmt::Display for Gid {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     write!(f, "{:015}", self.0)
   }
 }
 impl fmt::Display for Eid {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     write!(f, "{:015}", self.0)
   }
 }

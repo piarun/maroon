@@ -46,7 +46,8 @@ pub struct P2P {
 
 impl P2P {
   pub fn new(
-    node_urls: Vec<String>, interface_endpoint: Endpoint<Response, Request>,
+    node_urls: Vec<String>,
+    interface_endpoint: Endpoint<Response, Request>,
   ) -> Result<P2P, Box<dyn std::error::Error>> {
     let kp = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(kp.public());
@@ -120,7 +121,9 @@ impl P2P {
 }
 
 fn handle_swarm_event(
-  swarm: &mut Swarm<GatewayBehaviour>, event: SwarmEvent<GatewayEvent>, sender: &UnboundedSender<Response>,
+  swarm: &mut Swarm<GatewayBehaviour>,
+  event: SwarmEvent<GatewayEvent>,
+  sender: &UnboundedSender<Response>,
   maroon_peer_ids: &mut HashSet<PeerId>,
 ) {
   match event {

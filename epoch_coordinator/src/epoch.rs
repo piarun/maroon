@@ -22,7 +22,11 @@ pub struct Epoch {
 }
 
 impl Epoch {
-  pub fn next(creator: PeerId, increments: Vec<U64BlobIdClosedInterval>, prev_epoch: Option<&Epoch>) -> Epoch {
+  pub fn next(
+    creator: PeerId,
+    increments: Vec<U64BlobIdClosedInterval>,
+    prev_epoch: Option<&Epoch>,
+  ) -> Epoch {
     let mut hasher = Sha256::new();
 
     let mut sequence_number = 0;

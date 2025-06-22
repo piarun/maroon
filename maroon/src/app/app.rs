@@ -74,8 +74,11 @@ pub struct App<L: Linearizer> {
 
 impl<L: Linearizer> App<L> {
   pub fn new(
-    peer_id: PeerId, p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<Request, Response>,
-    epoch_coordinator: epoch_coordinator::interface::A2BEndpoint, params: Params,
+    peer_id: PeerId,
+    p2p_interface: Endpoint<Outbox, Inbox>,
+    state_interface: HandlerInterface<Request, Response>,
+    epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
+    params: Params,
   ) -> Result<App<LogLineriazer>, Box<dyn std::error::Error>> {
     let epoch_period = params.epoch_period;
     Ok(App {
@@ -96,7 +99,10 @@ impl<L: Linearizer> App<L> {
   }
 
   /// starts a loop that processes events and executes logic
-  pub async fn loop_until_shutdown(&mut self, mut shutdown: oneshot::Receiver<()>) {
+  pub async fn loop_until_shutdown(
+    &mut self,
+    mut shutdown: oneshot::Receiver<()>,
+  ) {
     let mut advertise_offset_ticker = interval(self.params.advertise_period);
     advertise_offset_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut commit_epoch_ticker = interval(self.params.epoch_period);
@@ -143,7 +149,10 @@ impl<L: Linearizer> App<L> {
     info!("consensus_offset:{}", str);
   }
 
-  fn handle_epoch_coordinator_updates(&mut self, updates: EpochUpdates) {
+  fn handle_epoch_coordinator_updates(
+    &mut self,
+    updates: EpochUpdates,
+  ) {
     match updates {
       EpochUpdates::New(new_epoch) => {
         debug!("got epoch updates seq_n: {}", new_epoch.sequence_number);
@@ -161,7 +170,10 @@ impl<L: Linearizer> App<L> {
     }
   }
 
-  fn handle_inbox_message(&mut self, msg: Inbox) {
+  fn handle_inbox_message(
+    &mut self,
+    msg: Inbox,
+  ) {
     match msg {
       Inbox::State((peer_id, state)) => {
         for (k, v) in state.offsets {
@@ -235,7 +247,10 @@ impl<L: Linearizer> App<L> {
     }
   }
 
-  fn handle_request(&self, wrapper: RequestWrapper<Request, Response>) {
+  fn handle_request(
+    &self,
+    wrapper: RequestWrapper<Request, Response>,
+  ) {
     match wrapper.request {
       Request::GetState => {
         if let Err(unsent_response) = wrapper.response.send(Response::State(CurrentOffsets {
@@ -262,13 +277,17 @@ impl<L: Linearizer> App<L> {
     self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });
   }
 
-  fn recalculate_order(&mut self, ids: &HashSet<PeerId>) {
+  fn recalculate_order(
+    &mut self,
+    ids: &HashSet<PeerId>,
+  ) {
     self.send_decider.update_node_ids(ids);
   }
 }
 
 fn calculate_epoch_increments(
-  consensus_offset: &HashMap<KeyRange, KeyOffset>, commited_offsets: &HashMap<KeyRange, KeyOffset>,
+  consensus_offset: &HashMap<KeyRange, KeyOffset>,
+  commited_offsets: &HashMap<KeyRange, KeyOffset>,
 ) -> Vec<U64BlobIdClosedInterval> {
   let mut increments = Vec::new();
   for (range, offset) in consensus_offset {
@@ -289,7 +308,9 @@ fn calculate_epoch_increments(
 
 /// moves offset pointer for a particular peerID(node)
 fn move_offset_pointer(
-  offsets: &mut HashMap<KeyRange, HashMap<PeerId, KeyOffset>>, peer_id: PeerId, new_range: KeyRange,
+  offsets: &mut HashMap<KeyRange, HashMap<PeerId, KeyOffset>>,
+  peer_id: PeerId,
+  new_range: KeyRange,
   new_offset: KeyOffset,
 ) {
   let Some(mut_range) = offsets.get_mut(&new_range) else {
@@ -302,7 +323,8 @@ fn move_offset_pointer(
 
 /// wrapper around `update_self_offsets`
 fn update_self_offset(
-  self_offsets: &mut HashMap<KeyRange, KeyOffset>, transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
+  self_offsets: &mut HashMap<KeyRange, KeyOffset>,
+  transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
   tx: Transaction,
 ) -> Option<(KeyRange, KeyOffset)> {
   let mut updates = update_self_offsets(self_offsets, transactions, txs_to_range_tx_map(vec![tx]));
@@ -312,7 +334,8 @@ fn update_self_offset(
 /// inserts transactions, updates self_offset pointers if should
 /// returns changed offsets if there are any
 fn update_self_offsets(
-  self_offsets: &mut HashMap<KeyRange, KeyOffset>, transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
+  self_offsets: &mut HashMap<KeyRange, KeyOffset>,
+  transactions: &mut HashMap<UniqueU64BlobId, Transaction>,
   range_transactions: HashMap<KeyRange, Vec<Transaction>>,
 ) -> Vec<(KeyRange, KeyOffset)> {
   let mut updates = Vec::<(KeyRange, KeyOffset)>::new();
@@ -360,7 +383,8 @@ fn update_self_offsets(
 /// calculates delays that current node (self_delays) has compare to other nodes `offsets`
 /// also uses transactions in order to reduce amount of requested transactions
 fn self_delays(
-  transactions: &HashMap<UniqueU64BlobId, Transaction>, self_offsets: &HashMap<KeyRange, KeyOffset>,
+  transactions: &HashMap<UniqueU64BlobId, Transaction>,
+  self_offsets: &HashMap<KeyRange, KeyOffset>,
   offsets: &HashMap<KeyRange, HashMap<PeerId, KeyOffset>>,
 ) -> HashMap<PeerId, Vec<U64BlobIdClosedInterval>> {
   let mut result = HashMap::<PeerId, Vec<U64BlobIdClosedInterval>>::new();
@@ -420,7 +444,10 @@ fn self_delays(
 
 /// returns maximum offset among peers keeping in mind the `n_consensus`
 /// if `n_consensus` is 2 - it will find the maximum number that is present in at least 2 peers
-fn consensus_maximum(map: &HashMap<PeerId, KeyOffset>, n_consensus: NonZeroUsize) -> Option<&KeyOffset> {
+fn consensus_maximum(
+  map: &HashMap<PeerId, KeyOffset>,
+  n_consensus: NonZeroUsize,
+) -> Option<&KeyOffset> {
   let n = n_consensus.get();
   if map.len() < n {
     return None;

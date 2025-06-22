@@ -12,7 +12,10 @@ mod tests {
       Self { current_time: Arc::new(std::sync::Mutex::new(LogicalTimeAbsoluteMs::from_millis(initial_time))) }
     }
 
-    fn set_time(&self, time_ms: u64) {
+    fn set_time(
+      &self,
+      time_ms: u64,
+    ) {
       let mut current = self.current_time.lock().unwrap();
       *current = LogicalTimeAbsoluteMs::from_millis(time_ms);
     }
@@ -51,7 +54,9 @@ mod tests {
 
   impl<T: Timer> Writer for MockWriter<T> {
     async fn write_text(
-      &self, text: String, timestamp: Option<LogicalTimeAbsoluteMs>,
+      &self,
+      text: String,
+      timestamp: Option<LogicalTimeAbsoluteMs>,
     ) -> Result<(), Box<dyn std::error::Error>> {
       let timer = Arc::clone(&self.timer);
       let outputs = Arc::clone(&self.outputs);

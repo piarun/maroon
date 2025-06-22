@@ -14,7 +14,10 @@ pub struct InvokerInterface<Req, Res> {
 }
 
 impl<Req, Res> InvokerInterface<Req, Res> {
-  pub fn request(&self, req: Req) -> ResultFuture<Res> {
+  pub fn request(
+    &self,
+    req: Req,
+  ) -> ResultFuture<Res> {
     let (sender, receiver) = oneshot::channel::<Res>();
 
     if let Err(err) = self.sender.send(RequestWrapper { request: req, response: sender }) {
@@ -32,7 +35,10 @@ pub struct ResultFuture<Res> {
 impl<Res> Future for ResultFuture<Res> {
   type Output = Res;
 
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+  fn poll(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Self::Output> {
     let oneshot_pin = Pin::new(&mut self.receiver);
 
     match oneshot_pin.poll(cx) {

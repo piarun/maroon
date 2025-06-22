@@ -26,7 +26,10 @@ pub struct StackRemoteControl {
 
 impl MaroonStack {
   pub fn new(
-    node_urls: Vec<String>, etcd_urls: Vec<String>, self_url: String, params: Params,
+    node_urls: Vec<String>,
+    etcd_urls: Vec<String>,
+    self_url: String,
+    params: Params,
   ) -> Result<(MaroonStack, StackRemoteControl), Box<dyn std::error::Error>> {
     let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
     let (a2b_epoch, b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();

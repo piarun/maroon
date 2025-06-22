@@ -3,7 +3,10 @@ use epoch_coordinator::epoch::Epoch;
 use log::debug;
 
 pub trait Linearizer {
-  fn new_epoch(&mut self, epoch: Epoch);
+  fn new_epoch(
+    &mut self,
+    epoch: Epoch,
+  );
 }
 
 pub struct LogLineriazer {
@@ -17,7 +20,10 @@ impl LogLineriazer {
 }
 
 impl Linearizer for LogLineriazer {
-  fn new_epoch(&mut self, mut epoch: Epoch) {
+  fn new_epoch(
+    &mut self,
+    mut epoch: Epoch,
+  ) {
     epoch.increments.sort();
     let new_elements_count: usize = epoch.increments.iter().map(|i| i.ids_count()).sum();
     self.sequence.reserve(new_elements_count);

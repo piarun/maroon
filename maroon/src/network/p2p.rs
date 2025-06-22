@@ -75,7 +75,9 @@ pub struct P2P {
 
 impl P2P {
   pub fn new(
-    node_urls: Vec<String>, self_url: String, interface_endpoint: Endpoint<Inbox, Outbox>,
+    node_urls: Vec<String>,
+    self_url: String,
+    interface_endpoint: Endpoint<Inbox, Outbox>,
   ) -> Result<P2P, Box<dyn std::error::Error>> {
     let kp = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(kp.public());
@@ -180,7 +182,10 @@ impl P2P {
 }
 
 fn handle_receiver_outbox(
-  swarm: &mut Swarm<MaroonBehaviour>, outbox_message: Outbox, peer_id: PeerId, node_p2p_topic: TopicHash,
+  swarm: &mut Swarm<MaroonBehaviour>,
+  outbox_message: Outbox,
+  peer_id: PeerId,
+  node_p2p_topic: TopicHash,
 ) {
   match outbox_message {
     Outbox::State(state) => {
@@ -205,8 +210,11 @@ fn handle_receiver_outbox(
 }
 
 fn handle_swarm_event(
-  swarm: &mut Swarm<MaroonBehaviour>, event: SwarmEvent<MaroonEvent>, to_app: &UnboundedSender<Inbox>,
-  alive_peer_ids: &mut HashSet<PeerId>, alive_gateway_ids: &mut HashSet<PeerId>,
+  swarm: &mut Swarm<MaroonBehaviour>,
+  event: SwarmEvent<MaroonEvent>,
+  to_app: &UnboundedSender<Inbox>,
+  alive_peer_ids: &mut HashSet<PeerId>,
+  alive_gateway_ids: &mut HashSet<PeerId>,
 ) {
   match event {
     SwarmEvent::Behaviour(MaroonEvent::Gossipsub(GossipsubEvent::Message { message, .. })) => {
@@ -254,7 +262,9 @@ fn handle_swarm_event(
 }
 
 fn handle_m2m_req_res(
-  swarm: &mut Swarm<MaroonBehaviour>, to_app: &UnboundedSender<Inbox>, m2m_request_response: M2MEvent,
+  swarm: &mut Swarm<MaroonBehaviour>,
+  to_app: &UnboundedSender<Inbox>,
+  m2m_request_response: M2MEvent,
 ) {
   let M2MEvent::Message { message, peer, .. } = m2m_request_response else {
     return;
@@ -275,7 +285,9 @@ fn handle_m2m_req_res(
 }
 
 fn handle_request_response(
-  swarm: &mut Swarm<MaroonBehaviour>, to_app: &UnboundedSender<Inbox>, gm_request_response: GMEvent,
+  swarm: &mut Swarm<MaroonBehaviour>,
+  to_app: &UnboundedSender<Inbox>,
+  gm_request_response: GMEvent,
 ) {
   match gm_request_response {
     GMEvent::Message { message, .. } => match message {
@@ -297,8 +309,11 @@ fn handle_request_response(
 }
 
 fn handle_meta_exchange(
-  swarm: &mut Swarm<MaroonBehaviour>, meta_exchange: MEEvent, alive_node_ids: &mut HashSet<PeerId>,
-  alive_gateway_ids: &mut HashSet<PeerId>, to_app: &UnboundedSender<Inbox>,
+  swarm: &mut Swarm<MaroonBehaviour>,
+  meta_exchange: MEEvent,
+  alive_node_ids: &mut HashSet<PeerId>,
+  alive_gateway_ids: &mut HashSet<PeerId>,
+  to_app: &UnboundedSender<Inbox>,
 ) {
   let MEEvent::Message { message, peer, .. } = meta_exchange else {
     return;

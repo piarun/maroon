@@ -29,7 +29,10 @@ pub enum CommitError {
 }
 
 impl fmt::Display for CommitError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+  ) -> fmt::Result {
     match self {
       CommitError::CommitFailed(msg) => write!(f, "Failed to commit epoch: {}", msg),
     }

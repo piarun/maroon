@@ -16,21 +16,35 @@ pub struct EpochDecisionEngine<C: Clock> {
   clock: C,
 }
 
-pub fn new_decider(id: PeerId, tick_delta: Duration) -> EpochDecisionEngine<SystemClock> {
+pub fn new_decider(
+  id: PeerId,
+  tick_delta: Duration,
+) -> EpochDecisionEngine<SystemClock> {
   EpochDecisionEngine::<SystemClock>::new(id, tick_delta, SystemClock {})
 }
 
 impl<C: Clock> EpochDecisionEngine<C> {
-  pub fn new(id: PeerId, tick_delta: Duration, clock: C) -> EpochDecisionEngine<C> {
+  pub fn new(
+    id: PeerId,
+    tick_delta: Duration,
+    clock: C,
+  ) -> EpochDecisionEngine<C> {
     EpochDecisionEngine { id, nodes: vec![], latest_epoch: None, tick_delta: tick_delta.as_millis(), clock }
   }
 
-  pub fn update_node_ids(&mut self, ids: &HashSet<PeerId>) {
+  pub fn update_node_ids(
+    &mut self,
+    ids: &HashSet<PeerId>,
+  ) {
     self.nodes = ids.iter().copied().collect();
     self.nodes.sort();
   }
 
-  pub fn update_latest_epoch(&mut self, commiter_id: PeerId, commit_time: Duration) {
+  pub fn update_latest_epoch(
+    &mut self,
+    commiter_id: PeerId,
+    commit_time: Duration,
+  ) {
     self.latest_epoch = Some((commiter_id, commit_time.as_millis()))
   }
 
@@ -55,7 +69,11 @@ impl<C: Clock> EpochDecisionEngine<C> {
 }
 
 /// represents ordered `nodes` as a ring and finds an offset of self_id from latest_commiter_id
-fn calculate_position(nodes: &Vec<PeerId>, self_id: PeerId, latest_commiter_id: Option<PeerId>) -> usize {
+fn calculate_position(
+  nodes: &Vec<PeerId>,
+  self_id: PeerId,
+  latest_commiter_id: Option<PeerId>,
+) -> usize {
   let latest_commiter_id: PeerId = latest_commiter_id.unwrap_or(self_id);
 
   let mut self_position = 0;
@@ -86,7 +104,11 @@ mod tests {
   use super::*;
   use common::clock::test_helpers::MockClock;
 
-  fn new_test(id: PeerId, tick_delta: Duration, now: Duration) -> EpochDecisionEngine<MockClock> {
+  fn new_test(
+    id: PeerId,
+    tick_delta: Duration,
+    now: Duration,
+  ) -> EpochDecisionEngine<MockClock> {
     EpochDecisionEngine::new(id, tick_delta, MockClock::new(now))
   }
 

@@ -44,7 +44,10 @@ pub struct U64BlobIdClosedInterval {
 }
 
 impl U64BlobIdClosedInterval {
-  pub fn new<T: Into<UniqueU64BlobId>>(left: T, right: T) -> U64BlobIdClosedInterval {
+  pub fn new<T: Into<UniqueU64BlobId>>(
+    left: T,
+    right: T,
+  ) -> U64BlobIdClosedInterval {
     let left = left.into();
     let right = right.into();
     if right < left {
@@ -54,7 +57,11 @@ impl U64BlobIdClosedInterval {
     U64BlobIdClosedInterval { left, right }
   }
 
-  pub fn new_from_range_and_offsets(range: KeyRange, left: KeyOffset, right: KeyOffset) -> U64BlobIdClosedInterval {
+  pub fn new_from_range_and_offsets(
+    range: KeyRange,
+    left: KeyOffset,
+    right: KeyOffset,
+  ) -> U64BlobIdClosedInterval {
     U64BlobIdClosedInterval::new(
       unique_blob_id_from_range_and_offset(range, left),
       unique_blob_id_from_range_and_offset(range, right),
@@ -132,7 +139,10 @@ pub fn range_offset_from_unique_blob_id(global_key: UniqueU64BlobId) -> (KeyRang
   (range, KeyOffset(offset))
 }
 
-pub fn unique_blob_id_from_range_and_offset(range: KeyRange, offset: KeyOffset) -> UniqueU64BlobId {
+pub fn unique_blob_id_from_range_and_offset(
+  range: KeyRange,
+  offset: KeyOffset,
+) -> UniqueU64BlobId {
   UniqueU64BlobId(range.0 * SINGLE_BLOB_SIZE + offset.0)
 }
 

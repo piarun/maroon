@@ -38,7 +38,9 @@ impl WebSocketWriter {
 
 impl Writer for WebSocketWriter {
   async fn write_text(
-    &self, text: String, _timestamp: Option<LogicalTimeAbsoluteMs>,
+    &self,
+    text: String,
+    _timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> Result<(), Box<dyn std::error::Error>> {
     self.sender.send(text).await.map_err(Box::new)?;
     Ok(())
@@ -46,13 +48,19 @@ impl Writer for WebSocketWriter {
 }
 
 async fn delay_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path((t, s)): Path<(u64, String)>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  ws: WebSocketUpgrade,
+  Path((t, s)): Path<(u64, String)>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| delay_handler_ws(socket, state.timer.millis_since_start(), t, s, state))
 }
 
 async fn delay_handler_ws<T: Timer>(
-  socket: WebSocket, ts: LogicalTimeAbsoluteMs, t: u64, s: String, state: Arc<AppState<T, WebSocketWriter>>,
+  socket: WebSocket,
+  ts: LogicalTimeAbsoluteMs,
+  t: u64,
+  s: String,
+  state: Arc<AppState<T, WebSocketWriter>>,
 ) {
   state
     .schedule(
@@ -72,13 +80,18 @@ async fn delay_handler_ws<T: Timer>(
 }
 
 async fn divisors_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path(a): Path<u64>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  ws: WebSocketUpgrade,
+  Path(a): Path<u64>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| divisors_handler_ws(socket, state.timer.millis_since_start(), a, state))
 }
 
 async fn divisors_handler_ws<T: Timer>(
-  socket: WebSocket, ts: LogicalTimeAbsoluteMs, n: u64, state: Arc<AppState<T, WebSocketWriter>>,
+  socket: WebSocket,
+  ts: LogicalTimeAbsoluteMs,
+  n: u64,
+  state: Arc<AppState<T, WebSocketWriter>>,
 ) {
   state
     .schedule(
@@ -92,13 +105,18 @@ async fn divisors_handler_ws<T: Timer>(
 }
 
 async fn fibonacci_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path(n): Path<u64>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  ws: WebSocketUpgrade,
+  Path(n): Path<u64>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| fibonacci_handler_ws(socket, state.timer.millis_since_start(), n, state))
 }
 
 async fn fibonacci_handler_ws<T: Timer>(
-  socket: WebSocket, ts: LogicalTimeAbsoluteMs, n: u64, state: Arc<AppState<T, WebSocketWriter>>,
+  socket: WebSocket,
+  ts: LogicalTimeAbsoluteMs,
+  n: u64,
+  state: Arc<AppState<T, WebSocketWriter>>,
 ) {
   state
     .schedule(
@@ -118,13 +136,18 @@ async fn fibonacci_handler_ws<T: Timer>(
 }
 
 async fn factorial_handler<T: Timer>(
-  ws: WebSocketUpgrade, Path(n): Path<u64>, State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  ws: WebSocketUpgrade,
+  Path(n): Path<u64>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| factorial_handler_ws(socket, state.timer.millis_since_start(), n, state))
 }
 
 async fn factorial_handler_ws<T: Timer>(
-  socket: WebSocket, ts: LogicalTimeAbsoluteMs, n: u64, state: Arc<AppState<T, WebSocketWriter>>,
+  socket: WebSocket,
+  ts: LogicalTimeAbsoluteMs,
+  n: u64,
+  state: Arc<AppState<T, WebSocketWriter>>,
 ) {
   state
     .schedule(

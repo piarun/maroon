@@ -59,7 +59,10 @@ pub struct EtcdEpochCoordinator {
 }
 
 impl EtcdEpochCoordinator {
-  pub fn new(etcd_endpoints: &Vec<String>, interface: B2AEndpoint) -> EtcdEpochCoordinator {
+  pub fn new(
+    etcd_endpoints: &Vec<String>,
+    interface: B2AEndpoint,
+  ) -> EtcdEpochCoordinator {
     EtcdEpochCoordinator { etcd_endpoints: etcd_endpoints.clone(), interface }
   }
 
@@ -142,7 +145,10 @@ struct EpochObject {
   epoch: Epoch,
 }
 
-fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
+fn handle_watch_message(
+  interface: &mut B2AEndpoint,
+  message: WatchResponse,
+) {
   for event in message.events() {
     if let Some(kv) = event.kv() {
       if let Ok(epoch_obj) = serde_json::from_slice::<EpochObject>(kv.value()) {
@@ -155,7 +161,10 @@ fn handle_watch_message(interface: &mut B2AEndpoint, message: WatchResponse) {
 
 // TODO: return here an error and write a dockerized-test to set/update latest
 // because right now the logic is not covered reliably
-async fn handle_commit_new_epoch(client: &mut Client, epoch_request: EpochRequest) {
+async fn handle_commit_new_epoch(
+  client: &mut Client,
+  epoch_request: EpochRequest,
+) {
   let start = Instant::now();
 
   let seq_number = epoch_request.epoch.sequence_number;

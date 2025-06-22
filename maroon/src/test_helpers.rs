@@ -15,7 +15,8 @@ use std::time::Duration;
 
 #[cfg(test)]
 pub fn new_test_instance(
-  p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
+  p2p_interface: Endpoint<Outbox, Inbox>,
+  state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
   epoch_coordinator: A2BEndpoint,
 ) -> App<LogLineriazer> {
   App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, Params::default())
@@ -23,8 +24,10 @@ pub fn new_test_instance(
 }
 
 pub fn new_test_instance_with_params(
-  p2p_interface: Endpoint<Outbox, Inbox>, state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
-  epoch_coordinator: A2BEndpoint, params: Params,
+  p2p_interface: Endpoint<Outbox, Inbox>,
+  state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
+  epoch_coordinator: A2BEndpoint,
+  params: Params,
 ) -> App<LogLineriazer> {
   App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, params)
     .expect("failed to create test App instance")
@@ -37,7 +40,9 @@ pub fn test_tx(id: u64) -> Transaction {
 
 #[cfg(test)]
 pub async fn reaches_state(
-  attempts: u32, tick: Duration, state_invoker: &InvokerInterface<AppStateRequest, AppStateResponse>,
+  attempts: u32,
+  tick: Duration,
+  state_invoker: &InvokerInterface<AppStateRequest, AppStateResponse>,
   exp_state: CurrentOffsets,
 ) -> bool {
   for _ in 0..attempts {

@@ -19,7 +19,10 @@ impl LogicalTimeAbsoluteMs {
 }
 
 impl std::fmt::Display for LogicalTimeAbsoluteMs {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
     write!(f, "{}", self.0)
   }
 }
@@ -27,7 +30,10 @@ impl std::fmt::Display for LogicalTimeAbsoluteMs {
 impl std::ops::Add<LogicalTimeDeltaMs> for LogicalTimeAbsoluteMs {
   type Output = LogicalTimeAbsoluteMs;
 
-  fn add(self, rhs: LogicalTimeDeltaMs) -> Self::Output {
+  fn add(
+    self,
+    rhs: LogicalTimeDeltaMs,
+  ) -> Self::Output {
     LogicalTimeAbsoluteMs(self.0 + rhs.as_millis())
   }
 }
@@ -46,7 +52,10 @@ impl LogicalTimeDeltaMs {
 }
 
 impl std::fmt::Display for LogicalTimeDeltaMs {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
     write!(f, "{}", self.0)
   }
 }
@@ -73,7 +82,10 @@ impl MaroonTaskId {
 }
 
 impl std::fmt::Display for MaroonTaskId {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
     write!(f, "{}", self.0)
   }
 }
@@ -129,7 +141,9 @@ impl Timer for WallTimeTimer {
 
 pub trait Writer: Send + Sync + 'static {
   fn write_text(
-    &self, text: String, timestamp: Option<LogicalTimeAbsoluteMs>,
+    &self,
+    text: String,
+    timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send
   where
     Self: Send;
@@ -243,7 +257,9 @@ pub enum MaroonStepResult {
 }
 
 fn global_step(
-  state: MaroonTaskState, vars: Vec<MaroonTaskStackEntryValue>, heap: &mut MaroonTaskHeap,
+  state: MaroonTaskState,
+  vars: Vec<MaroonTaskStackEntryValue>,
+  heap: &mut MaroonTaskHeap,
 ) -> MaroonStepResult {
   match state {
     MaroonTaskState::DelayedMessageTaskBegin => {
@@ -477,7 +493,10 @@ pub struct TimestampedMaroonTask {
 }
 
 impl TimestampedMaroonTask {
-  pub fn new(scheduled_timestamp: LogicalTimeAbsoluteMs, task_id: MaroonTaskId) -> Self {
+  pub fn new(
+    scheduled_timestamp: LogicalTimeAbsoluteMs,
+    task_id: MaroonTaskId,
+  ) -> Self {
     Self { scheduled_timestamp, task_id }
   }
 }
@@ -485,20 +504,29 @@ impl TimestampedMaroonTask {
 impl Eq for TimestampedMaroonTask {}
 
 impl PartialEq for TimestampedMaroonTask {
-  fn eq(&self, other: &Self) -> bool {
+  fn eq(
+    &self,
+    other: &Self,
+  ) -> bool {
     self.scheduled_timestamp == other.scheduled_timestamp
   }
 }
 
 impl Ord for TimestampedMaroonTask {
-  fn cmp(&self, other: &Self) -> Ordering {
+  fn cmp(
+    &self,
+    other: &Self,
+  ) -> Ordering {
     // Reversed order by design.
     other.scheduled_timestamp.cmp(&self.scheduled_timestamp)
   }
 }
 
 impl PartialOrd for TimestampedMaroonTask {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+  fn partial_cmp(
+    &self,
+    other: &Self,
+  ) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
@@ -517,8 +545,12 @@ pub struct AppState<T: Timer, W: Writer> {
 
 impl<T: Timer, W: Writer> AppState<T, W> {
   pub async fn schedule(
-    &self, writer: Arc<W>, maroon_stack: MaroonTaskStack, maroon_heap: MaroonTaskHeap,
-    scheduled_timestamp: LogicalTimeAbsoluteMs, task_description: String,
+    &self,
+    writer: Arc<W>,
+    maroon_stack: MaroonTaskStack,
+    maroon_heap: MaroonTaskHeap,
+    scheduled_timestamp: LogicalTimeAbsoluteMs,
+    task_description: String,
   ) {
     let mut fsm = self.fsm.lock().await;
     let task_id = fsm.task_id_generator.next_task_id();
@@ -569,7 +601,10 @@ fn debug_validate_maroon_stack(stk: &Vec<MaroonTaskStackEntry>) {
 #[cfg(not(test))]
 fn debug_validate_maroon_stack(_: &Vec<MaroonTaskStackEntry>) {}
 
-pub async fn execute_pending_operations<T: Timer, W: Writer>(mut state: Arc<AppState<T, W>>, verbose: bool) {
+pub async fn execute_pending_operations<T: Timer, W: Writer>(
+  mut state: Arc<AppState<T, W>>,
+  verbose: bool,
+) {
   loop {
     execute_pending_operations_inner(&mut state, verbose).await;
 
@@ -578,7 +613,10 @@ pub async fn execute_pending_operations<T: Timer, W: Writer>(mut state: Arc<AppS
   }
 }
 
-pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(state: &mut Arc<AppState<T, W>>, verbose: bool) {
+pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
+  state: &mut Arc<AppState<T, W>>,
+  verbose: bool,
+) {
   loop {
     let mut fsm = state.fsm.lock().await;
     let scheduled_timestamp_cutoff: LogicalTimeAbsoluteMs = state.timer.millis_since_start();

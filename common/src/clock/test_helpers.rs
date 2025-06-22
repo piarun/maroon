@@ -10,11 +10,17 @@ impl MockClock {
   pub fn new(now: Duration) -> MockClock {
     MockClock { time: now }
   }
-  pub fn advance(&mut self, d: Duration) {
+  pub fn advance(
+    &mut self,
+    d: Duration,
+  ) {
     self.time += d;
   }
 
-  pub fn set(&mut self, t: Duration) {
+  pub fn set(
+    &mut self,
+    t: Duration,
+  ) {
     self.time = t
   }
 }

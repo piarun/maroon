@@ -26,17 +26,26 @@ impl Params {
     }
   }
 
-  pub fn set_advertise_period(mut self, new_period: Duration) -> Params {
+  pub fn set_advertise_period(
+    mut self,
+    new_period: Duration,
+  ) -> Params {
     self.advertise_period = new_period;
     self
   }
 
-  pub fn set_consensus_nodes(mut self, n_consensus: NonZeroUsize) -> Params {
+  pub fn set_consensus_nodes(
+    mut self,
+    n_consensus: NonZeroUsize,
+  ) -> Params {
     self.consensus_nodes = n_consensus;
     self
   }
 
-  pub fn set_epoch_period(mut self, new_period: Duration) -> Params {
+  pub fn set_epoch_period(
+    mut self,
+    new_period: Duration,
+  ) -> Params {
     self.epoch_period = new_period;
     self
   }
