@@ -80,11 +80,20 @@ start-metrics-stack: # starts OTLP collector, prometheus, grafana
 shutdown-metrics-stack: # shuts down OTLP collector, prometheus, grafana
 	docker compose -f metrics/docker-compose.yaml down -v
 
+.PHONY: start-redis
+start-redis: # starts Redis in docker compose for state log
+	docker compose -f state_log/docker/redis/docker-compose.yaml up -d
+
+.PHONY: shutdown-redis
+shutdown-redis: # shuts down Redis docker compose
+	docker compose -f state_log/docker/redis/docker-compose.yaml down -v
+
+
 .PHONY: start-compose
-start-compose: start-test-etcd start-metrics-stack
+start-compose: start-test-etcd start-metrics-stack start-redis
 
 .PHONY: shutdown-compose
-shutdown-compose: shutdown-metrics-stack shutdown-test-etcd
+shutdown-compose: shutdown-metrics-stack shutdown-test-etcd shutdown-redis
 
 fmt: # formatter
 	cargo fmt --all
