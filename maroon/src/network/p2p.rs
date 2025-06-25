@@ -32,6 +32,10 @@ use libp2p::{
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info, warn};
 use opentelemetry::{KeyValue, global, metrics::Counter};
+use schema::{
+  Cid,
+  log_events::{LogEvent, LogEventBody},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::{collections::HashSet, fmt::Debug, time::Duration};
@@ -246,6 +250,10 @@ fn handle_swarm_event(
       handle_m2m_req_res(swarm, &to_app, m2m_request_response);
     }
     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+      state_log::log(LogEvent {
+        timestamp_micros: 12312312,
+        body: LogEventBody::ClientConnected { cid: Cid::new_random() },
+      });
       swarm.behaviour_mut().meta_exchange.send_request(&peer_id, MERequest { role: Role::Node });
     }
     SwarmEvent::ConnectionClosed { peer_id, .. } => {

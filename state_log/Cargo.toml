@@ -1,0 +1,14 @@
+[package]
+edition = "2024"
+name = "state_log"
+
+[dependencies]
+env_logger = { workspace = true }
+log = { workspace = true }
+r2d2 = "0.8.10"
+r2d2_redis = "0.14.0"
+redis = { version = "0.32.2", features = ["tokio-comp"] }
+schema = { path = "../schema" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

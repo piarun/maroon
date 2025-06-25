@@ -54,6 +54,7 @@ run-local: # runs maroon node locally on a specified port
 	NODE_URLS=${NODE_URLS} \
 	ETCD_URLS=${ETCD_URLS} \
 	SELF_URL=/ip4/127.0.0.1/tcp/${PORT} \
+	REDIS_URL=redis://127.0.0.1:6379 \
 	RUST_LOG=maroon=debug,epoch_coordinator=debug \
 	CONSENSUS_NODES=${CONSENSUS_NODES} \
 		cargo run -p maroon $(PROFILE_FLAG)

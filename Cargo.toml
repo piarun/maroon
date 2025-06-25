@@ -8,6 +8,7 @@ members = [
   "epoch_coordinator",
   "util",
   "schema",
+  "state_log",
 ]
 resolver = "3"
 
