@@ -80,6 +80,12 @@ start-metrics-stack: # starts OTLP collector, prometheus, grafana
 shutdown-metrics-stack: # shuts down OTLP collector, prometheus, grafana
 	docker compose -f metrics/docker-compose.yaml down -v
 
+.PHONY: start-compose
+start-compose: start-test-etcd start-metrics-stack
+
+.PHONY: shutdown-compose
+shutdown-compose: shutdown-metrics-stack shutdown-test-etcd
+
 fmt: # formatter
 	cargo fmt --all
 	taplo format
