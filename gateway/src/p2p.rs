@@ -18,6 +18,7 @@ use libp2p::{
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, info};
+use schema::mn_events::{CommandBody, Eid, LogEvent, LogEventBody, now_microsec};
 use std::{collections::HashSet, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -42,6 +43,9 @@ pub struct P2P {
   swarm: Swarm<GatewayBehaviour>,
 
   interface_endpoint: Endpoint<Response, Request>,
+
+  // Gateway peer_id
+  id: PeerId,
 }
 
 impl P2P {
@@ -76,7 +80,7 @@ impl P2P {
       SwarmConfig::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(60)),
     );
 
-    Ok(P2P { node_urls, swarm, interface_endpoint })
+    Ok(P2P { node_urls, swarm, interface_endpoint, id: peer_id })
   }
 
   /// starts listening and performs all the bindings but doesn't react yeat
@@ -105,6 +109,15 @@ impl P2P {
               for peer_id in &maroon_peer_ids {
                   debug!("Sending request {request:?} to {peer_id}");
                   let _request_id = swarm.behaviour_mut().request_response.send_request(peer_id, request.clone());
+                  state_log::log(LogEvent {
+                    timestamp_micros: now_microsec(),
+                    emitter: self.id,
+                    body: LogEventBody::GatewaySentCommand {
+                      eid: Eid::new_random(),
+                      mnid: *peer_id,
+                      body: CommandBody::TextMessageCommand("test".to_string()),
+                    },
+                  });
               }
           },
           event = swarm.select_next_some() => {

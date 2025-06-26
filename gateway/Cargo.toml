@@ -12,6 +12,8 @@ futures = { workspace = true }
 libp2p = { workspace = true }
 libp2p-request-response = { workspace = true }
 log = { workspace = true }
+schema = { path = "../schema" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+state_log = { path = "../state_log" }
 tokio = { workspace = true }

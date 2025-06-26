@@ -4,6 +4,7 @@ name = "schema"
 version = "0.1.0"
 
 [dependencies]
+libp2p = { workspace = true }
 rand = "0.8"
 serde = { workspace = true }
 serde_json = { workspace = true }

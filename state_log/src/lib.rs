@@ -1,7 +1,7 @@
 use log::error;
 use r2d2_redis::redis::{Commands, RedisResult};
 use r2d2_redis::{RedisConnectionManager, r2d2::Pool};
-use schema::log_events::LogEvent;
+use schema::mn_events::LogEvent;
 use serde_json;
 use std::sync::OnceLock;
 use tokio;

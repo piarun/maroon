@@ -1213,8 +1213,10 @@ dependencies = [
  "libp2p",
  "libp2p-request-response",
  "log",
+ "schema",
  "serde",
  "serde_json",
+ "state_log",
  "tokio",
 ]
 
@@ -3521,6 +3523,7 @@ dependencies = [
 name = "schema"
 version = "0.1.0"
 dependencies = [
+ "libp2p",
  "rand 0.8.5",
  "serde",
  "serde_json",

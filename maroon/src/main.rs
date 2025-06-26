@@ -1,6 +1,7 @@
 use log::error;
 use maroon::app::Params;
 use maroon::metrics;
+use schema::mn_events::{LogEvent, LogEventBody, now_microsec};
 use std::future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -30,8 +31,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let (maroon_stack, _stack_remote_control) = maroon::stack::MaroonStack::new(node_urls, etcd_urls, self_url, params)?;
   let meter_provider = metrics::init_meter_provider(maroon_stack.id)?;
 
+  let id = maroon_stack.id;
   let _shutdown = maroon_stack.start();
 
+  state_log::log(LogEvent { timestamp_micros: now_microsec(), emitter: id, body: LogEventBody::MaroonNodeUp });
+
+  // TODO: implement proper shutdown
   // forever pause current state in order to prevent killing the process
   // later will be replaced with something else. Don't know with what
   future::pending::<()>().await;
@@ -40,5 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     error!("meter provider shutdown: {e}");
   }
 
+  state_log::log(LogEvent { timestamp_micros: now_microsec(), emitter: id, body: LogEventBody::MaroonNodeDown });
   Ok(())
 }

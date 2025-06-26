@@ -7,8 +7,6 @@ version = "0.1.0"
 [dependencies]
 chrono = "0.4.41"
 common = { path = "../common" }
-state_log = { path = "../state_log" }
-schema = { path = "../schema" }
 derive_more = { version = "2.0.1", features = ["from", "display"] }
 env_logger = { workspace = true }
 epoch_coordinator = { path = "../epoch_coordinator" }
@@ -21,6 +19,8 @@ opentelemetry-otlp = { workspace = true }
 opentelemetry-stdout = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 rand = "0.9.1"
+schema = { path = "../schema" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+state_log = { path = "../state_log" }
 tokio = { workspace = true }

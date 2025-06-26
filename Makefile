@@ -62,6 +62,7 @@ run-local: # runs maroon node locally on a specified port
 run-gateway: # runs gateway imitation
 	KEY_RANGE=${KEY_RANGE} \
 	NODE_URLS=${NODE_URLS} \
+	REDIS_URL=redis://127.0.0.1:6379 \
 	RUST_LOG=gateway=debug \
 		cargo run -p gateway $(PROFILE_FLAG)
 
