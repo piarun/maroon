@@ -42,6 +42,8 @@ integtest: # runs integration tests (excluding dockerized tests)
 integtest-dockerized: # runs dockerized integration tests that require docker services (etcd, etc.)
 	RUST_LOG=maroon=debug,gateway=debug \
 		cargo test -p epoch_coordinator $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+		cargo test -p state_log $(PROFILE_FLAG) $(VERBOSE_RUN) -- --test-threads 1 $(NOCAPTURE)
+
 
 integtest-all: # runs all integration tests including dockerized ones
 	RUST_LOG=maroon=info,gateway=debug \

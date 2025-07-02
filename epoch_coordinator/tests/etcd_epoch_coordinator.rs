@@ -2,7 +2,7 @@
 
 use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
 use common::range_key::U64BlobIdClosedInterval;
-use epoch_coordinator::etcd::MAROON_PREFIX;
+use epoch_coordinator::etcd::{self, MAROON_PREFIX};
 use epoch_coordinator::{
   epoch::Epoch,
   etcd::EtcdEpochCoordinator,
@@ -11,20 +11,50 @@ use epoch_coordinator::{
 use etcd_client::{Client, Compare, CompareOp, DeleteOptions, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use libp2p::PeerId;
 use std::time::Duration;
+use testcontainers::{
+  GenericImage, ImageExt,
+  core::{IntoContainerPort, WaitFor},
+  runners::AsyncRunner,
+};
 
 /// Testing that when we send tx to etcd we'll get it back through "watch" api
+/// not sure it's useful test, but anyway
 #[tokio::test(flavor = "multi_thread")]
 async fn etcd_epoch_coordinator() {
   _ = env_logger::try_init();
 
-  let node_urls =
-    vec!["http://localhost:2379".to_string(), "http://localhost:2380".to_string(), "http://localhost:2381".to_string()];
+  let container = GenericImage::new("quay.io/coreos/etcd", "v3.5.0")
+    .with_entrypoint("etcd")
+    .with_exposed_port(2379.tcp())
+    .with_exposed_port(2380.tcp())
+    .with_wait_for(WaitFor::message_on_stderr("ready to serve client requests"))
+    .with_network("bridge")
+    .with_cmd(vec![
+      "--name",
+      "single-node",
+      "--data-dir",
+      "/etcd-data",
+      "--listen-client-urls",
+      "http://0.0.0.0:2379",
+      "--advertise-client-urls",
+      "http://0.0.0.0:2379",
+      "--listen-peer-urls",
+      "http://0.0.0.0:2380",
+      "--initial-advertise-peer-urls",
+      "http://0.0.0.0:2380",
+      "--initial-cluster",
+      "single-node=http://0.0.0.0:2380",
+      "--initial-cluster-state",
+      "new",
+    ])
+    .start()
+    .await
+    .expect("failed to get etcd");
 
-  // cleanup etcd before run
-  {
-    let mut client = Client::connect(node_urls.clone(), None).await.unwrap();
-    _ = client.delete(MAROON_PREFIX, Some(DeleteOptions::new().with_prefix())).await.expect("expect deletion");
-  }
+  let port = container.get_host_port_ipv4(2379).await.unwrap();
+  let etcd_url = format!("http://127.0.0.1:{}", port);
+
+  let node_urls = vec![etcd_url];
 
   let (Endpoint::<EpochRequest, EpochUpdates> { mut receiver, sender }, b2a) =
     create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
