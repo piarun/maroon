@@ -1,4 +1,4 @@
-use log::error;
+use log::{debug, error};
 use r2d2_redis::redis::{Commands, RedisResult};
 use r2d2_redis::{RedisConnectionManager, r2d2::Pool};
 use schema::mn_events::LogEvent;
@@ -32,9 +32,6 @@ impl Sender {
       let res: RedisResult<()> = conn.xadd(STATE_LOG_STREAM, "*", pairs);
       if let Err(e) = res {
         error!("stream push to redis: {e}");
-        println!("sent : {e}");
-      } else {
-        println!("sent correctly");
       }
     }
   }
@@ -50,9 +47,10 @@ pub fn log_event_sender(custom_sender: Option<Sender>) -> &'static UnboundedSend
       None => {
         let redis_url: Result<String, VarError> = std::env::var("REDIS_URL");
         match redis_url {
-          Ok(r_u) => Sender::new(r_u),
+          Ok(redis_url) => Sender::new(redis_url),
           Err(_) => {
-            println!("LAST RESORT");
+            // it will return channel but in that case `receiver` channle will be dropped, so sending message will be
+            // it will happen only if redis_url is not set
             return sender;
           }
         }
@@ -68,6 +66,6 @@ pub fn log_event_sender(custom_sender: Option<Sender>) -> &'static UnboundedSend
 
 pub fn log(event: LogEvent) {
   if let Err(e) = log_event_sender(None).send(event) {
-    error!("redis pipe error: {e}");
-  };
+    debug!("redis pipe error: {e}");
+  }
 }
