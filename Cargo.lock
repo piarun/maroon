@@ -4125,6 +4125,7 @@ dependencies = [
 name = "state_log"
 version = "0.0.0"
 dependencies = [
+ "common",
  "env_logger",
  "libp2p",
  "log",

@@ -5,4 +5,5 @@ pub mod invoker_handler;
 pub mod m2m_request_response;
 pub mod meta_exchange;
 pub mod range_key;
+pub mod retrier;
 pub mod transaction;

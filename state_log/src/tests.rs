@@ -1,3 +1,4 @@
+use common::retrier::{exp_intervals, retry};
 use core::time;
 use r2d2_redis::redis::Commands;
 use r2d2_redis::redis::streams::StreamRangeReply;
@@ -35,22 +36,21 @@ async fn test_redis() {
     body: schema::mn_events::LogEventBody::MaroonNodeDown,
   });
 
-  let mut counter = 3;
   let mut saved = false;
-  while counter > 0 {
+  retry(exp_intervals(5, time::Duration::from_millis(50)), || {
     let manager = RedisConnectionManager::new(redis_url.clone()).unwrap();
     let pool = Pool::builder().build(manager).unwrap();
     let mut conn = pool.get().unwrap();
 
     let result: StreamRangeReply = conn.xrange("state_log_stream", "-", "+").unwrap();
-    counter -= 1;
 
     if result.ids.len() == 1 {
       saved = true;
-      break;
     }
-    tokio::time::sleep(time::Duration::from_millis(50)).await;
-  }
+
+    return saved;
+  })
+  .await;
 
   assert!(saved);
 }
