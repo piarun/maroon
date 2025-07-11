@@ -11,7 +11,7 @@ Pieces so far:
 
 # Visualisation-demonstration of messages inside the system
 
-https://dkorolev.github.io/maroon/
+[https://dimacurrentai.github.io/maroon/util/visualize_log.html](https://dimacurrentai.github.io/maroon/util/visualize_log.html).
 
 # Useful run scenarious
 
