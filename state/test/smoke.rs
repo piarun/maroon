@@ -55,13 +55,13 @@ mod tests {
   impl<T: Timer> Writer for MockWriter<T> {
     async fn write_text(
       &self,
-      text: String,
+      text: impl Into<String> + Send,
       timestamp: Option<LogicalTimeAbsoluteMs>,
     ) -> Result<(), Box<dyn std::error::Error>> {
       let timer = Arc::clone(&self.timer);
       let outputs = Arc::clone(&self.outputs);
       let time_to_use = timestamp.unwrap_or_else(|| timer.millis_since_start());
-      outputs.lock().unwrap().push(format!("{}ms:{text}", time_to_use.as_millis()));
+      outputs.lock().unwrap().push(format!("{}ms:{}", time_to_use.as_millis(), text.into()));
       Ok(())
     }
   }
@@ -75,6 +75,7 @@ mod tests {
         task_id_generator: NextTaskIdGenerator::new(),
         pending_operations: Default::default(),
         active_tasks: Default::default(),
+        awaiter: None,
       })),
       quit_tx,
       timer: Arc::clone(&timer),
@@ -202,6 +203,7 @@ mod tests {
         task_id_generator: NextTaskIdGenerator::new(),
         pending_operations: Default::default(),
         active_tasks: Default::default(),
+        awaiter: None,
       })),
       quit_tx,
       timer: Arc::clone(&timer),
@@ -252,6 +254,7 @@ mod tests {
         task_id_generator: NextTaskIdGenerator::new(),
         pending_operations: Default::default(),
         active_tasks: Default::default(),
+        awaiter: None,
       })),
       quit_tx,
       timer: Arc::clone(&timer),

@@ -39,10 +39,10 @@ impl WebSocketWriter {
 impl Writer for WebSocketWriter {
   async fn write_text(
     &self,
-    text: String,
+    text: impl Into<String> + Send,
     _timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> Result<(), Box<dyn std::error::Error>> {
-    self.sender.send(text).await.map_err(Box::new)?;
+    self.sender.send(text.into()).await.map_err(Box::new)?;
     Ok(())
   }
 }
@@ -77,6 +77,57 @@ async fn delay_handler_ws<T: Timer>(
       format!("Delayed by {}ms: `{}`.", t, s),
     )
     .await;
+}
+
+async fn send_handler<T: Timer>(
+  ws: WebSocketUpgrade,
+  Path(s): Path<String>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| send_handler_ws(socket, state.timer.millis_since_start(), s, state))
+}
+
+async fn send_handler_ws<T: Timer>(
+  socket: WebSocket,
+  ts: LogicalTimeAbsoluteMs,
+  s: String,
+  state: Arc<AppState<T, WebSocketWriter>>,
+) {
+  state
+    .schedule(
+      Arc::new(WebSocketWriter::new(socket)),
+      MaroonTaskStack {
+        maroon_stack_entries: vec![
+          MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::SenderInputMessage(s.clone())),
+          MaroonTaskStackEntry::State(MaroonTaskState::SenderSendMessage),
+        ],
+      },
+      MaroonTaskHeap::Empty,
+      ts,
+      format!("Sent: `{}`.", s),
+    )
+    .await;
+}
+
+async fn receive_handler<T: Timer>(
+  ws: WebSocketUpgrade,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| receive_handler_ws(socket, state))
+}
+
+async fn receive_handler_ws<T: Timer>(
+  socket: WebSocket,
+  state: Arc<AppState<T, WebSocketWriter>>,
+) {
+  state
+    .park_awaiter(
+      Arc::new(WebSocketWriter::new(socket)),
+      MaroonTaskStack { maroon_stack_entries: vec![] },
+      MaroonTaskHeap::Empty,
+      format!("Receive sending message."),
+    )
+    .await
 }
 
 async fn divisors_handler<T: Timer>(
@@ -205,6 +256,7 @@ async fn main() {
       task_id_generator: NextTaskIdGenerator::new(),
       pending_operations: BinaryHeap::<TimestampedMaroonTask>::new(),
       active_tasks: std::collections::HashMap::new(),
+      awaiter: None,
     })),
     quit_tx,
     timer,
@@ -213,6 +265,8 @@ async fn main() {
   let app = Router::new()
     .route("/", get(root_handler))
     .route("/delay/{t}/{s}", get(delay_handler))
+    .route("/send/{s}", get(send_handler))
+    .route("/receive", get(receive_handler))
     .route("/divisors/{n}", get(divisors_handler))
     .route("/fibonacci/{n}", get(fibonacci_handler))
     .route("/factorial/{n}", get(factorial_handler))
