@@ -168,7 +168,6 @@ pub enum MaroonTaskState {
   FactorialRecursionPostSleep,
   FactorialRecursionPostRecursiveCall,
   FactorialDone,
-
   SenderSendMessage,
   WaiterWaitMessageAwaiting,
 }
@@ -202,32 +201,6 @@ const fn maroon_task_state_local_vars_count(e: &MaroonTaskState) -> usize {
     _ => 0,
   }
 }
-
-/*
-factorial 3:
-
-0:
-State = FactorialEntry
-FactorialInput 3
-
-1:
-State = FactorialRecursiveCall
-FactorialArgument 3
-FactorialRecursionPostRecursiveCall
-ReturnFactorialDone
-State = FactorialEntry
-FactorialInput 3
-
-
-
-
-
-
-
-
-
-
-*/
 
 // For a given `S`, if the maroon stack contains `Retrn(S)`, how many entries above it are its local stack vars.
 #[cfg(test)]
@@ -290,7 +263,6 @@ pub enum MaroonStepResult {
   Return(MaroonTaskStackEntryValue),
 
   // right now string will be broadcasted, just for simplicity
-  // what is this Vec? Why do we need it?
   Send(String, Vec<MaroonTaskStackEntry>),
 }
 
@@ -761,7 +733,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
       }
       match step_result {
         MaroonStepResult::Done => {
-          // fsm.active_tasks.remove(&task_id); we've removed it before
+          // no need to do anything here since we've removed the task before
         }
         MaroonStepResult::Sleep(sleep_ms, new_states_vec) => {
           for new_state in new_states_vec.into_iter() {
