@@ -288,4 +288,53 @@ mod tests {
     let output_at_1000 = writer.get_outputs_as_string();
     assert_eq!(output_at_1000, "0ms:f(5);250ms:f(4);450ms:f(3);600ms:f(2);700ms:f(1);750ms:5!=120");
   }
+
+  #[tokio::test]
+  async fn test_cross_fiber() {
+    let timer = Arc::new(MockTimer::new(0));
+    let (quit_tx, _) = mpsc::channel::<()>(1);
+    let mut app_state = Arc::new(AppState {
+      fsm: Arc::new(tokio::sync::Mutex::new(MaroonRuntime {
+        task_id_generator: NextTaskIdGenerator::new(),
+        pending_operations: Default::default(),
+        active_tasks: Default::default(),
+        awaiter: None,
+      })),
+      quit_tx,
+      timer: Arc::clone(&timer),
+    });
+    let sender_writer = Arc::new(MockWriter::new_with_timer(Arc::clone(&timer)));
+    let awaiter_writer = Arc::new(MockWriter::new_with_timer(Arc::clone(&timer)));
+
+    let message = "some message".to_string();
+
+    app_state
+      .park_awaiter(
+        Arc::clone(&awaiter_writer),
+        MaroonTaskStack { maroon_stack_entries: vec![] },
+        MaroonTaskHeap::Empty,
+        format!("Receive sending message."),
+      )
+      .await;
+
+    app_state
+      .schedule(
+        Arc::clone(&sender_writer),
+        MaroonTaskStack {
+          maroon_stack_entries: vec![
+            MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::SenderInputMessage(message.clone())),
+            MaroonTaskStackEntry::State(MaroonTaskState::SenderSendMessage),
+          ],
+        },
+        MaroonTaskHeap::Empty,
+        LogicalTimeAbsoluteMs::from_millis(0),
+        format!("Sent: `{}`.", message),
+      )
+      .await;
+
+    execute_pending_operations_inner(&mut app_state, true).await;
+
+    assert_eq!("0ms:message has been sent", sender_writer.get_outputs_as_string());
+    assert_eq!(format!("0ms:got: [{message}] went through state"), awaiter_writer.get_outputs_as_string());
+  }
 }
