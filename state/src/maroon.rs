@@ -258,7 +258,7 @@ pub enum MaroonTaskHeap {
 pub enum MaroonStepResult {
   Done,
   Next(Vec<MaroonTaskStackEntry>),
-  Sleep(LogicalTimeDeltaMs, Vec<MaroonTaskStackEntry>),
+  Sleep(LogicalTimeDeltaMs, MaroonTaskState),
   Write(String, Vec<MaroonTaskStackEntry>),
   Return(MaroonTaskStackEntryValue),
 
@@ -268,7 +268,7 @@ pub enum MaroonStepResult {
 
 fn global_step(
   state: MaroonTaskState,
-  vars: Vec<MaroonTaskStackEntryValue>,
+  vars: &Vec<MaroonTaskStackEntryValue>,
   heap: &mut MaroonTaskHeap,
 ) -> MaroonStepResult {
   match state {
@@ -298,14 +298,7 @@ fn global_step(
         _ => panic!("Unexpected arguments in DelayedMessageTaskBegin: {:?}", vars),
       };
 
-      MaroonStepResult::Sleep(
-        LogicalTimeDeltaMs::from_millis(delay_ms),
-        vec![
-          MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::DelayInputMs(delay_ms)),
-          MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::DelayInputMessage(msg)),
-          MaroonTaskStackEntry::State(MaroonTaskState::DelayedMessageTaskExecute),
-        ],
-      )
+      MaroonStepResult::Sleep(LogicalTimeDeltaMs::from_millis(delay_ms), MaroonTaskState::DelayedMessageTaskExecute)
     }
     MaroonTaskState::DelayedMessageTaskExecute => {
       let (msg, delay_ms) = match (vars.get(0), vars.get(1)) {
@@ -339,10 +332,7 @@ fn global_step(
           MaroonStepResult::Write(format!("{}!", data.n), vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)])
         } else {
           data.i = i;
-          MaroonStepResult::Sleep(
-            LogicalTimeDeltaMs::from_millis(i * 10),
-            vec![MaroonTaskStackEntry::State(MaroonTaskState::DivisorsPrintAndMoveOn)],
-          )
+          MaroonStepResult::Sleep(LogicalTimeDeltaMs::from_millis(i * 10), MaroonTaskState::DivisorsPrintAndMoveOn)
         }
       } else {
         panic!("Heap type mismatch for `DivisorsTaskIteration`.");
@@ -401,10 +391,7 @@ fn global_step(
         data.index = next_index;
         data.a = next_a;
         data.b = next_b;
-        MaroonStepResult::Sleep(
-          data.delay_ms,
-          vec![MaroonTaskStackEntry::State(MaroonTaskState::FibonacciTaskCalculate)],
-        )
+        MaroonStepResult::Sleep(data.delay_ms, MaroonTaskState::FibonacciTaskCalculate)
       } else {
         panic!("Heap type mismatch for `FibonacciTaskStep`.");
       }
@@ -456,13 +443,7 @@ fn global_step(
         _ => panic!("Unexpected arguments in FactorialRecursionPostWrite: {:?}", vars),
       };
 
-      MaroonStepResult::Sleep(
-        LogicalTimeDeltaMs::from_millis(n * 50),
-        vec![
-          MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::FactorialArgument(n)),
-          MaroonTaskStackEntry::State(MaroonTaskState::FactorialRecursionPostSleep),
-        ],
-      )
+      MaroonStepResult::Sleep(LogicalTimeDeltaMs::from_millis(n * 50), MaroonTaskState::FactorialRecursionPostSleep)
     }
     MaroonTaskState::FactorialRecursionPostSleep => {
       let n = match vars.get(0) {
@@ -727,7 +708,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
         }
       }
 
-      let step_result = global_step(current_state, vars, &mut maroon_task.maroon_heap);
+      let step_result = global_step(current_state, &vars, &mut maroon_task.maroon_heap);
       if verbose {
         println!("MAROON STEP RESULT\n  {step_result:?}");
       }
@@ -735,10 +716,12 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
         MaroonStepResult::Done => {
           // no need to do anything here since we've removed the task before
         }
-        MaroonStepResult::Sleep(sleep_ms, new_states_vec) => {
-          for new_state in new_states_vec.into_iter() {
-            maroon_task.maroon_stack.maroon_stack_entries.push(new_state);
+        MaroonStepResult::Sleep(sleep_ms, new_state) => {
+          while let Some(local_var) = vars.pop() {
+            maroon_task.maroon_stack.maroon_stack_entries.push(MaroonTaskStackEntry::Value(local_var));
           }
+          maroon_task.maroon_stack.maroon_stack_entries.push(MaroonTaskStackEntry::State(new_state));
+
           debug_validate_maroon_stack(&maroon_task.maroon_stack.maroon_stack_entries);
           let scheduled_timestamp = scheduled_timestamp + sleep_ms;
           fsm.active_tasks.insert(task_id, maroon_task);

@@ -3,6 +3,7 @@ edition = "2024"
 name = "state_log"
 
 [dependencies]
+common = { path = "../common" }
 env_logger = { workspace = true }
 libp2p = { workspace = true }
 log = { workspace = true }
@@ -14,4 +15,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 testcontainers = { workspace = true }
 tokio = { workspace = true }
-common = { path = "../common"}
