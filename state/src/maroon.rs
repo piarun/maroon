@@ -1,4 +1,5 @@
 use clap::Parser;
+use core::panic;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
@@ -142,7 +143,7 @@ impl Timer for WallTimeTimer {
 pub trait Writer: Send + Sync + 'static {
   fn write_text(
     &self,
-    text: String,
+    text: impl Into<String> + Send,
     timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send
   where
@@ -167,6 +168,8 @@ pub enum MaroonTaskState {
   FactorialRecursionPostSleep,
   FactorialRecursionPostRecursiveCall,
   FactorialDone,
+  SenderSendMessage,
+  WaiterWaitMessageAwaiting,
 }
 
 // NOTE(dkorolev): These dedicated types are easier for manual development.
@@ -178,6 +181,8 @@ pub enum MaroonTaskStackEntryValue {
   FactorialInput(u64),
   FactorialArgument(u64),
   FactorialReturnValue(u64),
+  SenderInputMessage(String),
+  AwaiterInputMessage(String),
 }
 
 // For a given `S`, if the maroon stack contains `State(S)`, how many entries above it are its local stack vars.
@@ -191,6 +196,8 @@ const fn maroon_task_state_local_vars_count(e: &MaroonTaskState) -> usize {
     MaroonTaskState::FactorialDone => 2,                       // [FactorialInput, FactorialReturnValue]
     MaroonTaskState::DelayedMessageTaskBegin => 2,             // [DelayInputMs, DelayInputMessage]
     MaroonTaskState::DelayedMessageTaskExecute => 2,           // [DelayInputMs, DelayInputMessage]
+    MaroonTaskState::SenderSendMessage => 1,                   // [SenderInputMessage]
+    MaroonTaskState::WaiterWaitMessageAwaiting => 1,           // [AwaiterInputMessage]
     _ => 0,
   }
 }
@@ -254,6 +261,9 @@ pub enum MaroonStepResult {
   Sleep(LogicalTimeDeltaMs, Vec<MaroonTaskStackEntry>),
   Write(String, Vec<MaroonTaskStackEntry>),
   Return(MaroonTaskStackEntryValue),
+
+  // right now string will be broadcasted, just for simplicity
+  Send(String, Vec<MaroonTaskStackEntry>),
 }
 
 fn global_step(
@@ -262,6 +272,23 @@ fn global_step(
   heap: &mut MaroonTaskHeap,
 ) -> MaroonStepResult {
   match state {
+    MaroonTaskState::SenderSendMessage => {
+      let Some(MaroonTaskStackEntryValue::SenderInputMessage(msg)) = vars.get(0) else {
+        panic!("Unexpected arguments")
+      };
+
+      MaroonStepResult::Send(
+        format!("[{}] went through state", &msg),
+        vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
+      )
+    }
+    MaroonTaskState::WaiterWaitMessageAwaiting => {
+      let Some(MaroonTaskStackEntryValue::AwaiterInputMessage(msg)) = vars.get(0) else {
+        panic!("Unexpected arguments")
+      };
+
+      MaroonStepResult::Write(format!("got: {msg}"), vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)])
+    }
     MaroonTaskState::DelayedMessageTaskBegin => {
       let (msg, delay_ms) = match (vars.get(0), vars.get(1)) {
         (
@@ -533,8 +560,12 @@ impl PartialOrd for TimestampedMaroonTask {
 
 pub struct MaroonRuntime<W: Writer> {
   pub task_id_generator: NextTaskIdGenerator,
-  pub pending_operations: BinaryHeap<TimestampedMaroonTask>,
+
+  // any living task is in active_tasks
+  // and any taskID is in pending_operations or in awaiter
   pub active_tasks: std::collections::HashMap<MaroonTaskId, MaroonTask<W>>,
+  pub pending_operations: BinaryHeap<TimestampedMaroonTask>,
+  pub awaiter: Option<MaroonTaskId>,
 }
 
 pub struct AppState<T: Timer, W: Writer> {
@@ -556,6 +587,23 @@ impl<T: Timer, W: Writer> AppState<T, W> {
     let task_id = fsm.task_id_generator.next_task_id();
     fsm.active_tasks.insert(task_id, MaroonTask { description: task_description, writer, maroon_stack, maroon_heap });
     fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id))
+  }
+
+  pub async fn park_awaiter(
+    &self,
+    writer: Arc<W>,
+    maroon_stack: MaroonTaskStack,
+    maroon_heap: MaroonTaskHeap,
+    task_description: String,
+  ) {
+    let mut fsm = self.fsm.lock().await;
+    if fsm.awaiter.is_some() {
+      panic!("only one awaiter at once")
+    }
+    let task_id = fsm.task_id_generator.next_task_id();
+
+    fsm.awaiter = Some(task_id);
+    fsm.active_tasks.insert(task_id, MaroonTask { description: task_description, writer, maroon_stack, maroon_heap });
   }
 }
 
@@ -685,7 +733,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
       }
       match step_result {
         MaroonStepResult::Done => {
-          fsm.active_tasks.remove(&task_id);
+          // no need to do anything here since we've removed the task before
         }
         MaroonStepResult::Sleep(sleep_ms, new_states_vec) => {
           for new_state in new_states_vec.into_iter() {
@@ -704,6 +752,41 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
           debug_validate_maroon_stack(&maroon_task.maroon_stack.maroon_stack_entries);
           fsm.active_tasks.insert(task_id, maroon_task);
           fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id));
+        }
+        MaroonStepResult::Send(message, new_states_vec) => {
+          if let Some(awaiter) = fsm.awaiter.take() {
+            let Some(mut awaiting_task) = fsm.active_tasks.remove(&awaiter) else {
+              _ = maroon_task
+                .writer
+                .write_text("internal error. Awaiter is not running", Some(scheduled_timestamp))
+                .await;
+              continue;
+            };
+
+            _ = maroon_task.writer.write_text("message has been sent", Some(scheduled_timestamp)).await;
+
+            for new_state in new_states_vec.into_iter() {
+              maroon_task.maroon_stack.maroon_stack_entries.push(new_state);
+            }
+            debug_validate_maroon_stack(&maroon_task.maroon_stack.maroon_stack_entries);
+
+            fsm.active_tasks.insert(task_id, maroon_task);
+            fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id));
+
+            awaiting_task
+              .maroon_stack
+              .maroon_stack_entries
+              .push(MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::AwaiterInputMessage(message)));
+            awaiting_task
+              .maroon_stack
+              .maroon_stack_entries
+              .push(MaroonTaskStackEntry::State(MaroonTaskState::WaiterWaitMessageAwaiting));
+
+            fsm.active_tasks.insert(awaiter, awaiting_task);
+            fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, awaiter));
+          } else {
+            _ = maroon_task.writer.write_text("no awaiter. closing", Some(scheduled_timestamp)).await;
+          };
         }
         MaroonStepResult::Next(new_states_vec) => {
           for new_state in new_states_vec.into_iter() {
