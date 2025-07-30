@@ -263,7 +263,7 @@ pub enum MaroonStepResult {
   Return(MaroonTaskStackEntryValue),
 
   // right now string will be broadcasted, just for simplicity
-  Send(String, Vec<MaroonTaskStackEntry>),
+  Send(String, MaroonTaskState),
 }
 
 fn global_step(
@@ -277,10 +277,7 @@ fn global_step(
         panic!("Unexpected arguments")
       };
 
-      MaroonStepResult::Send(
-        format!("[{}] went through state", &msg),
-        vec![MaroonTaskStackEntry::State(MaroonTaskState::Completed)],
-      )
+      MaroonStepResult::Send(format!("[{}] went through state", &msg), MaroonTaskState::Completed)
     }
     MaroonTaskState::WaiterWaitMessageAwaiting => {
       let Some(MaroonTaskStackEntryValue::AwaiterInputMessage(msg)) = vars.get(0) else {
@@ -718,7 +715,7 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
           fsm.active_tasks.insert(task_id, maroon_task);
           fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id));
         }
-        MaroonStepResult::Send(message, new_states_vec) => {
+        MaroonStepResult::Send(message, new_state) => {
           if let Some(awaiter) = fsm.awaiter.take() {
             let Some(mut awaiting_task) = fsm.active_tasks.remove(&awaiter) else {
               _ = maroon_task
@@ -730,9 +727,8 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
 
             _ = maroon_task.writer.write_text("message has been sent", Some(scheduled_timestamp)).await;
 
-            for new_state in new_states_vec.into_iter() {
-              maroon_task.maroon_stack.maroon_stack_entries.push(new_state);
-            }
+            maroon_task.maroon_stack.maroon_stack_entries.push(MaroonTaskStackEntry::State(new_state));
+
             debug_validate_maroon_stack(&maroon_task.maroon_stack.maroon_stack_entries);
 
             fsm.active_tasks.insert(task_id, maroon_task);
