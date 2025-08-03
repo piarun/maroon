@@ -17,8 +17,8 @@ mod maroon;
 use maroon::*;
 
 struct WebSocketWriter {
-  sender: mpsc::Sender<String>,
-  _task: tokio::task::JoinHandle<()>,
+  sender: Option<mpsc::Sender<String>>,
+  _task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl WebSocketWriter {
@@ -32,7 +32,11 @@ impl WebSocketWriter {
       }
     });
 
-    Self { sender, _task: task }
+    Self { sender: Some(sender), _task: Some(task) }
+  }
+
+  fn new_printer() -> Self {
+    Self { sender: None, _task: None }
   }
 }
 
@@ -42,8 +46,13 @@ impl Writer for WebSocketWriter {
     text: impl Into<String> + Send,
     _timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> Result<(), Box<dyn std::error::Error>> {
-    self.sender.send(text.into()).await.map_err(Box::new)?;
-    Ok(())
+    if let Some(sender) = &self.sender {
+      sender.send(text.into()).await.map_err(Box::new)?;
+      Ok(())
+    } else {
+      println!("USW: {}", text.into());
+      Ok(())
+    }
   }
 }
 
@@ -216,6 +225,68 @@ async fn factorial_handler_ws<T: Timer>(
     .await;
 }
 
+async fn get_user_handler<T: Timer>(
+  ws: WebSocketUpgrade,
+  Path(id): Path<String>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| get_user_handler_ws(socket, id, state))
+}
+
+async fn get_user_handler_ws<T: Timer>(
+  socket: WebSocket,
+  id: String,
+  state: Arc<AppState<T, WebSocketWriter>>,
+) {
+  state
+    .schedule(
+      Arc::new(WebSocketWriter::new(socket)),
+      MaroonTaskStack {
+        maroon_stack_entries: vec![
+          MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::RequesterGetUserInput(id.clone())),
+          MaroonTaskStackEntry::State(MaroonTaskState::RequesterGetUserRequest),
+        ],
+      },
+      MaroonTaskHeap::Empty,
+      state.timer.millis_since_start(),
+      format!("Get user {id}"),
+    )
+    .await;
+}
+
+async fn create_user_handler<T: Timer>(
+  ws: WebSocketUpgrade,
+  Path((id, email, age)): Path<(String, String, u32)>,
+  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| create_user_handler_ws(socket, id, email, age, state))
+}
+
+async fn create_user_handler_ws<T: Timer>(
+  socket: WebSocket,
+  id: String,
+  email: String,
+  age: u32,
+  state: Arc<AppState<T, WebSocketWriter>>,
+) {
+  state
+    .schedule(
+      Arc::new(WebSocketWriter::new(socket)),
+      MaroonTaskStack {
+        maroon_stack_entries: vec![
+          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserAge(age)),
+          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserEmail(email)),
+          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserId(id.clone())),
+          // MaroonTaskStackEntry::State(MaroonTaskState::CreateUser),
+        ],
+      },
+      MaroonTaskHeap::Empty,
+      state.timer.millis_since_start(),
+      format!("Create user {id}"),
+    )
+    .await;
+}
+
 async fn root_handler<T: Timer, W: Writer>(_state: State<Arc<AppState<T, W>>>) -> impl IntoResponse {
   "magic"
 }
@@ -237,6 +308,7 @@ async fn state_handler<T: Timer, W: Writer>(State(state): State<Arc<AppState<T, 
     response = String::from("No active tasks\n");
   }
 
+  println!("STATE: {response}");
   response
 }
 
@@ -257,16 +329,21 @@ async fn main() {
       pending_operations: BinaryHeap::<TimestampedMaroonTask>::new(),
       active_tasks: std::collections::HashMap::new(),
       awaiter: None,
+      daemon_user_storage: None,
     })),
     quit_tx,
     timer,
   });
+
+  app_state.create_user_storage(Arc::new(WebSocketWriter::new_printer())).await;
 
   let app = Router::new()
     .route("/", get(root_handler))
     .route("/delay/{t}/{s}", get(delay_handler))
     .route("/send/{s}", get(send_handler))
     .route("/receive", get(receive_handler))
+    .route("/createUser/{id}/{email}/{age}", get(create_user_handler))
+    .route("/getUser/{id}", get(get_user_handler))
     .route("/divisors/{n}", get(divisors_handler))
     .route("/fibonacci/{n}", get(fibonacci_handler))
     .route("/factorial/{n}", get(factorial_handler))
