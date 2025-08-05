@@ -16,13 +16,13 @@ use tokio::{net::TcpListener, sync::mpsc};
 mod maroon;
 use maroon::*;
 
-struct WebSocketWriter {
-  sender: Option<mpsc::Sender<String>>,
-  _task: Option<tokio::task::JoinHandle<()>>,
+enum MaroonWriter {
+  WebSocket(mpsc::Sender<String>, tokio::task::JoinHandle<()>),
+  Printer,
 }
 
-impl WebSocketWriter {
-  fn new(socket: WebSocket) -> Self {
+impl MaroonWriter {
+  fn new_websocket(socket: WebSocket) -> Self {
     let (sender, mut receiver) = mpsc::channel::<String>(100);
     let mut socket = socket;
 
@@ -32,26 +32,29 @@ impl WebSocketWriter {
       }
     });
 
-    Self { sender: Some(sender), _task: Some(task) }
+    Self::WebSocket(sender, task)
   }
 
   fn new_printer() -> Self {
-    Self { sender: None, _task: None }
+    Self::Printer
   }
 }
 
-impl Writer for WebSocketWriter {
+impl Writer for MaroonWriter {
   async fn write_text(
     &self,
     text: impl Into<String> + Send,
     _timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(sender) = &self.sender {
-      sender.send(text.into()).await.map_err(Box::new)?;
-      Ok(())
-    } else {
-      println!("USW: {}", text.into());
-      Ok(())
+    match self {
+      MaroonWriter::WebSocket(sender, _) => {
+        sender.send(text.into()).await.map_err(Box::new)?;
+        Ok(())
+      }
+      MaroonWriter::Printer => {
+        println!("USW: {}", text.into());
+        Ok(())
+      }
     }
   }
 }
@@ -59,7 +62,7 @@ impl Writer for WebSocketWriter {
 async fn delay_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path((t, s)): Path<(u64, String)>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| delay_handler_ws(socket, state.timer.millis_since_start(), t, s, state))
 }
@@ -69,11 +72,11 @@ async fn delay_handler_ws<T: Timer>(
   ts: LogicalTimeAbsoluteMs,
   t: u64,
   s: String,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack {
         maroon_stack_entries: vec![
           MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::DelayInputMs(t)),
@@ -91,7 +94,7 @@ async fn delay_handler_ws<T: Timer>(
 async fn send_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path(s): Path<String>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| send_handler_ws(socket, state.timer.millis_since_start(), s, state))
 }
@@ -100,11 +103,11 @@ async fn send_handler_ws<T: Timer>(
   socket: WebSocket,
   ts: LogicalTimeAbsoluteMs,
   s: String,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack {
         maroon_stack_entries: vec![
           MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::SenderInputMessage(s.clone())),
@@ -120,18 +123,18 @@ async fn send_handler_ws<T: Timer>(
 
 async fn receive_handler<T: Timer>(
   ws: WebSocketUpgrade,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| receive_handler_ws(socket, state))
 }
 
 async fn receive_handler_ws<T: Timer>(
   socket: WebSocket,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .park_awaiter(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack { maroon_stack_entries: vec![] },
       MaroonTaskHeap::Empty,
       format!("Receive sending message."),
@@ -142,7 +145,7 @@ async fn receive_handler_ws<T: Timer>(
 async fn divisors_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path(a): Path<u64>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| divisors_handler_ws(socket, state.timer.millis_since_start(), a, state))
 }
@@ -151,11 +154,11 @@ async fn divisors_handler_ws<T: Timer>(
   socket: WebSocket,
   ts: LogicalTimeAbsoluteMs,
   n: u64,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack { maroon_stack_entries: vec![MaroonTaskStackEntry::State(MaroonTaskState::DivisorsTaskBegin)] },
       MaroonTaskHeap::Divisors(MaroonTaskHeapDivisors { n, i: n }),
       ts,
@@ -167,7 +170,7 @@ async fn divisors_handler_ws<T: Timer>(
 async fn fibonacci_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path(n): Path<u64>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| fibonacci_handler_ws(socket, state.timer.millis_since_start(), n, state))
 }
@@ -176,11 +179,11 @@ async fn fibonacci_handler_ws<T: Timer>(
   socket: WebSocket,
   ts: LogicalTimeAbsoluteMs,
   n: u64,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack { maroon_stack_entries: vec![MaroonTaskStackEntry::State(MaroonTaskState::FibonacciTaskBegin)] },
       MaroonTaskHeap::Fibonacci(MaroonTaskHeapFibonacci {
         n,
@@ -198,7 +201,7 @@ async fn fibonacci_handler_ws<T: Timer>(
 async fn factorial_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path(n): Path<u64>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| factorial_handler_ws(socket, state.timer.millis_since_start(), n, state))
 }
@@ -207,11 +210,11 @@ async fn factorial_handler_ws<T: Timer>(
   socket: WebSocket,
   ts: LogicalTimeAbsoluteMs,
   n: u64,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack {
         maroon_stack_entries: vec![
           MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::FactorialInput(n)),
@@ -228,7 +231,7 @@ async fn factorial_handler_ws<T: Timer>(
 async fn get_user_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path(id): Path<String>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| get_user_handler_ws(socket, id, state))
 }
@@ -236,11 +239,11 @@ async fn get_user_handler<T: Timer>(
 async fn get_user_handler_ws<T: Timer>(
   socket: WebSocket,
   id: String,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack {
         maroon_stack_entries: vec![
           MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::RequesterGetUserInput(id.clone())),
@@ -257,7 +260,7 @@ async fn get_user_handler_ws<T: Timer>(
 async fn create_user_handler<T: Timer>(
   ws: WebSocketUpgrade,
   Path((id, email, age)): Path<(String, String, u32)>,
-  State(state): State<Arc<AppState<T, WebSocketWriter>>>,
+  State(state): State<Arc<AppState<T, MaroonWriter>>>,
 ) -> impl IntoResponse {
   ws.on_upgrade(move |socket| create_user_handler_ws(socket, id, email, age, state))
 }
@@ -267,11 +270,11 @@ async fn create_user_handler_ws<T: Timer>(
   id: String,
   email: String,
   age: u32,
-  state: Arc<AppState<T, WebSocketWriter>>,
+  state: Arc<AppState<T, MaroonWriter>>,
 ) {
   state
     .schedule(
-      Arc::new(WebSocketWriter::new(socket)),
+      Arc::new(MaroonWriter::new_websocket(socket)),
       MaroonTaskStack {
         maroon_stack_entries: vec![
           // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserAge(age)),
@@ -335,7 +338,7 @@ async fn main() {
     timer,
   });
 
-  app_state.create_user_storage(Arc::new(WebSocketWriter::new_printer())).await;
+  app_state.create_user_storage(Arc::new(MaroonWriter::new_printer())).await;
 
   let app = Router::new()
     .route("/", get(root_handler))
