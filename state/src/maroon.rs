@@ -1,9 +1,14 @@
 use clap::Parser;
 use core::panic;
+use core::task;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
+
+use crate::maroon;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LogicalTimeAbsoluteMs(u64);
@@ -151,6 +156,13 @@ pub trait Writer: Send + Sync + 'static {
 }
 
 #[derive(Clone, Debug)]
+pub struct User {
+  pub id: String,
+  pub email: String,
+  pub age: u32,
+}
+
+#[derive(Clone, Debug)]
 pub enum MaroonTaskState {
   Completed,
   DelayedMessageTaskBegin,
@@ -170,6 +182,14 @@ pub enum MaroonTaskState {
   FactorialDone,
   SenderSendMessage,
   WaiterWaitMessageAwaiting,
+
+  // for continuously running fibers that are awaiting input messages
+  Idle,
+  // It's a state for userStorage fiber
+  UsersStorageGetUserRequest,
+  // States for fiber that wants to get user
+  RequesterGetUserRequest,
+  RequesterGetUserGot,
 }
 
 // NOTE(dkorolev): These dedicated types are easier for manual development.
@@ -183,6 +203,16 @@ pub enum MaroonTaskStackEntryValue {
   FactorialReturnValue(u64),
   SenderInputMessage(String),
   AwaiterInputMessage(String),
+
+  UserStorageGetUserRequestUserId(String),
+  UserStorageGetUserRequestRetTask(MaroonTaskId),
+
+  RequesterGetUserInput(String),
+  RequesterGotUserResponse(Option<User>),
+
+  CreateUserAge(u32),
+  CreateUserEmail(String),
+  CreateUserId(String),
 }
 
 // For a given `S`, if the maroon stack contains `State(S)`, how many entries above it are its local stack vars.
@@ -198,6 +228,9 @@ const fn maroon_task_state_local_vars_count(e: &MaroonTaskState) -> usize {
     MaroonTaskState::DelayedMessageTaskExecute => 2,           // [DelayInputMs, DelayInputMessage]
     MaroonTaskState::SenderSendMessage => 1,                   // [SenderInputMessage]
     MaroonTaskState::WaiterWaitMessageAwaiting => 1,           // [AwaiterInputMessage]
+    MaroonTaskState::Idle => 0,                                // []
+    MaroonTaskState::RequesterGetUserRequest => 1,             // [RequesterGetUserInput]
+    MaroonTaskState::RequesterGetUserGot => 1,                 // [RequesterGotUserResponse]
     _ => 0,
   }
 }
@@ -251,6 +284,7 @@ pub enum MaroonTaskHeap {
   Empty,
   Divisors(MaroonTaskHeapDivisors),
   Fibonacci(MaroonTaskHeapFibonacci),
+  UsersStorage(HashMap<String, User>),
 }
 
 // TODO(dkorolev): Do not copy "stack vars" back and forth.
@@ -264,6 +298,27 @@ pub enum MaroonStepResult {
 
   // right now string will be broadcasted, just for simplicity
   Send(String, MaroonTaskState),
+
+  // Will send InputMessage request for getting a specific user into InputQueue of a particular userStorage
+  //
+  // no taskState because it will be awaiting after this request
+  // very similar to done but it will stay in active tasks and awaiting
+  // until response will come back and puts next values to stack
+  // maybe rename it to GetUserRequestAndAwait ? or smth like this
+  // maybe it would be cleaner to introduce another MaroonTaskState::Await ?
+  SendGetUserRequestIM(String),
+
+  // will find awaiting task by second param
+  // will find a user by first param
+  // will put found user into in_queue for tasks[MaroonTaskId]
+  UserStorageSendResponse(String, MaroonTaskId),
+}
+
+// messages for input queus that each fiber has for cross-fiber communication
+#[derive(Debug)]
+pub enum MaroonInputMessageTask {
+  // get user by id(first argument) and return it to taskId(second argument)
+  GetUser(String, MaroonTaskId),
 }
 
 fn global_step(
@@ -272,6 +327,39 @@ fn global_step(
   heap: &mut MaroonTaskHeap,
 ) -> MaroonStepResult {
   match state {
+    MaroonTaskState::Idle => {
+      // runtime should not make step forward here
+      // Idle is a signal for runtime that it should check input message queue and if it's empty - remove from pending tasks but keep in active
+      panic!("shoudnt be here")
+    }
+    MaroonTaskState::RequesterGetUserRequest => {
+      // get task that is responsible for managing users
+      // add smth to it's task stack to get the user
+      // when that task will be executed - it will find this getUser task and puts
+      let Some(MaroonTaskStackEntryValue::RequesterGetUserInput(u_id)) = vars.get(0) else {
+        panic!("Unexpected arguments")
+      };
+
+      MaroonStepResult::SendGetUserRequestIM(u_id.clone())
+    }
+    MaroonTaskState::RequesterGetUserGot => {
+      let Some(MaroonTaskStackEntryValue::RequesterGotUserResponse(user)) = vars.get(0) else {
+        panic!("Unexpected arguments")
+      };
+
+      MaroonStepResult::Write(format!("got user: {:?}", user), MaroonTaskState::Completed)
+    }
+    MaroonTaskState::UsersStorageGetUserRequest => {
+      let (await_task_id, u_id) = match (vars.get(0), vars.get(1)) {
+        (
+          Some(MaroonTaskStackEntryValue::UserStorageGetUserRequestUserId(u_id)),
+          Some(MaroonTaskStackEntryValue::UserStorageGetUserRequestRetTask(await_task_id)),
+        ) => (await_task_id, u_id),
+        _ => panic!("Unexpected arguments in UsersStorageGetUserRequest: {:?}", vars),
+      };
+
+      MaroonStepResult::UserStorageSendResponse(u_id.clone(), await_task_id.clone())
+    }
     MaroonTaskState::SenderSendMessage => {
       let Some(MaroonTaskStackEntryValue::SenderInputMessage(msg)) = vars.get(0) else {
         panic!("Unexpected arguments")
@@ -470,6 +558,7 @@ pub struct MaroonTask<W: Writer> {
   pub writer: Arc<W>,
   pub maroon_stack: MaroonTaskStack,
   pub maroon_heap: MaroonTaskHeap,
+  pub in_queue: VecDeque<MaroonInputMessageTask>,
 }
 
 pub struct TimestampedMaroonTask {
@@ -524,6 +613,11 @@ pub struct MaroonRuntime<W: Writer> {
   pub active_tasks: std::collections::HashMap<MaroonTaskId, MaroonTask<W>>,
   pub pending_operations: BinaryHeap<TimestampedMaroonTask>,
   pub awaiter: Option<MaroonTaskId>,
+
+  // Daemon or static info about always alive singletons
+  // can be created as a map<String,MaroonTaskId>, but it will be generated...
+  // so can be created as a separate variable
+  pub daemon_user_storage: Option<MaroonTaskId>,
 }
 
 pub struct AppState<T: Timer, W: Writer> {
@@ -543,7 +637,10 @@ impl<T: Timer, W: Writer> AppState<T, W> {
   ) {
     let mut fsm = self.fsm.lock().await;
     let task_id = fsm.task_id_generator.next_task_id();
-    fsm.active_tasks.insert(task_id, MaroonTask { description: task_description, writer, maroon_stack, maroon_heap });
+    fsm.active_tasks.insert(
+      task_id,
+      MaroonTask { description: task_description, writer, maroon_stack, maroon_heap, in_queue: VecDeque::new() },
+    );
     fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id))
   }
 
@@ -561,7 +658,42 @@ impl<T: Timer, W: Writer> AppState<T, W> {
     let task_id = fsm.task_id_generator.next_task_id();
 
     fsm.awaiter = Some(task_id);
-    fsm.active_tasks.insert(task_id, MaroonTask { description: task_description, writer, maroon_stack, maroon_heap });
+    fsm.active_tasks.insert(
+      task_id,
+      MaroonTask { description: task_description, writer, maroon_stack, maroon_heap, in_queue: VecDeque::new() },
+    );
+  }
+
+  // TODO check that it's the only one
+  // TODO: dont have them as part of active_tasks but daemons???
+  pub async fn create_user_storage(
+    &self,
+    writer: Arc<W>,
+  ) {
+    let mut fsm = self.fsm.lock().await;
+    if fsm.daemon_user_storage.is_some() {
+      // from one side I can return an error here,
+      // but from another - calling of this function will be generated, so, should be fine
+      panic!("already created")
+    }
+
+    let task_id = fsm.task_id_generator.next_task_id();
+    fsm.active_tasks.insert(
+      task_id,
+      MaroonTask {
+        description: "Users storage".to_string(),
+        writer: writer,
+        maroon_stack: MaroonTaskStack {
+          maroon_stack_entries: vec![MaroonTaskStackEntry::State(MaroonTaskState::Idle)],
+        },
+        maroon_heap: MaroonTaskHeap::UsersStorage(HashMap::from_iter([(
+          "id1".to_string(),
+          User { id: "id1".to_string(), email: "aha@uhu.com".to_string(), age: 42 },
+        )])),
+        in_queue: VecDeque::new(),
+      },
+    );
+    fsm.daemon_user_storage = Some(task_id);
   }
 }
 
@@ -660,14 +792,12 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
       // Before any work is done, let's validate the maroon stack, to be safe.
       debug_validate_maroon_stack(&maroon_task.maroon_stack.maroon_stack_entries);
 
-      let current_stack_entry = maroon_task
-        .maroon_stack
-        .maroon_stack_entries
-        .pop()
-        .expect("The active task should have at least one state in call stack.");
+      let current_stack_entry = maroon_task.maroon_stack.maroon_stack_entries.pop().expect(
+        format!("The active task should have at least one state in call stack. [{}]", maroon_task.description).as_str(),
+      );
 
       // Extract the state from the top of the stack. It should be a state, not a value.
-      let current_state = if let MaroonTaskStackEntry::State(state) = &current_stack_entry {
+      let mut current_state = if let MaroonTaskStackEntry::State(state) = &current_stack_entry {
         state.clone()
       } else {
         panic!("Expected a state at the top of the stack, found a value.");
@@ -682,6 +812,31 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
           vars.push(v);
         } else {
           panic!("The value on the stack appears to be a 'function', not a `value`, aborting.");
+        }
+      }
+
+      if let MaroonTaskState::Idle = current_state {
+        if maroon_task.in_queue.len() == 0 {
+          // if state is idle - nothing should be on a stack anymore
+          // thought/TODO: even Idle, maybe, shouldn't be on a stack? Maybe instead of explicit idle - make the stack empty?
+          // or maybe we shouldn't check it like this? What if we're inside a recursion call?
+          assert!(maroon_task.maroon_stack.maroon_stack_entries.len() == 0);
+          // TODO: who will add this task later to pending?
+          // Smbd who will add a new message into the queue? Make sense... really?
+          // Looks ok, but I'm worried that it becomes harded to maintain invariant, since it's generated - probably fine, but many options for mistakes
+          // TODO: think later how to make it safer? (ex: special function that will add message into the queue that won't oly add message but will put task into all the necessary queues and collections)
+          maroon_task.maroon_stack.maroon_stack_entries.push(MaroonTaskStackEntry::State(MaroonTaskState::Idle));
+          fsm.active_tasks.insert(task_id, maroon_task);
+          continue;
+        }
+
+        let message = maroon_task.in_queue.pop_front().expect("I've just checked that queue is not empty");
+        match message {
+          MaroonInputMessageTask::GetUser(u_id, awaiter_task_id) => {
+            vars.push(MaroonTaskStackEntryValue::UserStorageGetUserRequestUserId(u_id));
+            vars.push(MaroonTaskStackEntryValue::UserStorageGetUserRequestRetTask(awaiter_task_id));
+            current_state = MaroonTaskState::UsersStorageGetUserRequest;
+          }
         }
       }
 
@@ -767,6 +922,48 @@ pub async fn execute_pending_operations_inner<T: Timer, W: Writer>(
           } else {
             panic!("Should be `Return`-ing to a state, has `{:?}` on top of the stack instead.", popped);
           }
+        }
+        MaroonStepResult::SendGetUserRequestIM(u_id) => {
+          let u_storage_id = fsm.daemon_user_storage.expect("should be here, since it's 'static'");
+          let mut u_storage_task = fsm.active_tasks.remove(&u_storage_id).expect("should be here, since it's 'static'");
+
+          // here probably should be an incoming queue, not stack
+          u_storage_task.in_queue.push_back(MaroonInputMessageTask::GetUser(u_id, task_id));
+
+          // I added here a message into an input queue but not on stack
+          // I think it's the right way of doing it
+          // runtime should check current stack and if it's empty - check input queue and transform input message into stack values and continue execution
+          fsm.active_tasks.insert(u_storage_id, u_storage_task);
+          // I also add storage task into pending queue in case it's in Idle state and won't be waken
+          fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, u_storage_id));
+
+          // add to active but don't add to pending cause awaiting
+          fsm.active_tasks.insert(task_id, maroon_task);
+        }
+        MaroonStepResult::UserStorageSendResponse(u_id, awaiter_id) => {
+          let mut awaiter = fsm.active_tasks.remove(&awaiter_id).expect("state is corrupted, drink a tea");
+
+          let user = match &maroon_task.maroon_heap {
+            MaroonTaskHeap::UsersStorage(store) => store.get(&u_id).cloned(),
+            _ => panic!("non-userstorage fiber should never end up in this state"),
+          };
+
+          awaiter
+            .maroon_stack
+            .maroon_stack_entries
+            .push(MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::RequesterGotUserResponse(user)));
+          awaiter
+            .maroon_stack
+            .maroon_stack_entries
+            .push(MaroonTaskStackEntry::State(MaroonTaskState::RequesterGetUserGot));
+
+          maroon_task.maroon_stack.maroon_stack_entries.push(MaroonTaskStackEntry::State(MaroonTaskState::Idle));
+
+          fsm.active_tasks.insert(awaiter_id, awaiter);
+          fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, awaiter_id));
+
+          fsm.active_tasks.insert(task_id, maroon_task);
+          fsm.pending_operations.push(TimestampedMaroonTask::new(scheduled_timestamp, task_id));
         }
       }
       if verbose {
