@@ -17,7 +17,7 @@ mod maroon;
 use maroon::*;
 
 enum MaroonWriter {
-  WebSocket(mpsc::Sender<String>, tokio::task::JoinHandle<()>),
+  WebSocket(mpsc::Sender<String>),
   Printer,
 }
 
@@ -26,13 +26,13 @@ impl MaroonWriter {
     let (sender, mut receiver) = mpsc::channel::<String>(100);
     let mut socket = socket;
 
-    let task = tokio::spawn(async move {
+    tokio::spawn(async move {
       while let Some(text) = receiver.recv().await {
         let _ = socket.send(Message::Text(text.into())).await;
       }
     });
 
-    Self::WebSocket(sender, task)
+    Self::WebSocket(sender)
   }
 
   fn new_printer() -> Self {
@@ -47,7 +47,7 @@ impl Writer for MaroonWriter {
     _timestamp: Option<LogicalTimeAbsoluteMs>,
   ) -> Result<(), Box<dyn std::error::Error>> {
     match self {
-      MaroonWriter::WebSocket(sender, _) => {
+      MaroonWriter::WebSocket(sender) => {
         sender.send(text.into()).await.map_err(Box::new)?;
         Ok(())
       }
@@ -257,39 +257,6 @@ async fn get_user_handler_ws<T: Timer>(
     .await;
 }
 
-async fn create_user_handler<T: Timer>(
-  ws: WebSocketUpgrade,
-  Path((id, email, age)): Path<(String, String, u32)>,
-  State(state): State<Arc<AppState<T, MaroonWriter>>>,
-) -> impl IntoResponse {
-  ws.on_upgrade(move |socket| create_user_handler_ws(socket, id, email, age, state))
-}
-
-async fn create_user_handler_ws<T: Timer>(
-  socket: WebSocket,
-  id: String,
-  email: String,
-  age: u32,
-  state: Arc<AppState<T, MaroonWriter>>,
-) {
-  state
-    .schedule(
-      Arc::new(MaroonWriter::new_websocket(socket)),
-      MaroonTaskStack {
-        maroon_stack_entries: vec![
-          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserAge(age)),
-          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserEmail(email)),
-          // MaroonTaskStackEntry::Value(MaroonTaskStackEntryValue::CreateUserId(id.clone())),
-          // MaroonTaskStackEntry::State(MaroonTaskState::CreateUser),
-        ],
-      },
-      MaroonTaskHeap::Empty,
-      state.timer.millis_since_start(),
-      format!("Create user {id}"),
-    )
-    .await;
-}
-
 async fn root_handler<T: Timer, W: Writer>(_state: State<Arc<AppState<T, W>>>) -> impl IntoResponse {
   "magic"
 }
@@ -345,7 +312,6 @@ async fn main() {
     .route("/delay/{t}/{s}", get(delay_handler))
     .route("/send/{s}", get(send_handler))
     .route("/receive", get(receive_handler))
-    .route("/createUser/{id}/{email}/{age}", get(create_user_handler))
     .route("/getUser/{id}", get(get_user_handler))
     .route("/divisors/{n}", get(divisors_handler))
     .route("/fibonacci/{n}", get(fibonacci_handler))
