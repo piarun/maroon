@@ -1,5 +1,8 @@
 use crate::{
-  ast::{BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, TypeName, VarDecl},
+  ast::{
+    BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, TypeName,
+    VarDecl,
+  },
   parser,
 };
 
