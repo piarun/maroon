@@ -129,7 +129,11 @@ fn parse_statement(pair: Pair<Rule>) -> Result<Statement, String> {
       Ok(Statement::Return(expr))
     }
     Rule::if_stmt => parse_if_stmt(p),
-    _ => Err("statement: unexpected rule".into()),
+    Rule::expr => {
+      let expr = parse_expr(p)?;
+      Ok(Statement::Expr(expr))
+    }
+    _ => Err(format!("statement: unexpected rule {:?}", p.as_rule())),
   }
 }
 

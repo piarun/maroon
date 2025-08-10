@@ -23,7 +23,7 @@ param = { identifier ~ ":" ~ type_name }
 block = { "{" ~ statement* ~ "}" }
 
 // ---- Statements ----
-statement = { binding_stmt | return_stmt | if_stmt }
+statement = { binding_stmt | return_stmt | if_stmt | expr }
 binding_stmt = { binding_kind ~ identifier ~ ":" ~ type_name ~ ( "=" ~ expr )? }
 binding_kind = { "let" | "var" }
 return_stmt = { "return" ~ expr }

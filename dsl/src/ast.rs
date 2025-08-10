@@ -46,6 +46,7 @@ pub enum Statement {
   VarDecl(VarDecl),
   Return(Expr),
   If { cond: Expr, then_blk: Block, else_blk: Option<Block> },
+  Expr(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

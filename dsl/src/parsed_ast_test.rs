@@ -141,3 +141,57 @@ fn test_parse_program() {
 
   assert_eq!(expected, program.unwrap())
 }
+
+#[test]
+fn test_expression_in_statement() {
+  let input = r#" 
+        let s: i32 = 10 
+        if s == 5 { 
+          let a: i32 = 10 + s 
+          print(a) 
+        } else { 
+          print(4) 
+        } 
+    "#;
+
+  let program = parser::parse_program(input);
+  println!("{:#?}", program);
+  assert!(program.is_ok());
+
+  let expected = Program {
+    items: vec![
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "s".to_string(),
+        ty: TypeName::I32,
+        init: Some(Expr::Int(10)),
+      })),
+      Item::Statement(Statement::If {
+        cond: Expr::Binary {
+          left: Box::new(Expr::Ident("s".to_string())),
+          op: BinOp::Eq,
+          right: Box::new(Expr::Int(5)),
+        },
+        then_blk: Block {
+          statements: vec![
+            Statement::VarDecl(VarDecl {
+              mutability: Mutability::Immutable,
+              name: "a".to_string(),
+              ty: TypeName::I32,
+              init: Some(Expr::Binary {
+                left: Box::new(Expr::Int(10)),
+                op: BinOp::Add,
+                right: Box::new(Expr::Ident("s".to_string())),
+              }),
+            }),
+            Statement::Expr(Expr::Call { name: "print".to_string(), args: vec![Expr::Ident("a".to_string())] }),
+          ],
+        },
+        else_blk: Some(Block {
+          statements: vec![Statement::Expr(Expr::Call { name: "print".to_string(), args: vec![Expr::Int(4)] })],
+        }),
+      }),
+    ],
+  };
+  assert_eq!(expected, program.unwrap())
+}
