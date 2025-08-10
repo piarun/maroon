@@ -1,14 +1,11 @@
 use clap::Parser;
 use core::panic;
-use core::task;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
-
-use crate::maroon;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LogicalTimeAbsoluteMs(u64);
@@ -209,10 +206,6 @@ pub enum MaroonTaskStackEntryValue {
 
   RequesterGetUserInput(String),
   RequesterGotUserResponse(Option<User>),
-
-  CreateUserAge(u32),
-  CreateUserEmail(String),
-  CreateUserId(String),
 }
 
 // For a given `S`, if the maroon stack contains `State(S)`, how many entries above it are its local stack vars.
@@ -347,7 +340,12 @@ fn global_step(
         panic!("Unexpected arguments")
       };
 
-      MaroonStepResult::Write(format!("got user: {:?}", user), MaroonTaskState::Completed)
+      match user {
+        Some(u) => {
+          MaroonStepResult::Write(format!("got user: {}:{}:{}", u.id, u.age, u.email), MaroonTaskState::Completed)
+        }
+        None => MaroonStepResult::Write(format!("Not found user"), MaroonTaskState::Completed),
+      }
     }
     MaroonTaskState::UsersStorageGetUserRequest => {
       let (await_task_id, u_id) = match (vars.get(0), vars.get(1)) {
