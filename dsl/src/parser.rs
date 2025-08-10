@@ -182,6 +182,10 @@ fn parse_equality(pair: Pair<Rule>) -> Result<Expr, String> {
       Rule::equality_op => match op_or_rest.as_str() {
         "==" => BinOp::Eq,
         "!=" => BinOp::Ne,
+        ">" => BinOp::Gt,
+        "<" => BinOp::Lt,
+        ">=" => BinOp::Ge,
+        "<=" => BinOp::Le,
         _ => return Err("equality: bad op".into()),
       },
       _ => return Err("equality: expected op".into()),

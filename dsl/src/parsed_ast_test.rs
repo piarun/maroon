@@ -10,7 +10,7 @@ use crate::{
 fn test_parse_program() {
   let input = r#"
         fn factorial(n: i32) -> i32 {
-            if n == 1 {
+            if n <= 1 {
                 return 1
             }
             return n * factorial(n - 1)
@@ -56,7 +56,7 @@ fn test_parse_program() {
             Statement::If {
               cond: Expr::Binary {
                 left: Box::new(Expr::Ident("n".to_string())),
-                op: BinOp::Eq,
+                op: BinOp::Le,
                 right: Box::new(Expr::Int(1)),
               },
               then_blk: Block { statements: vec![Statement::Return(Expr::Int(1))] },

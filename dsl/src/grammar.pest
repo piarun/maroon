@@ -34,7 +34,7 @@ if_stmt = { "if" ~ expr ~ block ~ ( "else" ~ block )? }
 expr        = { equality }
 
 equality    = { add ~ ( equality_op ~ add )* }
-equality_op = { "==" | "!=" }       // <<< not silent
+equality_op = { "==" | "!=" | ">=" | "<=" | ">" | "<" }       // <<< not silent
 
 add         = { mul ~ ( add_op ~ mul )* }
 add_op      = { "+" | "-" }         // <<< not silent
