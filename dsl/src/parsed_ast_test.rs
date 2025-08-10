@@ -144,14 +144,14 @@ fn test_parse_program() {
 
 #[test]
 fn test_expression_in_statement() {
-  let input = r#" 
-        let s: i32 = 10 
-        if s == 5 { 
-          let a: i32 = 10 + s 
-          print(a) 
-        } else { 
-          print(4) 
-        } 
+  let input = r#"
+        let s: i32 = 10
+        if s == 5 {
+          let a: i32 = 10 + s
+          print(a)
+        } else {
+          print(4)
+        }
     "#;
 
   let program = parser::parse_program(input);
