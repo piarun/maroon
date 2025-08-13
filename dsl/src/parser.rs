@@ -71,28 +71,32 @@ fn parse_function(pair: Pair<Rule>) -> Result<Function, String> {
 
   let name = inner.next().ok_or_else(|| "function: missing name".to_string())?.as_str().to_string();
 
-  // optional
+  // Parse parameters if present
   let mut params = Vec::new();
-  let next = inner.next().ok_or_else(|| "function: missing after name".to_string())?;
-  let (ret_and_rest, had_params) = match next.as_rule() {
-    Rule::param_list => {
-      for p in next.into_inner() {
-        if p.as_rule() == Rule::param {
-          params.push(parse_param(p)?);
-        }
+  let mut next = inner.next().ok_or_else(|| "function: missing after name".to_string())?;
+
+  if next.as_rule() == Rule::param_list {
+    for p in next.into_inner() {
+      if p.as_rule() == Rule::param {
+        params.push(parse_param(p)?);
       }
-      (inner.next().ok_or("function: missing return type")?, true)
     }
-    Rule::type_name => (next, false),
-    _ => return Err("function: unexpected after name".into()),
+    next = inner.next().ok_or_else(|| "function: missing after params".to_string())?;
+  }
+
+  // Parse return type if present, otherwise default to Unit
+  let ret_ty = match next.as_rule() {
+    Rule::type_name => {
+      let ret = parse_type_name(next)?;
+      next = inner.next().ok_or_else(|| "function: missing body block".to_string())?;
+      ret
+    }
+    Rule::block => TypeName::Void, // No return type specified, default to Void
+    _ => return Err("function: unexpected token after params".into()),
   };
 
-  // return type
-  let ret_ty = if had_params { parse_type_name(ret_and_rest)? } else { parse_type_name(ret_and_rest)? };
-
-  // body
-  let body_pair = inner.next().ok_or_else(|| "function: missing body block".to_string())?;
-  let body = parse_block(body_pair)?;
+  // Parse body
+  let body = parse_block(next)?;
 
   Ok(Function { name, params, ret: ret_ty, body })
 }

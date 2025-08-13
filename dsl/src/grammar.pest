@@ -17,7 +17,7 @@ struct_fields = { struct_field ~ ("," ~ struct_field)* ~ comma_trailing? }
 struct_field = { identifier ~ ":" ~ type_name }
 
 // ---- Functions ----
-function = { "fn" ~ identifier ~ "(" ~ param_list? ~ ")" ~ "->" ~ type_name ~ block }
+function = { "fn" ~ identifier ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_name)? ~ block }
 param_list = { param ~ ("," ~ param)* ~ comma_trailing? }
 param = { identifier ~ ":" ~ type_name }
 block = { "{" ~ statement* ~ "}" }

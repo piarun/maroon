@@ -20,6 +20,10 @@ fn test_parse_program() {
           return a * b
         }
 
+        fn noReturnFunction(a: i32) {
+          print(a)
+        }
+
         // calls and expression assignment
         let six: i32 = multiply(2,3)
         let result: i32 = factorial(five)
@@ -89,6 +93,17 @@ fn test_parse_program() {
             left: Box::new(Expr::Ident("a".to_string())),
             op: BinOp::Mul,
             right: Box::new(Expr::Ident("b".to_string())),
+          })],
+        },
+      }),
+      Item::Function(Function {
+        name: "noReturnFunction".to_string(),
+        params: vec![Param { name: "a".to_string(), ty: TypeName::I32 }],
+        ret: TypeName::Void,
+        body: Block {
+          statements: vec![Statement::Expr(Expr::Call {
+            name: "print".to_string(),
+            args: vec![Expr::Ident("a".to_string())],
           })],
         },
       }),
@@ -193,5 +208,34 @@ fn test_expression_in_statement() {
       }),
     ],
   };
+  assert_eq!(expected, program.unwrap())
+}
+
+#[test]
+fn test_function_without_return_type() {
+  let input = r#"
+        fn print_hello() {
+            print("Hello")
+        }
+    "#;
+
+  let program = parser::parse_program(input);
+  println!("{:#?}", program);
+  assert!(program.is_ok());
+
+  let expected = Program {
+    items: vec![Item::Function(Function {
+      name: "print_hello".to_string(),
+      params: vec![],
+      ret: TypeName::Void,
+      body: Block {
+        statements: vec![Statement::Expr(Expr::Call {
+          name: "print".to_string(),
+          args: vec![Expr::Str("Hello".to_string())],
+        })],
+      },
+    })],
+  };
+
   assert_eq!(expected, program.unwrap())
 }

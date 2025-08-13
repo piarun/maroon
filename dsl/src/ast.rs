@@ -68,6 +68,7 @@ pub enum TypeName {
   StringTy,
   I32,
   I64,
+  Void, // For functions that don't return anything
   Array(Box<TypeName>),
   Map(Box<TypeName>, Box<TypeName>),
   Custom(String),
