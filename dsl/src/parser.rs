@@ -85,18 +85,16 @@ fn parse_function(pair: Pair<Rule>) -> Result<Function, String> {
     next = inner.next().ok_or_else(|| "function: missing after params".to_string())?;
   }
 
-  // Parse return type if present, otherwise default to Unit
   let ret_ty = match next.as_rule() {
     Rule::type_name => {
       let ret = parse_type_name(next)?;
       next = inner.next().ok_or_else(|| "function: missing body block".to_string())?;
       ret
     }
-    Rule::block => TypeName::Void, // No return type specified, default to Void
+    Rule::block => TypeName::Void,
     _ => return Err("function: unexpected token after params".into()),
   };
 
-  // Parse body
   let body = parse_block(next)?;
 
   Ok(Function { name, params, ret: ret_ty, body })
@@ -246,6 +244,7 @@ fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
       parse_primary(inner)
     }
     Rule::call => parse_call(pair),
+    Rule::sync_call => parse_sync_call(pair),
     Rule::identifier => Ok(Expr::Ident(pair.as_str().to_string())),
     Rule::int => {
       let n: i64 = pair.as_str().parse().map_err(|e| format!("invalid int: {e}"))?;
@@ -281,6 +280,24 @@ fn parse_call(pair: Pair<Rule>) -> Result<Expr, String> {
     }
   }
   Ok(Expr::Call { name, args })
+}
+
+fn parse_sync_call(pair: Pair<Rule>) -> Result<Expr, String> {
+  let mut inner = pair.into_inner();
+  let name = inner.next().ok_or_else(|| "sync_call: missing name".to_string())?.as_str().to_string();
+  let mut args = Vec::new();
+  if let Some(next) = inner.next() {
+    if next.as_rule() == Rule::arg_list {
+      for a in next.into_inner() {
+        if a.as_rule() == Rule::expr {
+          args.push(parse_expr(a)?);
+        }
+      }
+    } else {
+      // no args
+    }
+  }
+  Ok(Expr::SyncCall { name, args })
 }
 
 fn parse_array_lit(pair: Pair<Rule>) -> Result<Expr, String> {

@@ -83,6 +83,7 @@ pub enum Expr {
   MapLit(Vec<(Expr, Expr)>),
   StructLit { name: String, fields: Vec<StructLitField> },
   Call { name: String, args: Vec<Expr> },
+  SyncCall { name: String, args: Vec<Expr> },
   Binary { left: Box<Expr>, op: BinOp, right: Box<Expr> },
 }
 

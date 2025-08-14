@@ -314,3 +314,35 @@ fn test_function_struct_construction() {
 
   assert_eq!(expected, program.unwrap())
 }
+
+#[test]
+fn test_syn_function_call() {
+  let input = r#"
+        fn someFunction() {
+          let i: i32 = sync randomGenerator()
+        }
+    "#;
+
+  let program = parser::parse_program(input);
+  println!("{:#?}", program);
+  assert!(program.is_ok());
+
+  let expected = Program {
+    items: vec![Item::Function(Function {
+      name: "someFunction".to_string(),
+      params: vec![],
+      ret: TypeName::Void,
+      body: Block {
+        statements: vec![Statement::VarDecl(VarDecl {
+          mutability: Mutability::Immutable,
+          name: "i".to_string(),
+          ty: TypeName::I32,
+          init: Some(Expr::SyncCall { name: "randomGenerator".to_string(), args: vec![] }),
+        })],
+      },
+    })],
+  };
+
+  assert_eq!(expected, program.unwrap())
+}
+
