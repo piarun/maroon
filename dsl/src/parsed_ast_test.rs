@@ -1,7 +1,7 @@
 use crate::{
   ast::{
-    BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, TypeName,
-    VarDecl,
+    BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, StructLitField,
+    TypeName, VarDecl,
   },
   parser,
 };
@@ -235,6 +235,81 @@ fn test_function_without_return_type() {
         })],
       },
     })],
+  };
+
+  assert_eq!(expected, program.unwrap())
+}
+
+#[test]
+fn test_function_struct_construction() {
+  let input = r#"
+        struct User {
+          id: String,
+          email: String,
+          age: i32,
+        }
+
+        let id: String = "123"
+        let email: String = "test@test.com"
+        let age: i32 = 10
+
+        let my_user: User = User { id: id, email: email, age: age }
+        // map construction still work
+        let my_map: map[String]i32 = { "key": 42 }
+    "#;
+
+  let program = parser::parse_program(input);
+  println!("{:#?}", program);
+  assert!(program.is_ok());
+
+  let expected = Program {
+    items: vec![
+      Item::Struct(StructDef {
+        name: "User".to_string(),
+        fields: vec![
+          StructField { name: "id".to_string(), ty: TypeName::StringTy },
+          StructField { name: "email".to_string(), ty: TypeName::StringTy },
+          StructField { name: "age".to_string(), ty: TypeName::I32 },
+        ],
+      }),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "id".to_string(),
+        ty: TypeName::StringTy,
+        init: Some(Expr::Str("123".to_string())),
+      })),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "email".to_string(),
+        ty: TypeName::StringTy,
+        init: Some(Expr::Str("test@test.com".to_string())),
+      })),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "age".to_string(),
+        ty: TypeName::I32,
+        init: Some(Expr::Int(10)),
+      })),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "my_user".to_string(),
+        ty: TypeName::Custom("User".to_string()),
+        init: Some(Expr::StructLit {
+          name: "User".to_string(),
+          fields: vec![
+            StructLitField { name: "id".to_string(), value: Expr::Ident("id".to_string()) },
+            StructLitField { name: "email".to_string(), value: Expr::Ident("email".to_string()) },
+            StructLitField { name: "age".to_string(), value: Expr::Ident("age".to_string()) },
+          ],
+        }),
+      })),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "my_map".to_string(),
+        ty: TypeName::Map(Box::new(TypeName::StringTy), Box::new(TypeName::I32)),
+        init: Some(Expr::MapLit(vec![(Expr::Str("key".to_string()), Expr::Int(42))])),
+      })),
+    ],
   };
 
   assert_eq!(expected, program.unwrap())

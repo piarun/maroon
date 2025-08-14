@@ -48,6 +48,7 @@ primary = {
     | string
     | array_lit
     | map_lit
+    | struct_lit
     | identifier
     | "(" ~ expr ~ ")"
 }
@@ -60,6 +61,8 @@ arg_list = { expr ~ ("," ~ expr)* ~ comma_trailing? }
 array_lit = { "[" ~ (expr ~ ("," ~ expr)* ~ comma_trailing?)? ~ "]" }
 map_lit   = { "{" ~ (map_entry ~ ("," ~ map_entry)* ~ comma_trailing?)? ~ "}" }
 map_entry = { expr ~ ":" ~ expr }
+struct_lit = { type_ident ~ "{" ~ (struct_lit_field ~ ("," ~ struct_lit_field)* ~ comma_trailing?)? ~ "}" }
+struct_lit_field = { identifier ~ ":" ~ expr }
 
 // ---- Types (recursive) ----
 type_name  = { type_ref }

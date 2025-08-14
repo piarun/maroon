@@ -1,5 +1,6 @@
 use crate::ast::{
-  BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, TypeName, VarDecl,
+  BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, StructLitField,
+  TypeName, VarDecl,
 };
 
 use pest::Parser;
@@ -258,6 +259,7 @@ fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
     }
     Rule::array_lit => parse_array_lit(pair),
     Rule::map_lit => parse_map_lit(pair),
+    Rule::struct_lit => parse_struct_lit(pair),
     Rule::expr => parse_expr(pair),
     _ => Err(format!("primary: unexpected rule {:?}", pair.as_rule())),
   }
@@ -302,6 +304,24 @@ fn parse_map_lit(pair: Pair<Rule>) -> Result<Expr, String> {
     }
   }
   Ok(Expr::MapLit(entries))
+}
+
+fn parse_struct_lit(pair: Pair<Rule>) -> Result<Expr, String> {
+  let mut inner = pair.into_inner();
+  let name = inner.next().ok_or_else(|| "struct_lit: missing name".to_string())?.as_str().to_string();
+
+  let mut fields = Vec::new();
+  for p in inner {
+    if p.as_rule() == Rule::struct_lit_field {
+      let mut field_inner = p.into_inner();
+      let field_name =
+        field_inner.next().ok_or_else(|| "struct_lit_field: missing name".to_string())?.as_str().to_string();
+      let field_value = parse_expr(field_inner.next().ok_or_else(|| "struct_lit_field: missing value".to_string())?)?;
+      fields.push(StructLitField { name: field_name, value: field_value });
+    }
+  }
+
+  Ok(Expr::StructLit { name, fields })
 }
 
 fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, String> {

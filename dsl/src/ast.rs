@@ -81,8 +81,15 @@ pub enum Expr {
   Ident(String),
   ArrayLit(Vec<Expr>),
   MapLit(Vec<(Expr, Expr)>),
+  StructLit { name: String, fields: Vec<StructLitField> },
   Call { name: String, args: Vec<Expr> },
   Binary { left: Box<Expr>, op: BinOp, right: Box<Expr> },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructLitField {
+  pub name: String,
+  pub value: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
