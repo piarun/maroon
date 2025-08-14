@@ -42,7 +42,8 @@ add_op      = { "+" | "-" }         // <<< not silent
 mul         = { primary ~ ( mul_op ~ primary )* }
 mul_op      = { "*" | "/" }         // <<< not silent
 
-primary = {
+primary = { atom ~ (method_call_suffix)* }
+atom = {
       sync_call
     | call
     | int
@@ -53,6 +54,7 @@ primary = {
     | identifier
     | "(" ~ expr ~ ")"
 }
+method_call_suffix = { "." ~ call }
 
 // ---- Calls ----
 call = { identifier ~ "(" ~ arg_list? ~ ")" }

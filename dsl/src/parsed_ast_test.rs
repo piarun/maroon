@@ -256,6 +256,8 @@ fn test_function_struct_construction() {
         let my_user: User = User { id: id, email: email, age: age }
         // map construction still work
         let my_map: map[String]i32 = { "key": 42 }
+
+        my_map.get("key")
     "#;
 
   let program = parser::parse_program(input);
@@ -309,6 +311,11 @@ fn test_function_struct_construction() {
         ty: TypeName::Map(Box::new(TypeName::StringTy), Box::new(TypeName::I32)),
         init: Some(Expr::MapLit(vec![(Expr::Str("key".to_string()), Expr::Int(42))])),
       })),
+      Item::Statement(Statement::Expr(Expr::MethodCall {
+        receiver: Box::new(Expr::Ident("my_map".to_string())),
+        name: "get".to_string(),
+        args: vec![Expr::Str("key".to_string())],
+      })),
     ],
   };
 
@@ -345,4 +352,3 @@ fn test_syn_function_call() {
 
   assert_eq!(expected, program.unwrap())
 }
-

@@ -240,9 +240,27 @@ fn parse_mul(pair: Pair<Rule>) -> Result<Expr, String> {
 fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
   match pair.as_rule() {
     Rule::primary => {
-      let inner = pair.into_inner().next().ok_or_else(|| "primary: empty".to_string())?;
-      parse_primary(inner)
+      let mut inner = pair.into_inner();
+      let first = inner.next().ok_or_else(|| "primary: empty".to_string())?;
+      let mut expr = parse_primary(first)?;
+      for p in inner {
+        match p.as_rule() {
+          Rule::method_call_suffix => {
+            let mut mi = p.into_inner();
+            let call_pair = mi.next().ok_or_else(|| "method: missing call".to_string())?;
+            let call_expr = parse_call(call_pair)?;
+            if let Expr::Call { name, args } = call_expr {
+              expr = Expr::MethodCall { receiver: Box::new(expr), name, args };
+            } else {
+              return Err("method: expected call".into());
+            }
+          }
+          _ => {}
+        }
+      }
+      Ok(expr)
     }
+    Rule::atom => parse_primary(pair.into_inner().next().ok_or_else(|| "atom: empty".to_string())?),
     Rule::call => parse_call(pair),
     Rule::sync_call => parse_sync_call(pair),
     Rule::identifier => Ok(Expr::Ident(pair.as_str().to_string())),
@@ -252,7 +270,6 @@ fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
     }
     Rule::string => {
       let s = pair.as_str();
-      // strip quotes
       let unquoted = &s[1..s.len() - 1];
       Ok(Expr::Str(unquoted.to_string()))
     }
