@@ -284,20 +284,13 @@ fn parse_call(pair: Pair<Rule>) -> Result<Expr, String> {
 
 fn parse_sync_call(pair: Pair<Rule>) -> Result<Expr, String> {
   let mut inner = pair.into_inner();
-  let name = inner.next().ok_or_else(|| "sync_call: missing name".to_string())?.as_str().to_string();
-  let mut args = Vec::new();
-  if let Some(next) = inner.next() {
-    if next.as_rule() == Rule::arg_list {
-      for a in next.into_inner() {
-        if a.as_rule() == Rule::expr {
-          args.push(parse_expr(a)?);
-        }
-      }
-    } else {
-      // no args
-    }
+  let call_pair = inner.next().ok_or_else(|| "sync_call: missing call".to_string())?;
+  let call_expr = parse_call(call_pair)?;
+  if let Expr::Call { name, args } = call_expr {
+    Ok(Expr::SyncCall { name, args })
+  } else {
+    Err("sync_call: expected call".into())
   }
-  Ok(Expr::SyncCall { name, args })
 }
 
 fn parse_array_lit(pair: Pair<Rule>) -> Result<Expr, String> {

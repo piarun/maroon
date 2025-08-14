@@ -56,7 +56,7 @@ primary = {
 
 // ---- Calls ----
 call = { identifier ~ "(" ~ arg_list? ~ ")" }
-sync_call = { "sync" ~ identifier ~ "(" ~ arg_list? ~ ")" }
+sync_call = { "sync" ~ call }
 arg_list = { expr ~ ("," ~ expr)* ~ comma_trailing? }
 
 // ---- Literals ----
