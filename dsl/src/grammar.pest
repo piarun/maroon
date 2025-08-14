@@ -1,0 +1,77 @@
+// ---- Skipping & whitespace (includes comments) ----
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" | COMMENT }
+COMMENT = _{
+    "//" ~ (!"\n" ~ ANY)* ~ ("\n" | EOI)
+  | "/*" ~ (!"*/" ~ ANY)* ~ "*/"
+}
+
+// ---- Entry ----
+program = { SOI ~ item* ~ EOI }
+
+// A program can contain struct definitions, functions, or top-level statements
+item = { struct_def | function | statement }
+
+// ---- Structs ----
+struct_def = { "struct" ~ type_ident ~ "{" ~ struct_fields? ~ "}" }
+struct_fields = { struct_field ~ ("," ~ struct_field)* ~ comma_trailing? }
+struct_field = { identifier ~ ":" ~ type_name }
+
+// ---- Functions ----
+function = { "fn" ~ identifier ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_name)? ~ block }
+param_list = { param ~ ("," ~ param)* ~ comma_trailing? }
+param = { identifier ~ ":" ~ type_name }
+block = { "{" ~ statement* ~ "}" }
+
+// ---- Statements ----
+statement = { binding_stmt | return_stmt | if_stmt | expr }
+binding_stmt = { binding_kind ~ identifier ~ ":" ~ type_name ~ ( "=" ~ expr )? }
+binding_kind = { "let" | "var" }
+return_stmt = { "return" ~ expr }
+if_stmt = { "if" ~ expr ~ block ~ ( "else" ~ block )? }
+
+// ---- Expressions ----
+// precedence (low → high): equality -> add -> mul -> primary
+expr        = { equality }
+
+equality    = { add ~ ( equality_op ~ add )* }
+equality_op = { "==" | "!=" | ">=" | "<=" | ">" | "<" }       // <<< not silent
+
+add         = { mul ~ ( add_op ~ mul )* }
+add_op      = { "+" | "-" }         // <<< not silent
+
+mul         = { primary ~ ( mul_op ~ primary )* }
+mul_op      = { "*" | "/" }         // <<< not silent
+
+primary = {
+      call
+    | int
+    | string
+    | array_lit
+    | map_lit
+    | identifier
+    | "(" ~ expr ~ ")"
+}
+
+// ---- Calls ----
+call = { identifier ~ "(" ~ arg_list? ~ ")" }
+arg_list = { expr ~ ("," ~ expr)* ~ comma_trailing? }
+
+// ---- Literals ----
+array_lit = { "[" ~ (expr ~ ("," ~ expr)* ~ comma_trailing?)? ~ "]" }
+map_lit   = { "{" ~ (map_entry ~ ("," ~ map_entry)* ~ comma_trailing?)? ~ "}" }
+map_entry = { expr ~ ":" ~ expr }
+
+// ---- Types (recursive) ----
+type_name  = { type_ref }
+type_ref   = _{ base_type | array_type | map_type | custom_type }
+base_type  = @{ "String" | "i32" | "i64" }
+array_type = { "[]" ~ type_ref }
+map_type   = { "map" ~ "[" ~ type_ref ~ "]" ~ type_ref }
+custom_type = { type_ident }
+
+// ---- Lexical ----
+type_ident = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+string     = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+int        = @{ "-"? ~ ASCII_DIGIT+ }
+comma_trailing = _{ "," }
