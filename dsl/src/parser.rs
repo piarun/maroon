@@ -1,5 +1,6 @@
 use crate::ast::{
-  BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, TypeName, VarDecl,
+  BinOp, Block, Expr, Function, Item, Mutability, Param, Program, Statement, StructDef, StructField, StructLitField,
+  TypeName, VarDecl,
 };
 
 use pest::Parser;
@@ -84,18 +85,16 @@ fn parse_function(pair: Pair<Rule>) -> Result<Function, String> {
     next = inner.next().ok_or_else(|| "function: missing after params".to_string())?;
   }
 
-  // Parse return type if present, otherwise default to Unit
   let ret_ty = match next.as_rule() {
     Rule::type_name => {
       let ret = parse_type_name(next)?;
       next = inner.next().ok_or_else(|| "function: missing body block".to_string())?;
       ret
     }
-    Rule::block => TypeName::Void, // No return type specified, default to Void
+    Rule::block => TypeName::Void,
     _ => return Err("function: unexpected token after params".into()),
   };
 
-  // Parse body
   let body = parse_block(next)?;
 
   Ok(Function { name, params, ret: ret_ty, body })
@@ -241,10 +240,29 @@ fn parse_mul(pair: Pair<Rule>) -> Result<Expr, String> {
 fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
   match pair.as_rule() {
     Rule::primary => {
-      let inner = pair.into_inner().next().ok_or_else(|| "primary: empty".to_string())?;
-      parse_primary(inner)
+      let mut inner = pair.into_inner();
+      let first = inner.next().ok_or_else(|| "primary: empty".to_string())?;
+      let mut expr = parse_primary(first)?;
+      for p in inner {
+        match p.as_rule() {
+          Rule::method_call_suffix => {
+            let mut mi = p.into_inner();
+            let call_pair = mi.next().ok_or_else(|| "method: missing call".to_string())?;
+            let call_expr = parse_call(call_pair)?;
+            if let Expr::Call { name, args } = call_expr {
+              expr = Expr::MethodCall { receiver: Box::new(expr), name, args };
+            } else {
+              return Err("method: expected call".into());
+            }
+          }
+          _ => {}
+        }
+      }
+      Ok(expr)
     }
+    Rule::atom => parse_primary(pair.into_inner().next().ok_or_else(|| "atom: empty".to_string())?),
     Rule::call => parse_call(pair),
+    Rule::sync_call => parse_sync_call(pair),
     Rule::identifier => Ok(Expr::Ident(pair.as_str().to_string())),
     Rule::int => {
       let n: i64 = pair.as_str().parse().map_err(|e| format!("invalid int: {e}"))?;
@@ -252,12 +270,12 @@ fn parse_primary(pair: Pair<Rule>) -> Result<Expr, String> {
     }
     Rule::string => {
       let s = pair.as_str();
-      // strip quotes
       let unquoted = &s[1..s.len() - 1];
       Ok(Expr::Str(unquoted.to_string()))
     }
     Rule::array_lit => parse_array_lit(pair),
     Rule::map_lit => parse_map_lit(pair),
+    Rule::struct_lit => parse_struct_lit(pair),
     Rule::expr => parse_expr(pair),
     _ => Err(format!("primary: unexpected rule {:?}", pair.as_rule())),
   }
@@ -281,6 +299,17 @@ fn parse_call(pair: Pair<Rule>) -> Result<Expr, String> {
   Ok(Expr::Call { name, args })
 }
 
+fn parse_sync_call(pair: Pair<Rule>) -> Result<Expr, String> {
+  let mut inner = pair.into_inner();
+  let call_pair = inner.next().ok_or_else(|| "sync_call: missing call".to_string())?;
+  let call_expr = parse_call(call_pair)?;
+  if let Expr::Call { name, args } = call_expr {
+    Ok(Expr::SyncCall { name, args })
+  } else {
+    Err("sync_call: expected call".into())
+  }
+}
+
 fn parse_array_lit(pair: Pair<Rule>) -> Result<Expr, String> {
   let mut elems = Vec::new();
   for p in pair.into_inner() {
@@ -302,6 +331,24 @@ fn parse_map_lit(pair: Pair<Rule>) -> Result<Expr, String> {
     }
   }
   Ok(Expr::MapLit(entries))
+}
+
+fn parse_struct_lit(pair: Pair<Rule>) -> Result<Expr, String> {
+  let mut inner = pair.into_inner();
+  let name = inner.next().ok_or_else(|| "struct_lit: missing name".to_string())?.as_str().to_string();
+
+  let mut fields = Vec::new();
+  for p in inner {
+    if p.as_rule() == Rule::struct_lit_field {
+      let mut field_inner = p.into_inner();
+      let field_name =
+        field_inner.next().ok_or_else(|| "struct_lit_field: missing name".to_string())?.as_str().to_string();
+      let field_value = parse_expr(field_inner.next().ok_or_else(|| "struct_lit_field: missing value".to_string())?)?;
+      fields.push(StructLitField { name: field_name, value: field_value });
+    }
+  }
+
+  Ok(Expr::StructLit { name, fields })
 }
 
 fn parse_type_name(pair: Pair<Rule>) -> Result<TypeName, String> {
