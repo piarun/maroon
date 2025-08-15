@@ -254,7 +254,7 @@ fn test_function_struct_construction() {
         let age: i32 = 10
 
         let my_user: User = User { id: id, email: email, age: age }
-        // map construction still work
+        // map construction still works
         let my_map: map[String]i32 = { "key": 42 }
 
         my_map.get("key")

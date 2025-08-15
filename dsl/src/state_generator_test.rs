@@ -1,10 +1,7 @@
-use crate::{
-  ast::{Block, Expr, Item, Program, Statement},
-  parser,
-};
+use crate::{parser, state_generator::states_from_program};
 
 #[test]
-fn test_expression_in_statement() {
+fn test_expression_in_statement_isolated_functions() {
   let input = r#"
         fn factorial(n: i32) -> i32 {
             if n == 0 {
@@ -20,6 +17,19 @@ fn test_expression_in_statement() {
           sleep(t)
           print(message)
         }
+
+
+        struct User {
+          id: String,
+          email: String,
+          age: i32,
+        }
+
+        var users: map[String]User = {}
+
+        fn getUser(id: String) -> User {
+          users.get(id)
+        }
     "#;
 
   let program = parser::parse_program(input);
@@ -27,6 +37,11 @@ fn test_expression_in_statement() {
 
   let program = program.unwrap();
   let expected_states = vec![
+    // storage for users
+    "UsersStorageIdle".to_string(),
+    "UsersStorageGetItemRequest".to_string(),
+    "UsersStorageCreateItemRequest".to_string(),
+    // functions
     "FactorialEntry".to_string(),
     "FactorialRecursiveCall".to_string(),
     "FactorialDone".to_string(),
@@ -34,105 +49,56 @@ fn test_expression_in_statement() {
     "DelayedCallSleep".to_string(),
     "DelayedCallPrint".to_string(),
     "DelayedDone".to_string(),
+    "GetUserEntry".to_string(),
+    "GetUserGetUsersRequest".to_string(),
+    "GetUserGetUsersGot".to_string(),
+    "GetUserDone".to_string(),
   ];
 
   assert_eq!(expected_states, states_from_program(&program))
 }
 
-fn states_from_program(program: &Program) -> Vec<String> {
-  let mut steps: Vec<String> = vec![];
+#[test]
+fn test_expression_in_statement_cross_fiber() {
+  let input = r#"
+        struct User {
+          id: String,
+          email: String,
+          age: i32,
+        }
 
-  for el in program.items.iter() {
-    let Item::Function(func) = el else { continue };
+        var users: map[String]User = {}
 
-    let mut prefix = func.name.clone();
-    prefix.get_mut(0..1).map(|s| {
-      s.make_ascii_uppercase();
-      &*s
-    });
+        fn findUserById(id: String) -> User {
+          return users.get(id)
+        }
 
-    steps.push(format!("{}Entry", prefix));
+        fn createNewUser(email: String, age: i32) {
+          let id: String = sync generateId()
+          users.set(id, User { id: id, email: email, age: age })
+        }
+    "#;
 
-    let mut function_calls = Vec::new();
-    collect_function_calls(&func.body, &mut function_calls);
+  let program = parser::parse_program(input);
+  assert!(program.is_ok(), "{}", program.unwrap_err());
 
-    for call_name in function_calls {
-      let mut call_prefix = call_name.clone();
-      call_prefix.get_mut(0..1).map(|s| {
-        s.make_ascii_uppercase();
-        &*s
-      });
+  let program = program.unwrap();
+  let expected_states = vec![
+    // all global variables are named as VarName+Storage => users -> UsersStorage
+    "UsersStorageIdle".to_string(), // will get here after all get/create requests are processed
+    "UsersStorageGetItemRequest".to_string(), // in global variable we have get/create by default
+    "UsersStorageCreateItemRequest".to_string(),
+    //
+    "FindUserByIdEntry".to_string(),
+    "FindUserByIdGetUsersRequest".to_string(), // func name + fiber_func_name + global var(fiber) name + Request
+    "FindUserByIdGetUsersGot".to_string(),     // func name + fiber_func_name + global var(fiber) name + Got
+    "FindUserByIdDone".to_string(),
+    //
+    "CreateNewUserEntry".to_string(),
+    "CreateNewUserCreateUsersRequest".to_string(), // there is no CreateNewUserCallGenerateId because it's marked as sync call
+    "CreateNewUserCreateUsersGot".to_string(),
+    "CreateNewUserDone".to_string(),
+  ];
 
-      if call_name == func.name {
-        steps.push(format!("{}RecursiveCall", prefix));
-      } else {
-        steps.push(format!("{}Call{}", prefix, call_prefix));
-      }
-    }
-
-    steps.push(format!("{}Done", prefix));
-  }
-
-  steps
-}
-
-fn collect_function_calls(
-  block: &Block,
-  calls: &mut Vec<String>,
-) {
-  for statement in &block.statements {
-    collect_function_calls_from_statement(statement, calls);
-  }
-}
-
-fn collect_function_calls_from_statement(
-  statement: &Statement,
-  calls: &mut Vec<String>,
-) {
-  match statement {
-    Statement::VarDecl(var_decl) => {
-      if let Some(init_expr) = &var_decl.init {
-        collect_function_calls_from_expr(init_expr, calls);
-      }
-    }
-    Statement::Return(expr) => collect_function_calls_from_expr(expr, calls),
-    Statement::If { cond, then_blk, else_blk } => {
-      collect_function_calls_from_expr(cond, calls);
-      collect_function_calls(then_blk, calls);
-      if let Some(else_blk) = else_blk {
-        collect_function_calls(else_blk, calls);
-      }
-    }
-    Statement::Expr(expr) => collect_function_calls_from_expr(expr, calls),
-  }
-}
-
-fn collect_function_calls_from_expr(
-  expr: &Expr,
-  calls: &mut Vec<String>,
-) {
-  match expr {
-    Expr::Call { name, args } => {
-      calls.push(name.clone());
-      for arg in args {
-        collect_function_calls_from_expr(arg, calls);
-      }
-    }
-    Expr::Binary { left, right, .. } => {
-      collect_function_calls_from_expr(left, calls);
-      collect_function_calls_from_expr(right, calls);
-    }
-    Expr::ArrayLit(elements) => {
-      for elem in elements {
-        collect_function_calls_from_expr(elem, calls);
-      }
-    }
-    Expr::MapLit(entries) => {
-      for (key, value) in entries {
-        collect_function_calls_from_expr(key, calls);
-        collect_function_calls_from_expr(value, calls);
-      }
-    }
-    Expr::Int(_) | Expr::Str(_) | Expr::Ident(_) => {}
-  }
+  assert_eq!(expected_states, states_from_program(&program))
 }
