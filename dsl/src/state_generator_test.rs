@@ -1,20 +1,39 @@
 use crate::{parser, state_generator::states_from_program};
 
 #[test]
-fn test_function_calls_states() {
+fn test_recursive_function_states() {
   let input = r#"
-        fn factorial(n: i32) -> i32 {
-            if n == 0 {
-                return 1
-            } else if n == 1 {
-                return 1
-            }
-
-            return n * factorial(n - 1)
+        fn recFunc(number: i32) -> i32 { 
+          if sync is_odd(number) {
+            return recFunc(number - 1)
+          } else {
+            return recFunc(number - 2)
+          }
         }
+    "#;
 
+  let program = parser::parse_program(input);
+  assert!(program.is_ok(), "{}", program.unwrap_err());
+
+  let program = program.unwrap();
+  let expected_states = vec![
+    // functions
+    "RecFuncEntry".to_string(),
+    "RecFuncRecursiveCall".to_string(),
+    "RecFuncRecursiveCall1".to_string(),
+    "RecFuncDone".to_string(),
+  ];
+
+  assert_eq!(expected_states, states_from_program(&program))
+}
+
+#[test]
+fn test_call_function_states() {
+  let input = r#"
         fn delayed(t: i64, message: String){
           sleep(t)
+          print(message)
+          sleep(t * 2)
           print(message)
         }
     "#;
@@ -24,13 +43,11 @@ fn test_function_calls_states() {
 
   let program = program.unwrap();
   let expected_states = vec![
-    // functions
-    "FactorialEntry".to_string(),
-    "FactorialRecursiveCall".to_string(),
-    "FactorialDone".to_string(),
     "DelayedEntry".to_string(),
     "DelayedCallSleep".to_string(),
     "DelayedCallPrint".to_string(),
+    "DelayedCallSleep1".to_string(),
+    "DelayedCallPrint1".to_string(),
     "DelayedDone".to_string(),
   ];
 

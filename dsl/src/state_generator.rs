@@ -17,8 +17,8 @@ enum State {
 
   // Function lifecycle
   FuncEntry { func: String },
-  FuncRecursiveCall { func: String },
-  FuncCall { func: String, callee: String },
+  FuncRecursiveCall { func: String, index: usize },
+  FuncCall { func: String, callee: String, index: usize },
   FuncStorageRequest { func: String, op: StorageOp, storage: String },
   FuncStorageGot { func: String, op: StorageOp, storage: String },
   FuncDone { func: String },
@@ -38,8 +38,20 @@ fn render_state(s: &State) -> String {
     State::StorageCreateItemRequest { storage } => format!("{}StorageCreateItemRequest", storage),
 
     State::FuncEntry { func } => format!("{}Entry", func),
-    State::FuncRecursiveCall { func } => format!("{}RecursiveCall", func),
-    State::FuncCall { func, callee } => format!("{}Call{}", func, callee),
+    State::FuncRecursiveCall { func, index } => {
+      if *index == 0 {
+        format!("{}RecursiveCall", func)
+      } else {
+        format!("{}RecursiveCall{}", func, index)
+      }
+    }
+    State::FuncCall { func, callee, index } => {
+      if *index == 0 {
+        format!("{}Call{}", func, callee)
+      } else {
+        format!("{}Call{}{}", func, callee, index)
+      }
+    }
     State::FuncStorageRequest { func, op, storage } => format!("{}{}{}Request", func, render_op(op), storage),
     State::FuncStorageGot { func, op, storage } => format!("{}{}{}Got", func, render_op(op), storage),
     State::FuncDone { func } => format!("{}Done", func),
@@ -86,13 +98,20 @@ pub fn states_from_program(program: &Program) -> Vec<String> {
       states.push(State::FuncStorageGot { func: prefix.clone(), op, storage: storage_title });
     }
 
+    // Track call counts to add indices for multiple calls to the same function
+    let mut call_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
     for call_name in function_calls {
       let call_prefix = capitalize_first(&call_name);
+      let count = call_counts.entry(call_name.clone()).or_insert(0);
+
       if call_name == func.name {
-        states.push(State::FuncRecursiveCall { func: prefix.clone() });
+        states.push(State::FuncRecursiveCall { func: prefix.clone(), index: *count });
       } else {
-        states.push(State::FuncCall { func: prefix.clone(), callee: call_prefix });
+        states.push(State::FuncCall { func: prefix.clone(), callee: call_prefix, index: *count });
       }
+
+      *count += 1;
     }
 
     states.push(State::FuncDone { func: prefix });
