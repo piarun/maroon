@@ -70,10 +70,11 @@ struct_lit_field = { identifier ~ ":" ~ expr }
 
 // ---- Types (recursive) ----
 type_name  = { type_ref }
-type_ref   = _{ base_type | array_type | map_type | custom_type }
+type_ref   = _{ base_type | array_type | map_type | option_type | custom_type }
 base_type  = @{ "String" | "i32" | "i64" }
 array_type = { "[]" ~ type_ref }
 map_type   = { "map" ~ "[" ~ type_ref ~ "]" ~ type_ref }
+option_type = { "Option" ~ "<" ~ type_ref ~ ">" }
 custom_type = { type_ident }
 
 // ---- Lexical ----

@@ -71,6 +71,7 @@ pub enum TypeName {
   Void, // For functions that don't return anything
   Array(Box<TypeName>),
   Map(Box<TypeName>, Box<TypeName>),
+  Option(Box<TypeName>),
   Custom(String),
 }
 

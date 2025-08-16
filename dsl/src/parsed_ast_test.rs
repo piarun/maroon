@@ -352,3 +352,73 @@ fn test_syn_function_call() {
 
   assert_eq!(expected, program.unwrap())
 }
+
+#[test]
+fn test_option_types() {
+  let input = r#"
+        fn findUser(id: String) -> Option<User> {
+          return users.get(id)
+        }
+
+        fn findNumber() -> Option<i32> {
+          return None
+        }
+
+        let maybe_string: Option<String>
+    "#;
+
+  let program = parser::parse_program(input).expect("should parse option types");
+
+  let expected = Program {
+    items: vec![
+      Item::Function(Function {
+        name: "findUser".to_string(),
+        params: vec![Param { name: "id".to_string(), ty: TypeName::StringTy }],
+        ret: TypeName::Option(Box::new(TypeName::Custom("User".to_string()))),
+        body: Block {
+          statements: vec![Statement::Return(Expr::MethodCall {
+            receiver: Box::new(Expr::Ident("users".to_string())),
+            name: "get".to_string(),
+            args: vec![Expr::Ident("id".to_string())],
+          })],
+        },
+      }),
+      Item::Function(Function {
+        name: "findNumber".to_string(),
+        params: vec![],
+        ret: TypeName::Option(Box::new(TypeName::I32)),
+        body: Block { statements: vec![Statement::Return(Expr::Ident("None".to_string()))] },
+      }),
+      Item::Statement(Statement::VarDecl(VarDecl {
+        mutability: Mutability::Immutable,
+        name: "maybe_string".to_string(),
+        ty: TypeName::Option(Box::new(TypeName::StringTy)),
+        init: None,
+      })),
+    ],
+  };
+
+  assert_eq!(program, expected);
+}
+
+#[test]
+fn test_nested_option_types() {
+  let input = r#"
+        fn test() -> Option<Option<String>> {
+          return None
+        }
+    "#;
+
+  let program = parser::parse_program(input).expect("should parse nested option types");
+
+  let expected = Program {
+    items: vec![Item::Function(Function {
+      name: "test".to_string(),
+      params: vec![],
+      ret: TypeName::Option(Box::new(TypeName::Option(Box::new(TypeName::StringTy)))),
+      body: Block { statements: vec![Statement::Return(Expr::Ident("None".to_string()))] },
+    })],
+  };
+
+  assert_eq!(program, expected);
+}
