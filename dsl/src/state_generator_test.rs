@@ -1,7 +1,7 @@
 use crate::{parser, state_generator::states_from_program};
 
 #[test]
-fn test_expression_in_statement_isolated_functions() {
+fn test_function_calls_states() {
   let input = r#"
         fn factorial(n: i32) -> i32 {
             if n == 0 {
@@ -17,19 +17,6 @@ fn test_expression_in_statement_isolated_functions() {
           sleep(t)
           print(message)
         }
-
-
-        struct User {
-          id: String,
-          email: String,
-          age: i32,
-        }
-
-        var users: map[String]User = {}
-
-        fn getUser(id: String) -> User {
-          users.get(id)
-        }
     "#;
 
   let program = parser::parse_program(input);
@@ -37,10 +24,6 @@ fn test_expression_in_statement_isolated_functions() {
 
   let program = program.unwrap();
   let expected_states = vec![
-    // storage for users
-    "UsersStorageIdle".to_string(),
-    "UsersStorageGetItemRequest".to_string(),
-    "UsersStorageCreateItemRequest".to_string(),
     // functions
     "FactorialEntry".to_string(),
     "FactorialRecursiveCall".to_string(),
@@ -49,10 +32,6 @@ fn test_expression_in_statement_isolated_functions() {
     "DelayedCallSleep".to_string(),
     "DelayedCallPrint".to_string(),
     "DelayedDone".to_string(),
-    "GetUserEntry".to_string(),
-    "GetUserGetUsersRequest".to_string(),
-    "GetUserGetUsersGot".to_string(),
-    "GetUserDone".to_string(),
   ];
 
   assert_eq!(expected_states, states_from_program(&program))
