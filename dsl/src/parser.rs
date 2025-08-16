@@ -374,6 +374,10 @@ fn parse_type_ref(pair: Pair<Rule>) -> Result<TypeName, String> {
       let val_t = parse_type_ref(it.next().ok_or("map_type: missing value")?)?;
       Ok(TypeName::Map(Box::new(key_t), Box::new(val_t)))
     }
+    Rule::option_type => {
+      let inner = pair.into_inner().next().ok_or_else(|| "option_type: missing inner type".to_string())?;
+      Ok(TypeName::Option(Box::new(parse_type_ref(inner)?)))
+    }
     Rule::custom_type => {
       let name = pair.into_inner().next().ok_or_else(|| "custom_type: missing ident".to_string())?.as_str().to_string();
       Ok(TypeName::Custom(name))
