@@ -17,9 +17,8 @@ fn test_recursive_function_states() {
 
   let program = program.unwrap();
   let expected_states = vec![
-    // functions
     "RecFuncEntry".to_string(),
-    "RecFuncRecursiveCall".to_string(),
+    "RecFuncRecursiveCall0".to_string(),
     "RecFuncRecursiveCall1".to_string(),
     "RecFuncDone".to_string(),
   ];
@@ -44,8 +43,8 @@ fn test_call_function_states() {
   let program = program.unwrap();
   let expected_states = vec![
     "DelayedEntry".to_string(),
-    "DelayedCallSleep".to_string(),
-    "DelayedCallPrint".to_string(),
+    "DelayedCallSleep0".to_string(),
+    "DelayedCallPrint0".to_string(),
     "DelayedCallSleep1".to_string(),
     "DelayedCallPrint1".to_string(),
     "DelayedDone".to_string(),

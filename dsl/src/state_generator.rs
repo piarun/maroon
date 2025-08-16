@@ -36,22 +36,9 @@ fn render_state(s: &State) -> String {
     State::StorageIdle { storage } => format!("{}StorageIdle", storage),
     State::StorageGetItemRequest { storage } => format!("{}StorageGetItemRequest", storage),
     State::StorageCreateItemRequest { storage } => format!("{}StorageCreateItemRequest", storage),
-
     State::FuncEntry { func } => format!("{}Entry", func),
-    State::FuncRecursiveCall { func, index } => {
-      if *index == 0 {
-        format!("{}RecursiveCall", func)
-      } else {
-        format!("{}RecursiveCall{}", func, index)
-      }
-    }
-    State::FuncCall { func, callee, index } => {
-      if *index == 0 {
-        format!("{}Call{}", func, callee)
-      } else {
-        format!("{}Call{}{}", func, callee, index)
-      }
-    }
+    State::FuncRecursiveCall { func, index } => format!("{}RecursiveCall{}", func, index),
+    State::FuncCall { func, callee, index } => format!("{}Call{}{}", func, callee, index),
     State::FuncStorageRequest { func, op, storage } => format!("{}{}{}Request", func, render_op(op), storage),
     State::FuncStorageGot { func, op, storage } => format!("{}{}{}Got", func, render_op(op), storage),
     State::FuncDone { func } => format!("{}Done", func),
