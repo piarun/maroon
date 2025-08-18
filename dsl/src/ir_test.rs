@@ -1,0 +1,256 @@
+// NOTEs
+// in IR - highlevel struct that has different fibers and these fibers have their own typed stacks
+// queues between fibers makes sense to keep in IR?
+//
+// cancelable future
+
+//   type IR {
+//     fibers: {
+//       key: {
+//         is_singleton/daemon: bool
+//         heap {}
+//         funcs {
+//           name: {
+//             steps[
+//               {
+
+//                 local_vars_for_this_step // on stack
+//                 local_vars_out_for_next_step // also on stack
+//                 steps[...] // calls of other functions?
+
+//               }
+//             ]
+//           }
+//           in_params_type
+//           ret_value_type
+//         }
+//       }
+//     }
+//     types {
+//       // all types? Or only in/out function types
+//     }
+//   }
+
+use crate::ir::*;
+use std::collections::HashMap;
+
+#[test]
+fn test_ir() {
+  /*
+     userManager{
+      map[string]User
+      get
+      set
+      delete
+     }
+
+     socialScore {
+      increment
+      decrement
+     }
+
+     global {
+      add
+      sub
+     }
+
+  */
+
+  let _ir = IR {
+    fibers: HashMap::from([
+      (
+        "global".to_string(),
+        Fiber {
+          // exact implementation(steps) of functions in global are not provided
+          // only semantics
+          // implementation is "provided" by runtime(maybe not the best term?)
+          // maybe global is not the best name?
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "add".to_string(),
+              Func {
+                in_vars: vec![
+                  InVar { name: "a".to_string(), type_: Type::Int },
+                  InVar { name: "b".to_string(), type_: Type::Int },
+                ],
+                out: Type::Int,
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![],
+              },
+            ),
+            (
+              "sub".to_string(),
+              Func {
+                in_vars: vec![
+                  InVar { name: "a".to_string(), type_: Type::Int },
+                  InVar { name: "b".to_string(), type_: Type::Int },
+                ],
+                out: Type::Int,
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![],
+              },
+            ),
+            (
+              "randGen".to_string(),
+              Func { in_vars: vec![], out: Type::Int, locals: vec![], entry: StepId::new("entry"), steps: vec![] },
+            ),
+          ]),
+        },
+      ),
+      (
+        "userManager".to_string(),
+        Fiber {
+          heap: HashMap::from([(
+            "users".to_string(),
+            Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".to_string()))),
+          )]),
+          in_messages: vec![MessageSpec {
+            name: "GetUser".to_string(),
+            fields: vec![("key".to_string(), Type::String)],
+          }],
+          funcs: HashMap::from([
+            (
+              "get".to_string(),
+              Func {
+                in_vars: vec![InVar { name: "key".to_string(), type_: Type::String }],
+                out: Type::Option(Box::new(Type::Custom("User".to_string()))),
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![],
+              },
+            ),
+            (
+              "set".to_string(),
+              Func {
+                in_vars: vec![
+                  InVar { name: "key".to_string(), type_: Type::String },
+                  InVar { name: "item".to_string(), type_: Type::Custom("User".to_string()) },
+                ],
+                out: Type::Void,
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![],
+              },
+            ),
+          ]),
+        },
+      ),
+      (
+        "socialScore".to_string(),
+        Fiber {
+          heap: HashMap::new(),
+          in_messages: vec![MessageSpec {
+            name: "GetUserResponse".to_string(),
+            fields: vec![("user".to_string(), Type::Option(Box::new(Type::Custom("User".to_string()))))],
+          }],
+          funcs: HashMap::from([("increment".to_string(), {
+            // socialScore.increment(userId):
+            //   send userManager.GetUser(userId)
+            //   user_opt = await GetUserResponse
+            //   if user_opt is Some:
+            //     user = unwrap(user_opt)
+            //     new_rating = global.add(user.rating, 1)
+            //     updated_user = user{ rating: new_rating }
+            //     userManager.set(userId, updated_user)
+            //   return
+            Func {
+              in_vars: vec![InVar { name: "userId".to_string(), type_: Type::String }],
+              out: Type::Void,
+              locals: vec![
+                LocalVar {
+                  name: "user_opt".to_string(),
+                  type_: Type::Option(Box::new(Type::Custom("User".to_string()))),
+                },
+                LocalVar { name: "user".to_string(), type_: Type::Custom("User".to_string()) },
+                LocalVar { name: "new_rating".to_string(), type_: Type::Int },
+                LocalVar { name: "updated_user".to_string(), type_: Type::Custom("User".to_string()) },
+              ],
+              entry: StepId::new("entry"),
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::SendToFiber {
+                    fiber: "userManager".to_string(),
+                    message: "GetUser".to_string(),
+                    args: vec![Expr::Var("userId".to_string())],
+                    next: StepId::new("await_user"),
+                  },
+                ),
+                (
+                  StepId::new("await_user"),
+                  Step::Await {
+                    message: "GetUserResponse".to_string(),
+                    bind: Some("user_opt".to_string()),
+                    ret_to: StepId::new("check_user"),
+                  },
+                ),
+                (
+                  StepId::new("check_user"),
+                  Step::If {
+                    cond: Expr::IsSome(Box::new(Expr::Var("user_opt".to_string()))),
+                    then_: StepId::new("have_user"),
+                    else_: StepId::new("done"),
+                  },
+                ),
+                (
+                  StepId::new("have_user"),
+                  Step::Let {
+                    local: "user".to_string(),
+                    expr: Expr::Unwrap(Box::new(Expr::Var("user_opt".to_string()))),
+                    next: StepId::new("call_add"),
+                  },
+                ),
+                (
+                  StepId::new("call_add"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                    args: vec![
+                      Expr::GetField(Box::new(Expr::Var("user".to_string())), "rating".to_string()),
+                      Expr::Int(1),
+                    ],
+                    bind: Some("new_rating".to_string()),
+                    ret_to: StepId::new("update_user"),
+                  },
+                ),
+                (
+                  StepId::new("update_user"),
+                  Step::Let {
+                    local: "updated_user".to_string(),
+                    expr: Expr::StructUpdate {
+                      base: Box::new(Expr::Var("user".to_string())),
+                      updates: vec![("rating".to_string(), Expr::Var("new_rating".to_string()))],
+                    },
+                    next: StepId::new("set_user"),
+                  },
+                ),
+                (
+                  StepId::new("set_user"),
+                  Step::Call {
+                    target: FuncRef { fiber: "userManager".to_string(), func: "set".to_string() },
+                    args: vec![Expr::Var("userId".to_string()), Expr::Var("updated_user".to_string())],
+                    bind: None,
+                    ret_to: StepId::new("done"),
+                  },
+                ),
+                (StepId::new("done"), Step::Return { value: None }),
+              ],
+            }
+          })]),
+        },
+      ),
+    ]),
+    types: vec![Type::Struct(
+      "User".to_string(),
+      vec![
+        StructField { name: "id".to_string(), ty: Type::String },
+        StructField { name: "age".to_string(), ty: Type::Int },
+        StructField { name: "email".to_string(), ty: Type::String },
+        StructField { name: "rating".to_string(), ty: Type::Int },
+      ],
+    )],
+  };
+}
