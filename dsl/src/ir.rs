@@ -73,6 +73,7 @@ pub enum Expr {
   Int(u64),
   Str(String),
   Var(String),
+  Equal(Box<Expr>, Box<Expr>),
   IsSome(Box<Expr>),
   Unwrap(Box<Expr>),
   GetField(Box<Expr>, String),

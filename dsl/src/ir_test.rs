@@ -95,8 +95,78 @@ fn test_ir() {
               },
             ),
             (
+              "mult".to_string(),
+              Func {
+                in_vars: vec![
+                  InVar { name: "a".to_string(), type_: Type::Int },
+                  InVar { name: "b".to_string(), type_: Type::Int },
+                ],
+                out: Type::Int,
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![],
+              },
+            ),
+            (
               "randGen".to_string(),
               Func { in_vars: vec![], out: Type::Int, locals: vec![], entry: StepId::new("entry"), steps: vec![] },
+            ),
+            (
+              // factorial(n) {
+              //   if n == 1 { return 1 }
+              //   return n * factorial(n - 1)
+              // }
+              "factorial".to_string(),
+              Func {
+                in_vars: vec![InVar { name: "n".to_string(), type_: Type::Int }],
+                out: Type::Int,
+                locals: vec![
+                  LocalVar { name: "fac_call_res".to_string(), type_: Type::Int },
+                  LocalVar { name: "subtract_res".to_string(), type_: Type::Int },
+                  LocalVar { name: "result".to_string(), type_: Type::Int },
+                ],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::If {
+                      cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::Int(1))),
+                      then_: StepId::new("return_1"),
+                      else_: StepId::new("subtract"),
+                    },
+                  ),
+                  (StepId::new("return_1"), Step::Return { value: Some(Expr::Int(1)) }),
+                  (
+                    StepId::new("subtract"),
+                    Step::Call {
+                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                      args: vec![Expr::Var("n".to_string()), Expr::Int(1)],
+                      bind: Some("subtract_res".to_string()),
+                      ret_to: StepId::new("factorial_call"),
+                    },
+                  ),
+                  (
+                    StepId::new("factorial_call"),
+                    Step::Call {
+                      // or instead of global.factorial use self.factorial?
+                      target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
+                      args: vec![Expr::Var("subtract_res".to_string())],
+                      bind: Some("fac_call_res".to_string()),
+                      ret_to: StepId::new("multiply"),
+                    },
+                  ),
+                  (
+                    StepId::new("multiply"),
+                    Step::Call {
+                      target: FuncRef { fiber: "global".to_string(), func: "mult".to_string() },
+                      args: vec![Expr::Var("n".to_string()), Expr::Var("fac_call_res".to_string())],
+                      bind: Some("result".to_string()),
+                      ret_to: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: Some(Expr::Var("result".to_string())) }),
+                ],
+              },
             ),
           ]),
         },
