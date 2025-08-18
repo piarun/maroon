@@ -61,7 +61,7 @@ fn test_ir() {
       (
         "global".to_string(),
         Fiber {
-          // exact implementation(steps) of functions in global are not provided
+          // exact implementation(steps) of primitive(add/sub/div/mult/rand/...) functions in global are not provided
           // only semantics
           // implementation is "provided" by runtime(maybe not the best term?)
           // maybe global is not the best name?
