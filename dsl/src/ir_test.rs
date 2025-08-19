@@ -213,10 +213,7 @@ fn test_ir() {
         "socialScore".to_string(),
         Fiber {
           heap: HashMap::new(),
-          in_messages: vec![MessageSpec {
-            name: "GetUserResponse".to_string(),
-            fields: vec![("user".to_string(), Type::Option(Box::new(Type::Custom("User".to_string()))))],
-          }],
+          in_messages: vec![],
           funcs: HashMap::from([("increment".to_string(), {
             // socialScore.increment(userId):
             //   send userManager.GetUser(userId)
@@ -253,7 +250,10 @@ fn test_ir() {
                 (
                   StepId::new("await_user"),
                   Step::Await {
-                    message: "GetUserResponse".to_string(),
+                    // this message GetUser is the same as previous step GetUser
+                    // this is how binding should happen?
+                    // TODO: or should I add some other id to help binding here?
+                    message: "GetUser".to_string(),
                     bind: Some("user_opt".to_string()),
                     ret_to: StepId::new("check_user"),
                   },
