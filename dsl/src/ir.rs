@@ -60,6 +60,9 @@ pub enum Step {
   // args: (name on the incoming side, variable)
   SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: String },
   Await { bind: Option<String>, ret_to: StepId, future_id: String },
+  // TODO: extract await into some separate construction?
+  // because here in select I only want to put Step::Await
+  Select { arms: Vec<Step> },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?

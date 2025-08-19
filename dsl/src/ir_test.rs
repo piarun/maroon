@@ -66,7 +66,7 @@ fn test_ir() {
           // implementation is "provided" by runtime(maybe not the best term?)
           // maybe global is not the best name?
           heap: HashMap::new(),
-          in_messages: vec![],
+          in_messages: vec![MessageSpec { name: "Timeout".to_string(), fields: vec![("sec".to_string(), Type::Int)] }],
           funcs: HashMap::from([
             (
               "add".to_string(),
@@ -216,8 +216,11 @@ fn test_ir() {
           in_messages: vec![],
           funcs: HashMap::from([("increment".to_string(), {
             // socialScore.increment(userId):
+            //   send global.timeout(10)
             //   send userManager.GetUser(userId)
-            //   user_opt = await GetUserResponse
+            //   select
+            //     user_opt = await GetUserResponse
+            //     await Timeout ->
             //   if user_opt is Some:
             //     user = unwrap(user_opt)
             //     new_rating = global.add(user.rating, 1)
@@ -244,16 +247,35 @@ fn test_ir() {
                     fiber: "userManager".to_string(),
                     message: "GetUser".to_string(),
                     args: vec![("key".to_string(), Expr::Var("userId".to_string()))],
-                    next: StepId::new("await_user"),
+                    next: StepId::new("timeout_start"),
                     future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
                   },
                 ),
                 (
-                  StepId::new("await_user"),
-                  Step::Await {
-                    bind: Some("user_opt".to_string()),
-                    ret_to: StepId::new("check_user"),
-                    future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
+                  StepId::new("timeout_start"),
+                  Step::SendToFiber {
+                    fiber: "global".to_string(),
+                    message: "Timeout".to_string(),
+                    args: vec![("sec".to_string(), Expr::Int(10))],
+                    next: StepId::new("select"),
+                    future_id: "timeout_await_unique_id".to_string(),
+                  },
+                ),
+                (
+                  StepId::new("select"),
+                  Step::Select {
+                    arms: vec![
+                      Step::Await {
+                        bind: Some("user_opt".to_string()),
+                        ret_to: StepId::new("check_user"),
+                        future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
+                      },
+                      Step::Await {
+                        bind: None,
+                        ret_to: StepId::new("done"),
+                        future_id: "timeout_await_unique_id".to_string(),
+                      },
+                    ],
                   },
                 ),
                 (
