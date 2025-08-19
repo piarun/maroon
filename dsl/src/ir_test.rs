@@ -243,19 +243,17 @@ fn test_ir() {
                   Step::SendToFiber {
                     fiber: "userManager".to_string(),
                     message: "GetUser".to_string(),
-                    args: vec![Expr::Var("userId".to_string())],
+                    args: vec![("key".to_string(), Expr::Var("userId".to_string()))],
                     next: StepId::new("await_user"),
+                    future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
                   },
                 ),
                 (
                   StepId::new("await_user"),
                   Step::Await {
-                    // this message GetUser is the same as previous step GetUser
-                    // this is how binding should happen?
-                    // TODO: or should I add some other id to help binding here?
-                    message: "GetUser".to_string(),
                     bind: Some("user_opt".to_string()),
                     ret_to: StepId::new("check_user"),
+                    future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
                   },
                 ),
                 (

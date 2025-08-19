@@ -57,8 +57,9 @@ pub enum Step {
   // send a message to a fiber (by name) of a specific kind with arguments, then continue
   // doesn't awaits by default. I think that makes sense?
   // but it can be used with await
-  SendToFiber { fiber: String, message: String, args: Vec<Expr>, next: StepId },
-  Await { message: String, bind: Option<String>, ret_to: StepId },
+  // args: (name on the incoming side, variable)
+  SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: String },
+  Await { bind: Option<String>, ret_to: StepId, future_id: String },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
