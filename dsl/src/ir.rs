@@ -59,10 +59,8 @@ pub enum Step {
   // but it can be used with await
   // args: (name on the incoming side, variable)
   SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: String },
-  Await { bind: Option<String>, ret_to: StepId, future_id: String },
-  // TODO: extract await into some separate construction?
-  // because here in select I only want to put Step::Await
-  Select { arms: Vec<Step> },
+  Await(AwaitSpec),
+  Select { arms: Vec<AwaitSpec> },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
@@ -70,6 +68,13 @@ pub enum Step {
   Return { value: Option<Expr> },
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
+}
+
+#[derive(Debug, Clone)]
+pub struct AwaitSpec {
+  pub bind: Option<String>,
+  pub ret_to: StepId,
+  pub future_id: String,
 }
 
 #[derive(Debug, Clone)]
