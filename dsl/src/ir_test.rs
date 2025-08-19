@@ -265,16 +265,12 @@ fn test_ir() {
                   StepId::new("select"),
                   Step::Select {
                     arms: vec![
-                      Step::Await {
+                      AwaitSpec {
                         bind: Some("user_opt".to_string()),
                         ret_to: StepId::new("check_user"),
                         future_id: "can_put_anything_unique_here_needed_only_for_awaiting_identification".to_string(),
                       },
-                      Step::Await {
-                        bind: None,
-                        ret_to: StepId::new("done"),
-                        future_id: "timeout_await_unique_id".to_string(),
-                      },
+                      AwaitSpec { bind: None, ret_to: StepId::new("done"), future_id: "timeout_await_unique_id".to_string() },
                     ],
                   },
                 ),
