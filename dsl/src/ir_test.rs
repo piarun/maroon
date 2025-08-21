@@ -32,6 +32,9 @@
 //   }
 
 use crate::ir::*;
+use crate::codegen::generate_rust_types;
+use std::path::PathBuf;
+use std::fs;
 use std::collections::HashMap;
 
 #[test]
@@ -56,7 +59,7 @@ fn test_ir() {
 
   */
 
-  let _ir = IR {
+  let ir = IR {
     fibers: HashMap::from([
       (
         "global".to_string(),
@@ -339,4 +342,12 @@ fn test_ir() {
       ],
     )],
   };
+
+  // Generate Rust code from IR and write it into state/src/generated_types.rs
+  let code = generate_rust_types(&ir);
+  let mut out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  out_path.pop(); // move from dsl/ to workspace root
+  out_path.push("state/src/generated_types.rs");
+  if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap(); }
+  fs::write(&out_path, code).expect("write generated types");
 }
