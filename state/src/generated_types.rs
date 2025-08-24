@@ -98,27 +98,26 @@ pub enum Value {
   UserManagerGetUserFieldKey(String),
 }
 
+
 #[derive(Clone, Debug)]
 pub enum StackEntry {
-State(State),
-Retrn(State),
-Value(Value),
+  State(State),
+  Retrn(State),
+  Value(Value),
 }
 
 #[derive(Clone, Debug)]
 pub enum StepResult {
-Done,
-Next(Vec<StackEntry>),
-Sleep(u64, State),
-Write(String, State),
-Next(State),
-Branch { then_: State, else_: State },
-Select(Vec<State>),
-Return(Option<Value>),
-Todo(String),
-}
-
-pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {
+  Done,
+  Next(Vec<StackEntry>),
+  Sleep(u64, State),
+  Write(String, State),
+  Go(State),
+  Branch { then_: State, else_: State },
+  Select(Vec<State>),
+  Return(Option<Value>),
+  Todo(String),
+}pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {
   match state {
     State::Completed => StepResult::Done,
     State::Idle => StepResult::Done,

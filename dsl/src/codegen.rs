@@ -13,20 +13,8 @@ fn rust_type(t: &Type) -> String {
   }
 }
 
-fn sanitize_ident(raw: &str) -> String {
-  let mut s = String::with_capacity(raw.len());
-  for (i, ch) in raw.chars().enumerate() {
-    let valid = ch.is_ascii_alphanumeric() || ch == '_';
-    if i == 0 && ch.is_ascii_digit() {
-      s.push('_');
-    }
-    s.push(if valid { ch } else { '_' });
-  }
-  if s.is_empty() { "_".to_string() } else { s }
-}
-
 fn pascal_case(raw: &str) -> String {
-  let s = sanitize_ident(raw);
+  let s = raw.to_string();
   if s.contains('_') {
     let mut out = String::new();
     for part in s.split('_') {
@@ -133,7 +121,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
     for (func_name, func) in funcs_sorted {
       let mut steps: Vec<String> = Vec::new();
       steps.push(func.entry.0.clone());
-      for (step_id, _step) in &func.steps { steps.push(step_id.0.clone()); }
+      for (step_id, _step) in &func.steps {
+        steps.push(step_id.0.clone());
+      }
       steps.sort();
       steps.dedup();
       for s in steps {
@@ -184,25 +174,26 @@ pub fn generate_rust_types(ir: &IR) -> String {
 
   // 6) Emit runtime-aligned scaffolding types and global_step
   out.push_str(
-    "#[derive(Clone, Debug)]\n\
-pub enum StackEntry {\n\
-  State(State),\n\
-  Retrn(State),\n\
-  Value(Value),\n\
-}\n\
-\n\
-#[derive(Clone, Debug)]\n\
-pub enum StepResult {\n\
-  Done,\n\
-  Next(Vec<StackEntry>),\n\
-  Sleep(u64, State),\n\
-  Write(String, State),\n\
-  Next(State),\n\
-  Branch { then_: State, else_: State },\n\
-  Select(Vec<State>),\n\
-  Return(Option<Value>),\n\
-  Todo(String),\n\
-}\n\n",
+    r"
+#[derive(Clone, Debug)]
+pub enum StackEntry {
+  State(State),
+  Retrn(State),
+  Value(Value),
+}
+
+#[derive(Clone, Debug)]
+pub enum StepResult {
+  Done,
+  Next(Vec<StackEntry>),
+  Sleep(u64, State),
+  Write(String, State),
+  Go(State),
+  Branch { then_: State, else_: State },
+  Select(Vec<State>),
+  Return(Option<Value>),
+  Todo(String),
+}",
   );
 
   out.push_str(&generate_global_step(ir));
@@ -318,23 +309,41 @@ fn generate_global_step(ir: &IR) -> String {
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
       for (step_id, step) in steps_sorted {
         let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
-        if !seen.insert(state_variant.clone()) { continue; }
+        if !seen.insert(state_variant.clone()) {
+          continue;
+        }
         let mut referenced: BTreeSet<String> = BTreeSet::new();
         match step {
           Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
           Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
-          Step::SendToFiber { args, .. } => { for (_, e) in args { collect_vars_from_expr(&e, &mut referenced); } }
+          Step::SendToFiber { args, .. } => {
+            for (_, e) in args {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
           Step::Await(_) => {}
           Step::Select { arms: _ } => {}
-          Step::Call { args, .. } => { for e in args { collect_vars_from_expr(&e, &mut referenced); } }
-          Step::Return { value } => { if let Some(e) = value { collect_vars_from_expr(&e, &mut referenced); } }
+          Step::Call { args, .. } => {
+            for e in args {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
+          Step::Return { value } => {
+            if let Some(e) = value {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
         for var_name in referenced.iter() {
           if let Some(ty) = var_type_of(func, var_name) {
-            let variant = if var_is_param(func, var_name) { variant_name(&[fiber_name, func_name, "Param", var_name]) } else { variant_name(&[fiber_name, func_name, "Local", var_name]) };
+            let variant = if var_is_param(func, var_name) {
+              variant_name(&[fiber_name, func_name, "Param", var_name])
+            } else {
+              variant_name(&[fiber_name, func_name, "Local", var_name])
+            };
             let rust_ty = rust_type(ty);
             let local_ident = camel_ident(var_name);
             out.push_str(&format!("      let {local_ident}: {rust_ty} = vars.iter().find_map(|v| if let Value::{variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {variant} on stack\");\n"));
@@ -351,7 +360,8 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Write { text, next } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
             let text_code = render_expr_code(&text, func);
-            out.push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
+            out
+              .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
           }
           Step::SendToFiber { next, .. } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
@@ -363,9 +373,16 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::Select { arms } => {
             let mut arm_states: Vec<String> = Vec::new();
-            for arm in arms { arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0])); }
+            for arm in arms {
+              arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
+            }
             out.push_str("      StepResult::Select(vec![");
-            for (i, st) in arm_states.iter().enumerate() { if i > 0 { out.push_str(", "); } out.push_str(&format!("State::{}", st)); }
+            for (i, st) in arm_states.iter().enumerate() {
+              if i > 0 {
+                out.push_str(", ");
+              }
+              out.push_str(&format!("State::{}", st));
+            }
             out.push_str("])\n");
           }
           Step::Call { target, args, ret_to, .. } => {
@@ -399,7 +416,10 @@ fn generate_global_step(ir: &IR) -> String {
           Step::If { then_, else_, .. } => {
             let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
             let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
-            out.push_str(&format!("      StepResult::Branch {{ then_: State::{}, else_: State::{} }}\n", then_v, else_v));
+            out.push_str(&format!(
+              "      StepResult::Branch {{ then_: State::{}, else_: State::{} }}\n",
+              then_v, else_v
+            ));
           }
           Step::Let { local, expr, next } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
@@ -415,166 +435,6 @@ fn generate_global_step(ir: &IR) -> String {
       }
     }
   }
-
-  /* DUPLICATE REMOVED
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
-    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
-    for (func_name, func) in funcs_sorted {
-      use std::collections::BTreeSet;
-      let mut seen: BTreeSet<String> = BTreeSet::new();
-
-      // Emit entry arm even if the function has no steps.
-      let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
-      if seen.insert(entry_variant.clone()) {
-        out.push_str(&format!("    State::{entry_variant} => {{\n"));
-        out.push_str("      // Entry state — typically a dispatcher or initial decision.\n");
-        out.push_str("      StepResult::Next(State::");
-        out.push_str(&entry_variant);
-        out.push_str(")\n");
-        out.push_str("    }\n");
-      }
-
-      // Steps sorted by StepId string
-      let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
-      steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
-      for (step_id, step) in steps_sorted {
-        let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
-        if !seen.insert(state_variant.clone()) {
-          continue;
-        }
-
-        // Collect referenced variables for this step.
-        let mut referenced: BTreeSet<String> = BTreeSet::new();
-        match step {
-          Step::Sleep { ms, .. } => collect_vars_from_expr(ms, &mut referenced),
-          Step::Write { text, .. } => collect_vars_from_expr(text, &mut referenced),
-          Step::SendToFiber { args, .. } => {
-            for (_, e) in args {
-              collect_vars_from_expr(e, &mut referenced);
-            }
-          }
-          Step::Await(_) => {}
-          Step::Select { arms: _ } => {}
-          Step::Call { args, .. } => {
-            for e in args {
-              collect_vars_from_expr(e, &mut referenced);
-            }
-          }
-          Step::Return { value } => {
-            if let Some(e) = value {
-              collect_vars_from_expr(e, &mut referenced);
-            }
-          }
-          Step::If { cond, .. } => collect_vars_from_expr(cond, &mut referenced),
-          Step::Let { expr, .. } => collect_vars_from_expr(expr, &mut referenced),
-        }
-
-        out.push_str(&format!("    State::{state_variant} => {{\n"));
-        // Emit extractions from `vars` for each referenced variable.
-        for var_name in referenced.iter() {
-          if let Some(ty) = var_type_of(func, var_name) {
-            let variant = if var_is_param(func, var_name) {
-              variant_name(&[fiber_name, func_name, "Param", var_name])
-            } else {
-              variant_name(&[fiber_name, func_name, "Local", var_name])
-            };
-            let rust_ty = rust_type(ty);
-            let local_ident = camel_ident(var_name);
-            out.push_str(&format!(
-              "      let {local_ident}: {rust_ty} = vars.iter().find_map(|v| if let Value::{variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {variant} on stack\");\n"
-            ));
-          } else {
-            out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
-          }
-        }
-
-        // Construct the control-flow result derived from IR
-        match step {
-          Step::Sleep { ms, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            let ms_code = render_expr_code(ms, func);
-            out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
-          }
-          Step::Write { text, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            let text_code = render_expr_code(text, func);
-            out
-              .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
-          }
-          Step::SendToFiber { next, .. } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            out.push_str(&format!("      StepResult::Next(State::{})\n", next_v));
-          }
-          Step::Await(spec) => {
-            let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-            out.push_str(&format!("      StepResult::Next(State::{})\n", next_v));
-          }
-          Step::Select { arms } => {
-            let mut arm_states: Vec<String> = Vec::new();
-            for arm in arms {
-              arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
-            }
-            out.push_str("      StepResult::Select(vec![");
-            for (i, st) in arm_states.iter().enumerate() {
-              if i > 0 {
-                out.push_str(", ");
-              }
-              out.push_str(&format!("State::{}", st));
-            }
-            out.push_str("])\n");
-          }
-          Step::Call { target, args, ret_to, .. } => {
-            let ret_state = variant_name(&[fiber_name, func_name, &ret_to.0]);
-            if let Some(callee) = find_func(ir, &target.fiber, &target.func) {
-              out.push_str("      StepResult::Next(vec![\n");
-              out.push_str(&format!("        StackEntry::Retrn(State::{}),\n", ret_state));
-              for (idx, p) in callee.in_vars.iter().enumerate() {
-                if let Some(arg) = args.get(idx) {
-                  let vname = variant_name(&[&target.fiber, &target.func, "Param", &p.name]);
-                  let expr_code = render_expr_code(arg, func);
-                  out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
-                }
-              }
-              let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
-              out.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
-              out.push_str("      ])\n");
-            } else {
-              out.push_str(&format!("      StepResult::Next(State::{})\n", ret_state));
-            }
-          }
-          Step::Return { value } => {
-            if let Some(val) = value {
-              let vname = variant_name(&[fiber_name, func_name, "Return"]);
-              let expr_code = render_expr_code(val, func);
-              out.push_str(&format!("      StepResult::Return(Some(Value::{}({})))\n", vname, expr_code));
-            } else {
-              out.push_str("      StepResult::Return(None)\n");
-            }
-          }
-          Step::If { then_, else_, .. } => {
-            let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
-            let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
-            out.push_str(&format!(
-              "      StepResult::Branch {{ then_: State::{}, else_: State::{} }}\n",
-              then_v, else_v
-            ));
-          }
-          Step::Let { local, expr, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            let vname = variant_name(&[fiber_name, func_name, "Local", local]);
-            let expr_code = render_expr_code(expr, func);
-            out.push_str("      StepResult::Next(vec![\n");
-            out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
-            out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-            out.push_str("      ])\n");
-          }
-        }
-        out.push_str("    }\n");
-      }
-    }
-  }
-  */
 
   out.push_str("  }\n}\n");
   out
