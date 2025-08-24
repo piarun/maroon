@@ -61,7 +61,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   // 1) Emit custom struct types declared at top-level IR.types
   for t in &ir.types {
     if let Type::Struct(name, fields) = t {
-      out.push_str(&format!("#[derive(Clone, Debug)]\npub struct {} {{\n", pascal_case(name)));
+      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
       for f in fields {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
       }
@@ -77,7 +77,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     msgs.sort_by(|a, b| a.name.cmp(&b.name));
     for msg in &msgs {
       let msg_ty = variant_name(&[fiber_name, &msg.name, "Msg"]);
-      out.push_str(&format!("#[derive(Clone, Debug)]\npub struct {} {{\n", msg_ty));
+      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
       let mut fields_sorted = msg.fields.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
@@ -91,7 +91,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   let mut heap_variants: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let heap_struct = variant_name(&[fiber_name, "Heap"]);
-    out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", heap_struct));
+    out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", heap_struct));
     let mut heap_fields: Vec<(&String, &Type)> = fiber.heap.iter().collect();
     heap_fields.sort_by(|a, b| a.0.cmp(b.0));
     for (name, ty) in heap_fields {
@@ -112,7 +112,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("}\n\n");
 
   // 4) Emit State enum variants for all steps of all funcs (always include entry).
-  out.push_str("#[derive(Clone, Debug)]\npub enum State {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum State {\n");
   // Always include `Completed` and `Idle` as catch-alls to mirror runtime expectations.
   out.push_str("  Completed,\n  Idle,\n");
   for (fiber_name, fiber) in fibers_sorted.iter() {
@@ -135,7 +135,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("}\n\n");
 
   // 5) Emit Value enum for function params, locals, and function return values.
-  out.push_str("#[derive(Clone, Debug)]\npub enum Value {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum Value {\n");
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -175,14 +175,14 @@ pub fn generate_rust_types(ir: &IR) -> String {
   // 6) Emit runtime-aligned scaffolding types and global_step
   out.push_str(
     r"
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StackEntry {
   State(State),
   Retrn(State),
   Value(Value),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
@@ -314,10 +314,7 @@ fn generate_global_step(ir: &IR) -> String {
             "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
           ));
           let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!(
-            "      StepResult::Return(Some(Value::{}({} + {})))\n",
-            ret_v, a_local, b_local
-          ));
+          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} + {})))\n", ret_v, a_local, b_local));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
           let a = &func.in_vars[0];
           let b = &func.in_vars[1];
@@ -332,10 +329,7 @@ fn generate_global_step(ir: &IR) -> String {
             "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
           ));
           let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!(
-            "      StepResult::Return(Some(Value::{}({} - {})))\n",
-            ret_v, a_local, b_local
-          ));
+          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} - {})))\n", ret_v, a_local, b_local));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
           let a = &func.in_vars[0];
           let b = &func.in_vars[1];
@@ -350,10 +344,7 @@ fn generate_global_step(ir: &IR) -> String {
             "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
           ));
           let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!(
-            "      StepResult::Return(Some(Value::{}({} * {})))\n",
-            ret_v, a_local, b_local
-          ));
+          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} * {})))\n", ret_v, a_local, b_local));
         } else {
           // Default: nothing special, fall back to a no-op transition.
           out.push_str("      StepResult::GoTo(State::");
