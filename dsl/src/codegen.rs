@@ -345,6 +345,9 @@ fn generate_global_step(ir: &IR) -> String {
           ));
           let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
           out.push_str(&format!("      StepResult::Return(Some(Value::{}({} * {})))\n", ret_v, a_local, b_local));
+        } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
+          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!("      StepResult::Return(Some(Value::{}(rand::random::<u64>())))\n", ret_v));
         } else {
           // Default: nothing special, fall back to a no-op transition.
           out.push_str("      StepResult::GoTo(State::");

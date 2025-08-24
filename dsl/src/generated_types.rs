@@ -169,7 +169,7 @@ pub enum StepResult {
       StepResult::Return(Some(Value::GlobalMultReturn(a * b)))
     }
     State::GlobalRandGenEntry => {
-      StepResult::GoTo(State::GlobalRandGenEntry)
+      StepResult::Return(Some(Value::GlobalRandGenReturn(rand::random::<u64>())))
     }
     State::GlobalSubEntry => {
       let a: u64 = vars.iter().find_map(|v| if let Value::GlobalSubParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalSubParamA on stack");
