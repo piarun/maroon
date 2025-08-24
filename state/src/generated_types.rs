@@ -120,13 +120,13 @@ pub enum StepResult {
 }pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {
   match state {
     State::Completed => StepResult::Done,
-    State::Idle => StepResult::Done,
+    State::Idle => panic!("shoudnt be here"),
     State::GlobalAddEntry => {
-      // Entry state — typically a dispatcher or initial decision.
-      StepResult::GoTo(State::GlobalAddEntry)
+      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalAddParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalAddParamA on stack");
+      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalAddParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalAddParamB on stack");
+      StepResult::Return(Some(Value::GlobalAddReturn(a + b)))
     }
     State::GlobalFactorialEntry => {
-      // Entry state — typically a dispatcher or initial decision.
       StepResult::GoTo(State::GlobalFactorialEntry)
     }
     State::GlobalFactorialFactorialCall => {
@@ -164,19 +164,19 @@ pub enum StepResult {
       ])
     }
     State::GlobalMultEntry => {
-      // Entry state — typically a dispatcher or initial decision.
-      StepResult::GoTo(State::GlobalMultEntry)
+      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalMultParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalMultParamA on stack");
+      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalMultParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalMultParamB on stack");
+      StepResult::Return(Some(Value::GlobalMultReturn(a * b)))
     }
     State::GlobalRandGenEntry => {
-      // Entry state — typically a dispatcher or initial decision.
       StepResult::GoTo(State::GlobalRandGenEntry)
     }
     State::GlobalSubEntry => {
-      // Entry state — typically a dispatcher or initial decision.
-      StepResult::GoTo(State::GlobalSubEntry)
+      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalSubParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalSubParamA on stack");
+      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalSubParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalSubParamB on stack");
+      StepResult::Return(Some(Value::GlobalSubReturn(a - b)))
     }
     State::SocialScoreIncrementEntry => {
-      // Entry state — typically a dispatcher or initial decision.
       StepResult::GoTo(State::SocialScoreIncrementEntry)
     }
     State::SocialScoreIncrementCallAdd => {
@@ -227,11 +227,9 @@ pub enum StepResult {
       ])
     }
     State::UserManagerGetEntry => {
-      // Entry state — typically a dispatcher or initial decision.
       StepResult::GoTo(State::UserManagerGetEntry)
     }
     State::UserManagerSetEntry => {
-      // Entry state — typically a dispatcher or initial decision.
       StepResult::GoTo(State::UserManagerSetEntry)
     }
   }

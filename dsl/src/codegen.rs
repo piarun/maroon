@@ -287,7 +287,7 @@ fn generate_global_step(ir: &IR) -> String {
   out.push_str("pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {\n");
   out.push_str("  match state {\n");
   out.push_str("    State::Completed => StepResult::Done,\n");
-  out.push_str("    State::Idle => StepResult::Done,\n");
+  out.push_str("    State::Idle => panic!(\"shoudnt be here\"),\n");
   let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
   for (fiber_name, fiber) in fibers_sorted.iter() {
@@ -299,10 +299,67 @@ fn generate_global_step(ir: &IR) -> String {
       let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
       if seen.insert(entry_variant.clone()) {
         out.push_str(&format!("    State::{entry_variant} => {{\n"));
-        out.push_str("      // Entry state — typically a dispatcher or initial decision.\n");
-        out.push_str("      StepResult::GoTo(State::");
-        out.push_str(&entry_variant);
-        out.push_str(")\n");
+        // Built-in semantics for some primitive global functions.
+        if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
+          let a = &func.in_vars[0];
+          let b = &func.in_vars[1];
+          let a_local = camel_ident(&a.name);
+          let b_local = camel_ident(&b.name);
+          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
+          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
+          out.push_str(&format!(
+            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
+          ));
+          out.push_str(&format!(
+            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
+          ));
+          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!(
+            "      StepResult::Return(Some(Value::{}({} + {})))\n",
+            ret_v, a_local, b_local
+          ));
+        } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
+          let a = &func.in_vars[0];
+          let b = &func.in_vars[1];
+          let a_local = camel_ident(&a.name);
+          let b_local = camel_ident(&b.name);
+          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
+          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
+          out.push_str(&format!(
+            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
+          ));
+          out.push_str(&format!(
+            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
+          ));
+          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!(
+            "      StepResult::Return(Some(Value::{}({} - {})))\n",
+            ret_v, a_local, b_local
+          ));
+        } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
+          let a = &func.in_vars[0];
+          let b = &func.in_vars[1];
+          let a_local = camel_ident(&a.name);
+          let b_local = camel_ident(&b.name);
+          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
+          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
+          out.push_str(&format!(
+            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
+          ));
+          out.push_str(&format!(
+            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
+          ));
+          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!(
+            "      StepResult::Return(Some(Value::{}({} * {})))\n",
+            ret_v, a_local, b_local
+          ));
+        } else {
+          // Default: nothing special, fall back to a no-op transition.
+          out.push_str("      StepResult::GoTo(State::");
+          out.push_str(&entry_variant);
+          out.push_str(")\n");
+        }
         out.push_str("    }\n");
       }
       let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
