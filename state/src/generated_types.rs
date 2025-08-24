@@ -112,7 +112,7 @@ pub enum StepResult {
   Next(Vec<StackEntry>),
   Sleep(u64, State),
   Write(String, State),
-  Go(State),
+  GoTo(State),
   Branch { then_: State, else_: State },
   Select(Vec<State>),
   Return(Option<Value>),
