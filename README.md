@@ -72,6 +72,14 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
   - [x] set up etcd
   - [x] write epochs to etcd
   - [x] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
+- [ ] DSL
+    - [X] base IR
+    - [X] generate maroon steps from IR
+    - [ ] run base runtime on generated steps (functions call)
+    - [ ] advanced runtime features
+        - [ ] async/await (cross-fiber communication)
+- [ ] orderbook showcase
+    - [ ] IR implementation
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd
 - [ ] dump data to s3?? (??: what exactly we need to persist? Format? Easy to bootstrap later??)
