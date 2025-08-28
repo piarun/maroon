@@ -68,6 +68,17 @@ pub enum Step {
   Return { value: Option<Expr> },
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
+  // TODO: Block with local variables that can look at variables of this function
+  // but other parts of the function can't access this block's variables
+  // ex: for loop
+
+  // TODO: Builtin step for "library" functions
+  // Builtin { opcode: Opcode, args: Vec<Expr>, bind: Option<String>, ret_to: StepId },
+}
+
+#[derive(Debug, Clone)]
+pub enum Opcode {
+  SubU64,
 }
 
 #[derive(Debug, Clone)]

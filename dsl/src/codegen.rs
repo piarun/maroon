@@ -178,7 +178,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StackEntry {
   State(State),
-  Retrn(State),
+  Retrn(Option<Value>),
   Value(Value),
 }
 
@@ -191,10 +191,14 @@ pub enum StepResult {
   GoTo(State),
   Branch { then_: State, else_: State },
   Select(Vec<State>),
+  // Return can carry an optional value to be consumed by the runtime.
   Return(Option<Value>),
   Todo(String),
 }",
   );
+
+  // Emit helper that tells how many Value entries are on the stack for a given State.
+  out.push_str(&generate_state_args_count(ir));
 
   out.push_str(&generate_global_step(ir));
 
@@ -282,9 +286,125 @@ fn find_func<'a>(
   ir.fibers.get(fiber).and_then(|f| f.funcs.get(func))
 }
 
+// Generate a function that returns how many Value entries are expected to be
+// located immediately below a given `State` on the execution stack.
+// The count is computed as:
+// - For any function entry state: number of input params.
+fn generate_state_args_count(ir: &IR) -> String {
+  use std::collections::HashMap;
+
+  let mut counts: HashMap<String, usize> = HashMap::new();
+  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
+    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (func_name, func) in funcs_sorted {
+      // Determine entry state args.
+      let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      let entry_args = if fiber_name.as_str() == "global" {
+        // Built-in global functions consume their parameters at entry.
+        match func_name.as_str() {
+          "randGen" => 0,
+          _ => func.in_vars.len(),
+        }
+      } else {
+        // If entry step exists explicitly, use its referenced variables, otherwise 0.
+        let mut referenced: BTreeSet<String> = BTreeSet::new();
+        if let Some((_, step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
+          match step {
+            Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+            Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
+            Step::SendToFiber { args, .. } => {
+              for (_, e) in args {
+                collect_vars_from_expr(&e, &mut referenced);
+              }
+            }
+            Step::Await(_) => {}
+            Step::Select { arms: _ } => {}
+            Step::Call { args, .. } => {
+              for e in args {
+                collect_vars_from_expr(&e, &mut referenced);
+              }
+            }
+            Step::Return { value } => {
+              if let Some(e) = value {
+                collect_vars_from_expr(&e, &mut referenced);
+              }
+            }
+            Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
+            Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+          }
+        }
+        referenced.len()
+      };
+      counts.insert(entry_variant, entry_args);
+
+      // Per-step: the number of variables referenced in that step.
+      let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
+      steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+      for (step_id, step) in steps_sorted {
+        let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
+        let mut referenced: BTreeSet<String> = BTreeSet::new();
+        match step {
+          Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+          Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
+          Step::SendToFiber { args, .. } => {
+            for (_, e) in args {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
+          Step::Await(_) => {}
+          Step::Select { arms: _ } => {}
+          Step::Call { args, .. } => {
+            for e in args {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
+          Step::Return { value } => {
+            if let Some(e) = value {
+              collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
+          Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
+          Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+        }
+        counts.insert(state_variant, referenced.len());
+      }
+    }
+  }
+
+  // Emit result function.
+  let mut out = String::new();
+  out.push_str("pub fn state_args_count(e: &State) -> usize {\n  match e {\n");
+  out.push_str("    State::Completed | State::Idle => 0,\n");
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
+    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (func_name, func) in funcs_sorted {
+      // Collect unique step IDs, include entry.
+      let mut steps: Vec<String> = Vec::new();
+      steps.push(func.entry.0.clone());
+      for (sid, _st) in &func.steps {
+        steps.push(sid.0.clone());
+      }
+      steps.sort();
+      steps.dedup();
+      for s in steps {
+        let v = variant_name(&[fiber_name, func_name, &s]);
+        let n = counts.get(&v).cloned().unwrap_or(0);
+        out.push_str(&format!("    State::{} => {},\n", v, n));
+      }
+    }
+  }
+  out.push_str("  }\n}\n\n");
+  out
+}
+
 fn generate_global_step(ir: &IR) -> String {
   let mut out = String::new();
-  out.push_str("pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {\n");
+  out.push_str("pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepResult {\n");
   out.push_str("  match state {\n");
   out.push_str("    State::Completed => StepResult::Done,\n");
   out.push_str("    State::Idle => panic!(\"shoudnt be here\"),\n");
@@ -299,60 +419,29 @@ fn generate_global_step(ir: &IR) -> String {
       let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
       if seen.insert(entry_variant.clone()) {
         out.push_str(&format!("    State::{entry_variant} => {{\n"));
+
+        // put variables from stack according to the IR needs
+        // TODO: some steps won't need all the variables, so later it should be a bit trickier, when it comes to get indexes in a stack for variables
+        for (i, var) in func.in_vars.iter().enumerate() {
+          let name = variant_name(&[fiber_name, func_name, "Param", &var.name]);
+          out.push_str(&format!("      let {}: {} = if let StackEntry::Value(Value::{name}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n", var.name,rust_type(&var.type_),i));
+        }
+
         // Built-in semantics for some primitive global functions.
         if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} + {})))\n", ret_v, a_local, b_local));
+          let r_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!("      StepResult::Return(Some(Value::{r_v}(a + b)))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} - {})))\n", ret_v, a_local, b_local));
+          let r_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!("      StepResult::Return(Some(Value::{r_v}(a - b)))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} * {})))\n", ret_v, a_local, b_local));
+          let r_v = variant_name(&[fiber_name, func_name, "Return"]);
+          out.push_str(&format!("      StepResult::Return(Some(Value::{r_v}(a * b)))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}(rand::random::<u64>())))\n", ret_v));
+          out.push_str(&format!("      StepResult::Return(None)\n"));
         } else {
           // Default: nothing special, fall back to a no-op transition.
-          out.push_str("      StepResult::GoTo(State::");
-          out.push_str(&entry_variant);
-          out.push_str(")\n");
+          out.push_str(&format!("      StepResult::GoTo(State::{})\n", &entry_variant));
         }
         out.push_str("    }\n");
       }
@@ -397,7 +486,7 @@ fn generate_global_step(ir: &IR) -> String {
             };
             let rust_ty = rust_type(ty);
             let local_ident = camel_ident(var_name);
-            out.push_str(&format!("      let {local_ident}: {rust_ty} = vars.iter().find_map(|v| if let Value::{variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {variant} on stack\");\n"));
+            out.push_str(&format!("      let {local_ident}: {rust_ty} = vars.iter().find_map(|e| if let StackEntry::Value(Value::{variant}(x)) = e {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {variant} on stack\");\n"));
           } else {
             out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
           }
@@ -440,7 +529,8 @@ fn generate_global_step(ir: &IR) -> String {
             let ret_state = variant_name(&[fiber_name, func_name, &ret_to.0]);
             if let Some(callee) = find_func(ir, &target.fiber, &target.func) {
               out.push_str("      StepResult::Next(vec![\n");
-              out.push_str(&format!("        StackEntry::Retrn(State::{}),\n", ret_state));
+              // Push a return marker carrying optional return value; return control flow handled by runtime.
+              out.push_str(&format!("        StackEntry::Retrn(None),\n"));
               for (idx, p) in callee.in_vars.iter().enumerate() {
                 if let Some(arg) = args.get(idx) {
                   let vname = variant_name(&[&target.fiber, &target.func, "Param", &p.name]);
@@ -456,10 +546,10 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Return { value } => {
-            if let Some(val) = value {
-              let vname = variant_name(&[fiber_name, func_name, "Return"]);
-              let expr_code = render_expr_code(&val, func);
-              out.push_str(&format!("      StepResult::Return(Some(Value::{}({})))\n", vname, expr_code));
+            let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
+            if let Some(val_expr) = value {
+              let expr_code = render_expr_code(&val_expr, func);
+              out.push_str(&format!("      StepResult::Return(Some(Value::{ret_v}({expr_code})))\n"));
             } else {
               out.push_str("      StepResult::Return(None)\n");
             }

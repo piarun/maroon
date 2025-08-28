@@ -102,7 +102,7 @@ pub enum Value {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StackEntry {
   State(State),
-  Retrn(State),
+  Retrn(Option<Value>),
   Value(Value),
 }
 
@@ -115,88 +115,118 @@ pub enum StepResult {
   GoTo(State),
   Branch { then_: State, else_: State },
   Select(Vec<State>),
+  // Return can carry an optional value to be consumed by the runtime.
   Return(Option<Value>),
   Todo(String),
-}pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {
+}pub fn state_args_count(e: &State) -> usize {
+  match e {
+    State::Completed | State::Idle => 0,
+    State::GlobalAddEntry => 2,
+    State::GlobalFactorialEntry => 1,
+    State::GlobalFactorialFactorialCall => 1,
+    State::GlobalFactorialMultiply => 2,
+    State::GlobalFactorialReturn => 1,
+    State::GlobalFactorialReturn1 => 0,
+    State::GlobalFactorialSubtract => 1,
+    State::GlobalMultEntry => 2,
+    State::GlobalRandGenEntry => 0,
+    State::GlobalSubEntry => 2,
+    State::SocialScoreIncrementCallAdd => 1,
+    State::SocialScoreIncrementCheckUser => 1,
+    State::SocialScoreIncrementDone => 0,
+    State::SocialScoreIncrementEntry => 1,
+    State::SocialScoreIncrementHaveUser => 1,
+    State::SocialScoreIncrementSelect => 0,
+    State::SocialScoreIncrementSetUser => 2,
+    State::SocialScoreIncrementTimeoutStart => 0,
+    State::SocialScoreIncrementUpdateUser => 2,
+    State::UserManagerGetEntry => 0,
+    State::UserManagerSetEntry => 0,
+  }
+}
+
+pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepResult {
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
     State::GlobalAddEntry => {
-      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalAddParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalAddParamA on stack");
-      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalAddParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalAddParamB on stack");
+      let a: u64 = if let StackEntry::Value(Value::GlobalAddParamA(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(Value::GlobalAddParamB(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::GlobalAddReturn(a + b)))
     }
     State::GlobalFactorialEntry => {
+      let n: u64 = if let StackEntry::Value(Value::GlobalFactorialParamN(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::GoTo(State::GlobalFactorialEntry)
     }
     State::GlobalFactorialFactorialCall => {
-      let subtractRes: u64 = vars.iter().find_map(|v| if let Value::GlobalFactorialLocalSubtractRes(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalSubtractRes on stack");
+      let subtractRes: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::GlobalFactorialLocalSubtractRes(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalSubtractRes on stack");
       StepResult::Next(vec![
-        StackEntry::Retrn(State::GlobalFactorialMultiply),
+        StackEntry::Retrn(None),
         StackEntry::Value(Value::GlobalFactorialParamN(subtractRes)),
         StackEntry::State(State::GlobalFactorialEntry),
       ])
     }
     State::GlobalFactorialMultiply => {
-      let facCallRes: u64 = vars.iter().find_map(|v| if let Value::GlobalFactorialLocalFacCallRes(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalFacCallRes on stack");
-      let n: u64 = vars.iter().find_map(|v| if let Value::GlobalFactorialParamN(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialParamN on stack");
+      let facCallRes: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::GlobalFactorialLocalFacCallRes(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalFacCallRes on stack");
+      let n: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::GlobalFactorialParamN(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialParamN on stack");
       StepResult::Next(vec![
-        StackEntry::Retrn(State::GlobalFactorialReturn),
+        StackEntry::Retrn(None),
         StackEntry::Value(Value::GlobalMultParamA(n)),
         StackEntry::Value(Value::GlobalMultParamB(facCallRes)),
         StackEntry::State(State::GlobalMultEntry),
       ])
     }
     State::GlobalFactorialReturn => {
-      let result: u64 = vars.iter().find_map(|v| if let Value::GlobalFactorialLocalResult(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalResult on stack");
+      let result: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::GlobalFactorialLocalResult(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialLocalResult on stack");
       StepResult::Return(Some(Value::GlobalFactorialReturn(result)))
     }
     State::GlobalFactorialReturn1 => {
       StepResult::Return(Some(Value::GlobalFactorialReturn(1u64)))
     }
     State::GlobalFactorialSubtract => {
-      let n: u64 = vars.iter().find_map(|v| if let Value::GlobalFactorialParamN(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialParamN on stack");
+      let n: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::GlobalFactorialParamN(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable GlobalFactorialParamN on stack");
       StepResult::Next(vec![
-        StackEntry::Retrn(State::GlobalFactorialFactorialCall),
+        StackEntry::Retrn(None),
         StackEntry::Value(Value::GlobalSubParamA(n)),
         StackEntry::Value(Value::GlobalSubParamB(1u64)),
         StackEntry::State(State::GlobalSubEntry),
       ])
     }
     State::GlobalMultEntry => {
-      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalMultParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalMultParamA on stack");
-      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalMultParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalMultParamB on stack");
+      let a: u64 = if let StackEntry::Value(Value::GlobalMultParamA(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(Value::GlobalMultParamB(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::GlobalMultReturn(a * b)))
     }
     State::GlobalRandGenEntry => {
-      StepResult::Return(Some(Value::GlobalRandGenReturn(rand::random::<u64>())))
+      StepResult::Return(None)
     }
     State::GlobalSubEntry => {
-      let a: u64 = vars.iter().find_map(|v| if let Value::GlobalSubParamA(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalSubParamA on stack");
-      let b: u64 = vars.iter().find_map(|v| if let Value::GlobalSubParamB(x) = v { Some(x.clone()) } else { None }).expect("Missing variable GlobalSubParamB on stack");
+      let a: u64 = if let StackEntry::Value(Value::GlobalSubParamA(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(Value::GlobalSubParamB(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::GlobalSubReturn(a - b)))
     }
     State::SocialScoreIncrementEntry => {
+      let userId: String = if let StackEntry::Value(Value::SocialScoreIncrementParamUserId(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::GoTo(State::SocialScoreIncrementEntry)
     }
     State::SocialScoreIncrementCallAdd => {
-      let user: User = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalUser(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUser on stack");
+      let user: User = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalUser(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUser on stack");
       StepResult::Next(vec![
-        StackEntry::Retrn(State::SocialScoreIncrementUpdateUser),
+        StackEntry::Retrn(None),
         StackEntry::Value(Value::GlobalAddParamA((user).rating)),
         StackEntry::Value(Value::GlobalAddParamB(1u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
     State::SocialScoreIncrementCheckUser => {
-      let userOpt: Option<User> = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalUserOpt(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUserOpt on stack");
+      let userOpt: Option<User> = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalUserOpt(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUserOpt on stack");
       StepResult::Branch { then_: State::SocialScoreIncrementHaveUser, else_: State::SocialScoreIncrementDone }
     }
     State::SocialScoreIncrementDone => {
       StepResult::Return(None)
     }
     State::SocialScoreIncrementHaveUser => {
-      let userOpt: Option<User> = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalUserOpt(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUserOpt on stack");
+      let userOpt: Option<User> = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalUserOpt(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUserOpt on stack");
       StepResult::Next(vec![
         StackEntry::Value(Value::SocialScoreIncrementLocalUser((userOpt).unwrap())),
         StackEntry::State(State::SocialScoreIncrementCallAdd),
@@ -206,10 +236,10 @@ pub enum StepResult {
       StepResult::Select(vec![State::SocialScoreIncrementCheckUser, State::SocialScoreIncrementDone])
     }
     State::SocialScoreIncrementSetUser => {
-      let updatedUser: User = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalUpdatedUser(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUpdatedUser on stack");
-      let userId: String = vars.iter().find_map(|v| if let Value::SocialScoreIncrementParamUserId(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementParamUserId on stack");
+      let updatedUser: User = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalUpdatedUser(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUpdatedUser on stack");
+      let userId: String = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementParamUserId(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementParamUserId on stack");
       StepResult::Next(vec![
-        StackEntry::Retrn(State::SocialScoreIncrementDone),
+        StackEntry::Retrn(None),
         StackEntry::Value(Value::UserManagerSetParamKey(userId)),
         StackEntry::Value(Value::UserManagerSetParamItem(updatedUser)),
         StackEntry::State(State::UserManagerSetEntry),
@@ -219,17 +249,20 @@ pub enum StepResult {
       StepResult::GoTo(State::SocialScoreIncrementSelect)
     }
     State::SocialScoreIncrementUpdateUser => {
-      let newRating: u64 = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalNewRating(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalNewRating on stack");
-      let user: User = vars.iter().find_map(|v| if let Value::SocialScoreIncrementLocalUser(x) = v { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUser on stack");
+      let newRating: u64 = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalNewRating(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalNewRating on stack");
+      let user: User = vars.iter().find_map(|e| if let StackEntry::Value(Value::SocialScoreIncrementLocalUser(x)) = e { Some(x.clone()) } else { None }).expect("Missing variable SocialScoreIncrementLocalUser on stack");
       StepResult::Next(vec![
         StackEntry::Value(Value::SocialScoreIncrementLocalUpdatedUser({ let mut tmp = (user).clone(); tmp.rating = (newRating); tmp })),
         StackEntry::State(State::SocialScoreIncrementSetUser),
       ])
     }
     State::UserManagerGetEntry => {
+      let key: String = if let StackEntry::Value(Value::UserManagerGetParamKey(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::GoTo(State::UserManagerGetEntry)
     }
     State::UserManagerSetEntry => {
+      let key: String = if let StackEntry::Value(Value::UserManagerSetParamKey(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let item: User = if let StackEntry::Value(Value::UserManagerSetParamItem(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::GoTo(State::UserManagerSetEntry)
     }
   }
