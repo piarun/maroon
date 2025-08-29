@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use pest::iterators::Pair;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StepId(pub String);
 
@@ -123,4 +125,31 @@ pub enum Type {
 pub struct StructField {
   pub name: String,
   pub ty: Type,
+}
+
+impl IR {
+  pub fn is_valid(&self) -> (bool, String) {
+    // TODO: all branches have the same end
+    let mut explanation = String::new();
+    for fiber in self.fibers.iter() {
+      for func in fiber.1.funcs.iter() {
+        if func.0 == &"add".to_string() || func.0 == &"sub".to_string() {
+          // builtin exceptions
+          continue;
+        }
+        let mut has_entry = false; // each function should start with 'entry' stepId
+        for step in func.1.steps.iter() {
+          if step.0 == StepId::new("entry") {
+            has_entry = true;
+            break;
+          }
+        }
+        if !has_entry {
+          explanation.push_str(&format!("{}.{} doesnt have step 'entry'\n", fiber.0, func.0));
+        }
+      }
+    }
+
+    (explanation.len() == 0, explanation)
+  }
 }

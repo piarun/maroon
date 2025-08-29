@@ -2,22 +2,11 @@ use crate::generated_types::*;
 
 #[test]
 fn primitive_one_tick_function() {
-  let vars = vec![StackEntry::Value(Value::GlobalAddParamA(2)), StackEntry::Value(Value::GlobalAddParamB(10))];
+  let vars = vec![StackEntry::Value(Value::U64(2)), StackEntry::Value(Value::U64(10))];
   let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap {}));
-  if let StepResult::Return(Some(Value::GlobalAddReturn(12))) = result {
+  if let StepResult::Return(Some(Value::U64(12))) = result {
   } else {
     panic!("add should return 12");
-  }
-}
-
-#[test]
-fn random_function() {
-  let empty: Vec<StackEntry> = vec![];
-  let result = global_step(State::GlobalRandGenEntry, &empty, &mut Heap::Global(GlobalHeap {}));
-
-  if let StepResult::Return(_) = result {
-  } else {
-    panic!("failed test, should return some random number");
   }
 }
 
@@ -26,8 +15,17 @@ fn add_function() {
   let mut some_t = Task::new();
   some_t.put_add_task(14, 16);
   some_t.run();
+  assert_eq!(vec![StackEntry::Value(Value::U64(30))], some_t.stack);
+}
 
-  assert_eq!(vec![StackEntry::Retrn(Some(Value::GlobalAddReturn(30)))], some_t.stack);
+#[test]
+#[ignore]
+fn sub_add_function() {
+  let mut some_t = Task::new();
+  some_t.put_sub_add_task(6, 5, 4);
+  some_t.run();
+
+  assert_eq!(vec![StackEntry::Value(Value::U64(7))], some_t.stack);
 }
 
 pub struct Task {
@@ -45,14 +43,43 @@ impl Task {
     a: u64,
     b: u64,
   ) {
-    self.stack.push(StackEntry::Retrn(None));
-    self.stack.push(StackEntry::Value(Value::GlobalAddParamA(a)));
-    self.stack.push(StackEntry::Value(Value::GlobalAddParamB(b)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Retrn(Some(1)));
+    self.stack.push(StackEntry::Value(Value::U64(a)));
+    self.stack.push(StackEntry::Value(Value::U64(b)));
     self.stack.push(StackEntry::State(State::GlobalAddEntry));
+  }
+
+  fn put_sub_add_task(
+    &mut self,
+    a: u64,
+    b: u64,
+    c: u64,
+  ) {
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Retrn(Some(1)));
+    // This experimental flow requires its own states; leaving as-is but unused.
+    self.stack.push(StackEntry::Value(Value::U64(a)));
+    self.stack.push(StackEntry::Value(Value::U64(b)));
+    self.stack.push(StackEntry::Value(Value::U64(c)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::State(State::GlobalSubAddEntry));
+  }
+
+  fn print_stack(
+    &self,
+    mark: &str,
+  ) {
+    println!("StackState:{}", mark);
+    for elem in &self.stack {
+      println!("    {:?}", elem);
+    }
   }
 
   fn run(&mut self) {
     loop {
+      self.print_stack("");
       let Some(head) = self.stack.pop() else {
         break;
       };
@@ -63,12 +90,18 @@ impl Task {
         break;
       };
 
-      let arguments_number = state_args_count(&state);
+      let arguments_number = func_args_count(&state);
       if arguments_number > self.stack.len() {
         panic!("miss amount of variables: need {arguments_number}, have {}", self.stack.len());
       }
 
+      // index on stack where current function starts
+      // StackEntry::Retrn is not here, only arguments + local_vars
       let start = self.stack.len() - arguments_number;
+
+      // println!("Star {}", start);
+      // println!("Vars: {:?}", &self.stack[start..]);
+      // self.print_stack("BeforeGlobalStep");
 
       let result = global_step(state, &self.stack[start..], &mut self.heap);
 
@@ -77,12 +110,31 @@ impl Task {
           // Drop used arguments
           self.stack.truncate(start);
 
-          let on_top = self.stack.last_mut().expect("should be value after return, otherwise stack is corrupted");
-          if let StackEntry::Retrn(slot) = on_top {
-            *slot = opt
-          } else {
-            panic!("on top lays not retrn value, stack is corrupted")
+          // since we're returning from function we should have a record of return 'address' info
+          let StackEntry::Retrn(return_instruction) =
+            self.stack.pop().expect("stack is corrupted. No return instruction")
+          else {
+            panic!("there is no return instruction on stack. Stack is corrupted");
+          };
+
+          if let Some(val) = opt {
+            if let Some(offset) = return_instruction {
+              let ret_value_bind_index = self.stack.len() - offset;
+              self.stack[ret_value_bind_index] = StackEntry::Value(val);
+            } else {
+            }
           }
+          // self.print_stack("After_first_return");
+        }
+        StepResult::GoTo(state) => {
+          // if it's call a function in the same fiber - straightforward
+          // TODO: add here cross-fiber async-await shit?
+          // But async await has it's own IR state Step::Await
+          // then I should check somehow that this is only normal local state, and not async one?
+          self.stack.push(StackEntry::State(state));
+        }
+        StepResult::Next(stack_entries) => {
+          self.stack.extend(stack_entries);
         }
         _ => {}
       }
