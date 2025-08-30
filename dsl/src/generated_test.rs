@@ -19,13 +19,21 @@ fn add_function() {
 }
 
 #[test]
-#[ignore]
 fn sub_add_function() {
   let mut some_t = Task::new();
   some_t.put_sub_add_task(6, 5, 4);
   some_t.run();
 
   assert_eq!(vec![StackEntry::Value(Value::U64(7))], some_t.stack);
+}
+
+#[test]
+fn factorial_function() {
+  let mut some_t = Task::new();
+  some_t.put_factorial_task(3);
+  some_t.run();
+
+  assert_eq!(vec![StackEntry::Value(Value::U64(6))], some_t.stack);
 }
 
 pub struct Task {
@@ -36,6 +44,19 @@ pub struct Task {
 impl Task {
   fn new() -> Task {
     Task { stack: vec![], heap: Heap::Global(GlobalHeap {}) }
+  }
+
+  fn put_factorial_task(
+    &mut self,
+    n: u64,
+  ) {
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Retrn(Some(1)));
+    self.stack.push(StackEntry::Value(Value::U64(n)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::State(State::GlobalFactorialEntry));
   }
 
   fn put_add_task(

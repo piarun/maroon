@@ -74,7 +74,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   // 1) Emit custom struct types declared at top-level IR.types
   for t in &ir.types {
     if let Type::Struct(name, fields) = t {
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
+      out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
       for f in fields {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
       }
@@ -283,6 +283,22 @@ fn render_expr_code(
   }
 }
 
+fn default_value_expr(t: &Type) -> String {
+  match t {
+    Type::Int => "0u64".to_string(),
+    Type::String => "String::new()".to_string(),
+    Type::Void => "()".to_string(),
+    Type::Option(_) => "None".to_string(),
+    Type::Array(inner) => format!("Vec::<{}>::new()", rust_type(inner)),
+    Type::Map(k, v) => format!(
+      "std::collections::HashMap::<{}, {}>::new()",
+      rust_type(k),
+      rust_type(v)
+    ),
+    Type::Struct(name, _) | Type::Custom(name) => format!("{}::default()", pascal_case(name)),
+  }
+}
+
 fn render_call_step(
   ir: &IR,
   current_fiber: &str,
@@ -327,6 +343,12 @@ fn render_call_step(
         s.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
       }
     }
+    // Push default placeholders for callee locals to allocate its frame fully
+    for l in &callee.locals {
+      let vname = type_variant_name(&l.type_);
+      let def_expr = default_value_expr(&l.type_);
+      s.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, def_expr));
+    }
     let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
     s.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
     s.push_str("      ])\n");
@@ -367,7 +389,7 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
 
-      if func_name == "add" || func_name == "sub" {
+      if func_name == "add" || func_name == "sub" || func_name == "mult" {
         // builtin exceptions
         let v = variant_name(&[fiber_name, func_name, "entry"]);
         out.push_str(&format!("    State::{} => {},\n", v, n));

@@ -133,7 +133,7 @@ impl IR {
     let mut explanation = String::new();
     for fiber in self.fibers.iter() {
       for func in fiber.1.funcs.iter() {
-        if func.0 == &"add".to_string() || func.0 == &"sub".to_string() {
+        if func.0 == &"add".to_string() || func.0 == &"sub".to_string() || func.0 == &"mult".to_string() {
           // builtin exceptions
           continue;
         }
