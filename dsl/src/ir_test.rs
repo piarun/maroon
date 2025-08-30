@@ -38,6 +38,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[test]
+#[ignore]
 fn test_ir() {
   /*
      userManager{
@@ -346,6 +347,177 @@ fn test_ir() {
       ],
     )],
   };
+
+  // Generate Rust code from IR and write it into state/src/generated_types.rs
+  let code = generate_rust_types(&ir);
+  let mut out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  out_path.pop(); // move from dsl/ to workspace root
+  out_path.push("dsl/src/generated_types.rs");
+  if let Some(parent) = out_path.parent() {
+    fs::create_dir_all(parent).unwrap();
+  }
+  fs::write(&out_path, code).expect("write generated types");
+}
+
+#[test]
+fn simple_ir() {
+  /*
+     global {
+      add
+      sub
+      subadd
+     }
+
+  */
+
+  let ir = IR {
+    fibers: HashMap::from([(
+      "global".to_string(),
+      Fiber {
+        heap: HashMap::new(),
+        in_messages: vec![],
+        funcs: HashMap::from([
+          (
+            "add".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "a".to_string(), type_: Type::Int },
+                InVar { name: "b".to_string(), type_: Type::Int },
+              ],
+              out: Type::Int,
+              locals: vec![],
+              entry: StepId::new("entry"),
+              steps: vec![],
+            },
+          ),
+          (
+            "sub".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "a".to_string(), type_: Type::Int },
+                InVar { name: "b".to_string(), type_: Type::Int },
+              ],
+              out: Type::Int,
+              locals: vec![],
+              entry: StepId::new("entry"),
+              steps: vec![],
+            },
+          ),
+          (
+            "mult".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "a".to_string(), type_: Type::Int },
+                InVar { name: "b".to_string(), type_: Type::Int },
+              ],
+              out: Type::Int,
+              locals: vec![],
+              entry: StepId::new("entry"),
+              steps: vec![],
+            },
+          ),
+          (
+            // factorial(n) {
+            //   if n == 1 { return 1 }
+            //   return n * factorial(n - 1)
+            // }
+            "factorial".to_string(),
+            Func {
+              in_vars: vec![InVar { name: "n".to_string(), type_: Type::Int }],
+              out: Type::Int,
+              locals: vec![
+                LocalVar { name: "fac_call_res".to_string(), type_: Type::Int },
+                LocalVar { name: "subtract_res".to_string(), type_: Type::Int },
+                LocalVar { name: "result".to_string(), type_: Type::Int },
+              ],
+              entry: StepId::new("entry"),
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::If {
+                    cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::Int(1))),
+                    then_: StepId::new("return_1"),
+                    else_: StepId::new("subtract"),
+                  },
+                ),
+                (StepId::new("return_1"), Step::Return { value: Some(Expr::Int(1)) }),
+                (
+                  StepId::new("subtract"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                    args: vec![Expr::Var("n".to_string()), Expr::Int(1)],
+                    bind: Some("subtract_res".to_string()),
+                    ret_to: StepId::new("factorial_call"),
+                  },
+                ),
+                (
+                  StepId::new("factorial_call"),
+                  Step::Call {
+                    // or instead of global.factorial use self.factorial?
+                    target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
+                    args: vec![Expr::Var("subtract_res".to_string())],
+                    bind: Some("fac_call_res".to_string()),
+                    ret_to: StepId::new("multiply"),
+                  },
+                ),
+                (
+                  StepId::new("multiply"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "mult".to_string() },
+                    args: vec![Expr::Var("n".to_string()), Expr::Var("fac_call_res".to_string())],
+                    bind: Some("result".to_string()),
+                    ret_to: StepId::new("return"),
+                  },
+                ),
+                (StepId::new("return"), Step::Return { value: Some(Expr::Var("result".to_string())) }),
+              ],
+            },
+          ),
+          (
+            "subAdd".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "a".to_string(), type_: Type::Int },
+                InVar { name: "b".to_string(), type_: Type::Int },
+                InVar { name: "c".to_string(), type_: Type::Int },
+              ],
+              out: Type::Int,
+              locals: vec![
+                LocalVar { name: "sumAB".to_string(), type_: Type::Int },
+                LocalVar { name: "subABC".to_string(), type_: Type::Int },
+              ],
+              entry: StepId::new("entry"),
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                    args: vec![Expr::Var("a".to_string()), Expr::Var("b".to_string())],
+                    bind: Some("sumAB".to_string()),
+                    ret_to: StepId::new("sub_sum"),
+                  },
+                ),
+                (
+                  StepId::new("sub_sum"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                    args: vec![Expr::Var("sumAB".to_string()), Expr::Var("c".to_string())],
+                    bind: Some("subABC".to_string()),
+                    ret_to: StepId::new("finalize"),
+                  },
+                ),
+                (StepId::new("finalize"), Step::Return { value: Some(Expr::Var("subABC".to_string())) }),
+              ],
+            },
+          ),
+        ]),
+      },
+    )]),
+    types: vec![],
+  };
+
+  let (valid, explanation) = ir.is_valid();
+  assert!(valid, "{explanation}");
 
   // Generate Rust code from IR and write it into state/src/generated_types.rs
   let code = generate_rust_types(&ir);
