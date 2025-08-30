@@ -2,7 +2,10 @@ use crate::generated_types::*;
 
 #[test]
 fn primitive_one_tick_function() {
-  let vars = vec![StackEntry::Value(Value::U64(2)), StackEntry::Value(Value::U64(10))];
+  let vars = vec![
+    StackEntry::Value("a".to_string(), Value::U64(2)),
+    StackEntry::Value("b".to_string(), Value::U64(10)),
+  ];
   let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap {}));
   if let StepResult::Return(Some(Value::U64(12))) = result {
   } else {
@@ -15,7 +18,7 @@ fn add_function() {
   let mut some_t = Task::new();
   some_t.put_add_task(14, 16);
   some_t.run();
-  assert_eq!(vec![StackEntry::Value(Value::U64(30))], some_t.stack);
+  assert_eq!(vec![StackEntry::Value("ret".to_string(), Value::U64(30))], some_t.stack);
 }
 
 #[test]
@@ -24,7 +27,7 @@ fn sub_add_function() {
   some_t.put_sub_add_task(6, 5, 4);
   some_t.run();
 
-  assert_eq!(vec![StackEntry::Value(Value::U64(7))], some_t.stack);
+  assert_eq!(vec![StackEntry::Value("ret".to_string(), Value::U64(7))], some_t.stack);
 }
 
 #[test]
@@ -33,7 +36,7 @@ fn factorial_function() {
   some_t.put_factorial_task(3);
   some_t.run();
 
-  assert_eq!(vec![StackEntry::Value(Value::U64(6))], some_t.stack);
+  assert_eq!(vec![StackEntry::Value("ret".to_string(), Value::U64(6))], some_t.stack);
 }
 
 pub struct Task {
@@ -50,12 +53,12 @@ impl Task {
     &mut self,
     n: u64,
   ) {
-    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value("ret".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::Retrn(Some(1)));
-    self.stack.push(StackEntry::Value(Value::U64(n)));
-    self.stack.push(StackEntry::Value(Value::U64(0)));
-    self.stack.push(StackEntry::Value(Value::U64(0)));
-    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value("n".to_string(), Value::U64(n)));
+    self.stack.push(StackEntry::Value("facCallRes".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("result".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("subtractRes".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::State(State::GlobalFactorialEntry));
   }
 
@@ -64,10 +67,10 @@ impl Task {
     a: u64,
     b: u64,
   ) {
-    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value("ret".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::Retrn(Some(1)));
-    self.stack.push(StackEntry::Value(Value::U64(a)));
-    self.stack.push(StackEntry::Value(Value::U64(b)));
+    self.stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+    self.stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
     self.stack.push(StackEntry::State(State::GlobalAddEntry));
   }
 
@@ -77,14 +80,14 @@ impl Task {
     b: u64,
     c: u64,
   ) {
-    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value("ret".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::Retrn(Some(1)));
     // This experimental flow requires its own states; leaving as-is but unused.
-    self.stack.push(StackEntry::Value(Value::U64(a)));
-    self.stack.push(StackEntry::Value(Value::U64(b)));
-    self.stack.push(StackEntry::Value(Value::U64(c)));
-    self.stack.push(StackEntry::Value(Value::U64(0)));
-    self.stack.push(StackEntry::Value(Value::U64(0)));
+    self.stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+    self.stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+    self.stack.push(StackEntry::Value("c".to_string(), Value::U64(c)));
+    self.stack.push(StackEntry::Value("sumAB".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("subABC".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::State(State::GlobalSubAddEntry));
   }
 
@@ -141,7 +144,12 @@ impl Task {
           if let Some(val) = opt {
             if let Some(offset) = return_instruction {
               let ret_value_bind_index = self.stack.len() - offset;
-              self.stack[ret_value_bind_index] = StackEntry::Value(val);
+              let new_entry = if let StackEntry::Value(label, _) = &self.stack[ret_value_bind_index] {
+                StackEntry::Value(label.clone(), val)
+              } else {
+                StackEntry::Value("ret".to_string(), val)
+              };
+              self.stack[ret_value_bind_index] = new_entry;
             } else {
             }
           }

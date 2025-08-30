@@ -40,7 +40,7 @@ pub enum StackEntry {
   // Option<usize> - local index offset back on stack
   // if it's None - no value will be binded into the local variable of the function that initiated call
   Retrn(Option<usize>),
-  Value(Value),
+  Value(String, Value),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -79,88 +79,88 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
     State::GlobalAddEntry => {
-      let a: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::U64(a + b)))
     }
     State::GlobalFactorialEntry => {
-      let n: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       if n == 1u64 { StepResult::GoTo(State::GlobalFactorialReturn1) } else { StepResult::GoTo(State::GlobalFactorialSubtract) }
     }
     State::GlobalFactorialFactorialCall => {
-      let subtractRes: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let subtractRes: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalFactorialMultiply),
         StackEntry::Retrn(Some(4)),
-        StackEntry::Value(Value::U64(subtractRes)),
-        StackEntry::Value(Value::U64(0u64)),
-        StackEntry::Value(Value::U64(0u64)),
-        StackEntry::Value(Value::U64(0u64)),
+        StackEntry::Value("n".to_string(), Value::U64(subtractRes)),
+        StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("result".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalFactorialEntry),
       ])
     }
     State::GlobalFactorialMultiply => {
-      let facCallRes: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let n: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let facCallRes: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalFactorialReturn),
         StackEntry::Retrn(Some(2)),
-        StackEntry::Value(Value::U64(n)),
-        StackEntry::Value(Value::U64(facCallRes)),
+        StackEntry::Value("a".to_string(), Value::U64(n)),
+        StackEntry::Value("b".to_string(), Value::U64(facCallRes)),
         StackEntry::State(State::GlobalMultEntry),
       ])
     }
     State::GlobalFactorialReturn => {
-      let result: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::U64(result)))
     }
     State::GlobalFactorialReturn1 => {
       StepResult::Return(Some(Value::U64(1u64)))
     }
     State::GlobalFactorialSubtract => {
-      let n: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalFactorialFactorialCall),
         StackEntry::Retrn(Some(3)),
-        StackEntry::Value(Value::U64(n)),
-        StackEntry::Value(Value::U64(1u64)),
+        StackEntry::Value("a".to_string(), Value::U64(n)),
+        StackEntry::Value("b".to_string(), Value::U64(1u64)),
         StackEntry::State(State::GlobalSubEntry),
       ])
     }
     State::GlobalMultEntry => {
-      let a: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::U64(a * b)))
     }
     State::GlobalSubEntry => {
-      let a: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::U64(a - b)))
     }
     State::GlobalSubAddEntry => {
-      let a: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let c: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalSubAddSubSum),
         StackEntry::Retrn(Some(3)),
-        StackEntry::Value(Value::U64(a)),
-        StackEntry::Value(Value::U64(b)),
+        StackEntry::Value("a".to_string(), Value::U64(a)),
+        StackEntry::Value("b".to_string(), Value::U64(b)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
     State::GlobalSubAddFinalize => {
-      let subABC: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       StepResult::Return(Some(Value::U64(subABC)))
     }
     State::GlobalSubAddSubSum => {
-      let c: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let sumAB: u64 = if let StackEntry::Value(Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let sumAB: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalSubAddFinalize),
         StackEntry::Retrn(Some(2)),
-        StackEntry::Value(Value::U64(sumAB)),
-        StackEntry::Value(Value::U64(c)),
+        StackEntry::Value("a".to_string(), Value::U64(sumAB)),
+        StackEntry::Value("b".to_string(), Value::U64(c)),
         StackEntry::State(State::GlobalSubEntry),
       ])
     }

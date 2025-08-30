@@ -184,7 +184,7 @@ pub enum StackEntry {
   // Option<usize> - local index offset back on stack
   // if it's None - no value will be binded into the local variable of the function that initiated call
   Retrn(Option<usize>),
-  Value(Value),
+  Value(String, Value),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -340,14 +340,14 @@ fn render_call_step(
       if let Some(arg) = args.get(idx) {
         let vname = type_variant_name(&p.type_);
         let expr_code = render_expr_code(arg, current_func);
-        s.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
+        s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", p.name, vname, expr_code));
       }
     }
     // Push default placeholders for callee locals to allocate its frame fully
     for l in &callee.locals {
       let vname = type_variant_name(&l.type_);
       let def_expr = default_value_expr(&l.type_);
-      s.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, def_expr));
+      s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", l.name, vname, def_expr));
     }
     let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
     s.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
@@ -439,7 +439,7 @@ fn generate_global_step(ir: &IR) -> String {
         // TODO: some steps won't need all the variables, so later it should be a bit trickier, when it comes to get indexes in a stack for variables
         for (i, var) in func.in_vars.iter().enumerate() {
           let vname = type_variant_name(&var.type_);
-          out.push_str(&format!("      let {}: {} = if let StackEntry::Value(Value::{vname}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n", var.name, rust_type(&var.type_), i));
+          out.push_str(&format!("      let {}: {} = if let StackEntry::Value(_, Value::{vname}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n", var.name, rust_type(&var.type_), i));
         }
 
         // Bind referenced locals for entry step using positional indices (after params)
@@ -495,7 +495,7 @@ fn generate_global_step(ir: &IR) -> String {
                     let rust_ty = rust_type(ty);
                     let tname = type_variant_name(ty);
                     let local_ident = camel_ident(var_name);
-                    out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+                    out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
                   }
                 }
               } else {
@@ -572,7 +572,7 @@ fn generate_global_step(ir: &IR) -> String {
                 let vname = type_variant_name(lty);
                 let expr_code = render_expr_code(&expr, func);
                 out.push_str("      StepResult::Next(vec![\n");
-                out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
+                out.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", local, vname, expr_code));
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
               }
@@ -623,12 +623,12 @@ fn generate_global_step(ir: &IR) -> String {
             let local_ident = camel_ident(var_name);
             if var_is_param(func, var_name) {
               if let Some(pos) = func.in_vars.iter().position(|p| &p.name == var_name) {
-                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(Value::{tname}(x)) = &vars[{pos}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{pos}] {{ x.clone() }} else {{ unreachable!() }};\n"));
               }
             } else {
               if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
                 let idx = func.in_vars.len() + pos;
-                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
               }
             }
           } else {
@@ -698,7 +698,7 @@ fn generate_global_step(ir: &IR) -> String {
             let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
             out.push_str("      StepResult::Next(vec![\n");
-            out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
+            out.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", local, vname, expr_code));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
           }
