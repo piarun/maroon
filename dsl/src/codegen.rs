@@ -2,7 +2,7 @@ use crate::ir::*;
 
 fn type_variant_name(t: &Type) -> String {
   match t {
-    Type::Int => "U64".into(),
+    Type::UInt64 => "U64".into(),
     Type::String => "String".into(),
     Type::Void => "Unit".into(),
     Type::Struct(name, _) => pascal_case(name),
@@ -15,7 +15,7 @@ fn type_variant_name(t: &Type) -> String {
 
 fn rust_type(t: &Type) -> String {
   match t {
-    Type::Int => "u64".into(),
+    Type::UInt64 => "u64".into(),
     Type::String => "String".into(),
     Type::Void => "()".into(),
     Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", rust_type(k), rust_type(v)),
@@ -285,16 +285,12 @@ fn render_expr_code(
 
 fn default_value_expr(t: &Type) -> String {
   match t {
-    Type::Int => "0u64".to_string(),
+    Type::UInt64 => "0u64".to_string(),
     Type::String => "String::new()".to_string(),
     Type::Void => "()".to_string(),
     Type::Option(_) => "None".to_string(),
     Type::Array(inner) => format!("Vec::<{}>::new()", rust_type(inner)),
-    Type::Map(k, v) => format!(
-      "std::collections::HashMap::<{}, {}>::new()",
-      rust_type(k),
-      rust_type(v)
-    ),
+    Type::Map(k, v) => format!("std::collections::HashMap::<{}, {}>::new()", rust_type(k), rust_type(v)),
     Type::Struct(name, _) | Type::Custom(name) => format!("{}::default()", pascal_case(name)),
   }
 }
@@ -340,7 +336,10 @@ fn render_call_step(
       if let Some(arg) = args.get(idx) {
         let vname = type_variant_name(&p.type_);
         let expr_code = render_expr_code(arg, current_func);
-        s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", p.name, vname, expr_code));
+        s.push_str(&format!(
+          "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+          p.name, vname, expr_code
+        ));
       }
     }
     // Push default placeholders for callee locals to allocate its frame fully
@@ -572,7 +571,10 @@ fn generate_global_step(ir: &IR) -> String {
                 let vname = type_variant_name(lty);
                 let expr_code = render_expr_code(&expr, func);
                 out.push_str("      StepResult::Next(vec![\n");
-                out.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", local, vname, expr_code));
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+                  local, vname, expr_code
+                ));
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
               }
@@ -698,7 +700,10 @@ fn generate_global_step(ir: &IR) -> String {
             let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
             out.push_str("      StepResult::Next(vec![\n");
-            out.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", local, vname, expr_code));
+            out.push_str(&format!(
+              "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+              local, vname, expr_code
+            ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
           }
@@ -722,7 +727,7 @@ mod tests {
     let ir = IR {
       types: vec![Type::Struct(
         "User".into(),
-        vec![StructField { name: "id".into(), ty: Type::String }, StructField { name: "age".into(), ty: Type::Int }],
+        vec![StructField { name: "id".into(), ty: Type::String }, StructField { name: "age".into(), ty: Type::UInt64 }],
       )],
       fibers: HashMap::from([
         (

@@ -70,16 +70,19 @@ fn test_ir() {
           // implementation is "provided" by runtime(maybe not the best term?)
           // maybe global is not the best name?
           heap: HashMap::new(),
-          in_messages: vec![MessageSpec { name: "Timeout".to_string(), fields: vec![("sec".to_string(), Type::Int)] }],
+          in_messages: vec![MessageSpec {
+            name: "Timeout".to_string(),
+            fields: vec![("sec".to_string(), Type::UInt64)],
+          }],
           funcs: HashMap::from([
             (
               "add".to_string(),
               Func {
                 in_vars: vec![
-                  InVar { name: "a".to_string(), type_: Type::Int },
-                  InVar { name: "b".to_string(), type_: Type::Int },
+                  InVar { name: "a".to_string(), type_: Type::UInt64 },
+                  InVar { name: "b".to_string(), type_: Type::UInt64 },
                 ],
-                out: Type::Int,
+                out: Type::UInt64,
                 locals: vec![],
                 entry: StepId::new("entry"),
                 steps: vec![],
@@ -89,10 +92,10 @@ fn test_ir() {
               "sub".to_string(),
               Func {
                 in_vars: vec![
-                  InVar { name: "a".to_string(), type_: Type::Int },
-                  InVar { name: "b".to_string(), type_: Type::Int },
+                  InVar { name: "a".to_string(), type_: Type::UInt64 },
+                  InVar { name: "b".to_string(), type_: Type::UInt64 },
                 ],
-                out: Type::Int,
+                out: Type::UInt64,
                 locals: vec![],
                 entry: StepId::new("entry"),
                 steps: vec![],
@@ -102,10 +105,10 @@ fn test_ir() {
               "mult".to_string(),
               Func {
                 in_vars: vec![
-                  InVar { name: "a".to_string(), type_: Type::Int },
-                  InVar { name: "b".to_string(), type_: Type::Int },
+                  InVar { name: "a".to_string(), type_: Type::UInt64 },
+                  InVar { name: "b".to_string(), type_: Type::UInt64 },
                 ],
-                out: Type::Int,
+                out: Type::UInt64,
                 locals: vec![],
                 entry: StepId::new("entry"),
                 steps: vec![],
@@ -113,7 +116,7 @@ fn test_ir() {
             ),
             (
               "randGen".to_string(),
-              Func { in_vars: vec![], out: Type::Int, locals: vec![], entry: StepId::new("entry"), steps: vec![] },
+              Func { in_vars: vec![], out: Type::UInt64, locals: vec![], entry: StepId::new("entry"), steps: vec![] },
             ),
             (
               // factorial(n) {
@@ -122,12 +125,12 @@ fn test_ir() {
               // }
               "factorial".to_string(),
               Func {
-                in_vars: vec![InVar { name: "n".to_string(), type_: Type::Int }],
-                out: Type::Int,
+                in_vars: vec![InVar { name: "n".to_string(), type_: Type::UInt64 }],
+                out: Type::UInt64,
                 locals: vec![
-                  LocalVar { name: "fac_call_res".to_string(), type_: Type::Int },
-                  LocalVar { name: "subtract_res".to_string(), type_: Type::Int },
-                  LocalVar { name: "result".to_string(), type_: Type::Int },
+                  LocalVar { name: "fac_call_res".to_string(), type_: Type::UInt64 },
+                  LocalVar { name: "subtract_res".to_string(), type_: Type::UInt64 },
+                  LocalVar { name: "result".to_string(), type_: Type::UInt64 },
                 ],
                 entry: StepId::new("entry"),
                 steps: vec![
@@ -240,7 +243,7 @@ fn test_ir() {
                   type_: Type::Option(Box::new(Type::Custom("User".to_string()))),
                 },
                 LocalVar { name: "user".to_string(), type_: Type::Custom("User".to_string()) },
-                LocalVar { name: "new_rating".to_string(), type_: Type::Int },
+                LocalVar { name: "new_rating".to_string(), type_: Type::UInt64 },
                 LocalVar { name: "updated_user".to_string(), type_: Type::Custom("User".to_string()) },
               ],
               entry: StepId::new("entry"),
@@ -341,9 +344,9 @@ fn test_ir() {
       "User".to_string(),
       vec![
         StructField { name: "id".to_string(), ty: Type::String },
-        StructField { name: "age".to_string(), ty: Type::Int },
+        StructField { name: "age".to_string(), ty: Type::UInt64 },
         StructField { name: "email".to_string(), ty: Type::String },
-        StructField { name: "rating".to_string(), ty: Type::Int },
+        StructField { name: "rating".to_string(), ty: Type::UInt64 },
       ],
     )],
   };
@@ -381,10 +384,10 @@ fn simple_ir() {
             "add".to_string(),
             Func {
               in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::Int },
-                InVar { name: "b".to_string(), type_: Type::Int },
+                InVar { name: "a".to_string(), type_: Type::UInt64 },
+                InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
-              out: Type::Int,
+              out: Type::UInt64,
               locals: vec![],
               entry: StepId::new("entry"),
               steps: vec![],
@@ -394,10 +397,10 @@ fn simple_ir() {
             "sub".to_string(),
             Func {
               in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::Int },
-                InVar { name: "b".to_string(), type_: Type::Int },
+                InVar { name: "a".to_string(), type_: Type::UInt64 },
+                InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
-              out: Type::Int,
+              out: Type::UInt64,
               locals: vec![],
               entry: StepId::new("entry"),
               steps: vec![],
@@ -407,10 +410,10 @@ fn simple_ir() {
             "mult".to_string(),
             Func {
               in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::Int },
-                InVar { name: "b".to_string(), type_: Type::Int },
+                InVar { name: "a".to_string(), type_: Type::UInt64 },
+                InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
-              out: Type::Int,
+              out: Type::UInt64,
               locals: vec![],
               entry: StepId::new("entry"),
               steps: vec![],
@@ -423,12 +426,12 @@ fn simple_ir() {
             // }
             "factorial".to_string(),
             Func {
-              in_vars: vec![InVar { name: "n".to_string(), type_: Type::Int }],
-              out: Type::Int,
+              in_vars: vec![InVar { name: "n".to_string(), type_: Type::UInt64 }],
+              out: Type::UInt64,
               locals: vec![
-                LocalVar { name: "fac_call_res".to_string(), type_: Type::Int },
-                LocalVar { name: "subtract_res".to_string(), type_: Type::Int },
-                LocalVar { name: "result".to_string(), type_: Type::Int },
+                LocalVar { name: "fac_call_res".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "subtract_res".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "result".to_string(), type_: Type::UInt64 },
               ],
               entry: StepId::new("entry"),
               steps: vec![
@@ -477,14 +480,14 @@ fn simple_ir() {
             "subAdd".to_string(),
             Func {
               in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::Int },
-                InVar { name: "b".to_string(), type_: Type::Int },
-                InVar { name: "c".to_string(), type_: Type::Int },
+                InVar { name: "a".to_string(), type_: Type::UInt64 },
+                InVar { name: "b".to_string(), type_: Type::UInt64 },
+                InVar { name: "c".to_string(), type_: Type::UInt64 },
               ],
-              out: Type::Int,
+              out: Type::UInt64,
               locals: vec![
-                LocalVar { name: "sumAB".to_string(), type_: Type::Int },
-                LocalVar { name: "subABC".to_string(), type_: Type::Int },
+                LocalVar { name: "sumAB".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "subABC".to_string(), type_: Type::UInt64 },
               ],
               entry: StepId::new("entry"),
               steps: vec![

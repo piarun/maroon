@@ -110,7 +110,7 @@ pub struct FuncRef {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-  Int,
+  UInt64,
   String,
   Void,
   Map(Box<Type>, Box<Type>),
