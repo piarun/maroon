@@ -284,6 +284,24 @@ fn render_expr_code(
   }
 }
 
+fn render_ret_value(rv: &RetValue, expected_ty: &Type, _func: &Func) -> String {
+  match rv {
+    RetValue::UInt64(x) => format!("{}u64", x),
+    RetValue::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
+    RetValue::Var(name) => camel_ident(name),
+    RetValue::Some(inner) => {
+      if let Type::Option(inner_ty) = expected_ty {
+        let inner_code = render_ret_value(inner, inner_ty, _func);
+        format!("Some({})", inner_code)
+      } else {
+        let inner_code = render_ret_value(inner, expected_ty, _func);
+        format!("Some({})", inner_code)
+      }
+    }
+    RetValue::None => "None".to_string(),
+  }
+}
+
 fn default_value_expr(t: &Type) -> String {
   match t {
     Type::UInt64 => "0u64".to_string(),
@@ -356,6 +374,17 @@ fn render_call_step(
     s.push_str(&format!("      StepResult::GoTo(State::{})\n", ret_state));
   }
   s
+}
+
+fn collect_vars_from_retvalue(rv: &RetValue, acc: &mut BTreeSet<String>) {
+  match rv {
+    RetValue::Var(name) => {
+      acc.insert(name.clone());
+    }
+    RetValue::UInt64(_) | RetValue::Str(_) => {}
+    RetValue::Some(inner) => collect_vars_from_retvalue(inner, acc),
+    RetValue::None => {}
+  }
 }
 
 fn find_func<'a>(
@@ -454,7 +483,8 @@ fn generate_global_step(ir: &IR) -> String {
           let r_v = variant_name(&[fiber_name, func_name, "Return"]);
           out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
-          out.push_str(&format!("      StepResult::Return(None)\n"));
+          // Placeholder return for randGen
+          out.push_str("      StepResult::Return(Value::U64(0u64))\n");
         } else {
           // If the entry step is explicitly defined in IR, emit its logic here; otherwise, fallback.
           if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
@@ -475,9 +505,7 @@ fn generate_global_step(ir: &IR) -> String {
                   collect_vars_from_expr(&e, &mut referenced);
                 }
               }
-              Step::Return { value } => {
-                collect_vars_from_expr(value, &mut referenced);
-              }
+              Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
               Step::ReturnVoid => {}
               Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
               Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
@@ -540,11 +568,10 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
               }
               Step::Return { value } => {
-                let expr_code = render_expr_code(value, func);
-                // Return value by its underlying type wrapper
+                let code = render_ret_value(value, &func.out, func);
                 out.push_str(&format!(
-                  "      StepResult::Return(Value::{}({expr_code})))\n",
-                  type_variant_name(&func.out)
+                  "      StepResult::Return(Value::{}({}))\n",
+                  type_variant_name(&func.out), code
                 ));
               }
               Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
@@ -602,9 +629,7 @@ fn generate_global_step(ir: &IR) -> String {
               collect_vars_from_expr(&e, &mut referenced);
             }
           }
-          Step::Return { value } => {
-            collect_vars_from_expr(value, &mut referenced);
-          }
+          Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
           Step::ReturnVoid => {}
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
@@ -667,8 +692,11 @@ fn generate_global_step(ir: &IR) -> String {
             out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
           }
           Step::Return { value } => {
-            let expr_code = render_expr_code(value, func);
-            out.push_str(&format!("      StepResult::Return(Value::{}({expr_code}))\n", type_variant_name(&func.out)));
+            let code = render_ret_value(value, &func.out, func);
+            out.push_str(&format!(
+              "      StepResult::Return(Value::{}({}))\n",
+              type_variant_name(&func.out), code
+            ));
           }
           Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
           Step::If { cond, then_, else_, .. } => {

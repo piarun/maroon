@@ -142,7 +142,7 @@ fn test_ir() {
                       else_: StepId::new("subtract"),
                     },
                   ),
-                  (StepId::new("return_1"), Step::Return { value: Expr::UInt64(1) }),
+                  (StepId::new("return_1"), Step::Return { value: RetValue::UInt64(1) }),
                   (
                     StepId::new("subtract"),
                     Step::Call {
@@ -171,7 +171,7 @@ fn test_ir() {
                       ret_to: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: Expr::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
                 ],
               },
             ),
@@ -444,7 +444,7 @@ fn simple_ir() {
                     else_: StepId::new("subtract"),
                   },
                 ),
-                (StepId::new("return_1"), Step::Return { value: Expr::UInt64(1) }),
+                (StepId::new("return_1"), Step::Return { value: RetValue::UInt64(1) }),
                 (
                   StepId::new("subtract"),
                   Step::Call {
@@ -473,7 +473,7 @@ fn simple_ir() {
                     ret_to: StepId::new("return"),
                   },
                 ),
-                (StepId::new("return"), Step::Return { value: Expr::Var("result".to_string()) }),
+                (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
               ],
             },
           ),
@@ -510,10 +510,49 @@ fn simple_ir() {
                     ret_to: StepId::new("finalize"),
                   },
                 ),
-                (StepId::new("finalize"), Step::Return { value: Expr::Var("subABC".to_string()) }),
+                (StepId::new("finalize"), Step::Return { value: RetValue::Var("subABC".to_string()) }),
               ],
             },
           ),
+          // (
+          // fn binary_search_r(e: i32, v: &Vec<i32>, left: usize, right: usize) -> Option<usize> {
+          //     if left > right { return None }
+          //     let div = (left + right) / 2;
+          //     if v[div] < e {
+          //         return binary_search_r(e, v, div + 1, right)
+          //     } else if v[div] > e {
+          //         if div == 0 {return None}
+          //         return binary_search_r(e, v, left, div - 1)
+          //     } else {
+          //         return Some(div)
+          //     }
+          // }
+          //   "binary_search".to_string(),
+          //   Func {
+          //     in_vars: vec![
+          //       InVar { name: "e".to_string(), type_: Type::UInt64 },
+          //       InVar { name: "left".to_string(), type_: Type::UInt64 },
+          //       InVar { name: "right".to_string(), type_: Type::UInt64 },
+          //     ],
+          //     out: Type::Option(Box::new(Type::UInt64)),
+          //     locals: vec![LocalVar { name: "div".to_string(), type_: Type::UInt64 }],
+          //     entry: StepId::new("entry"),
+          //     steps: vec![
+          //       (
+          //         StepId::new("entry"),
+          //         Step::If {
+          //           cond: Expr::Greater(
+          //             Box::new(Expr::Var("left".to_string())),
+          //             Box::new(Expr::Var("right".to_string())),
+          //           ),
+          //           then_: StepId::new("return_None"),
+          //           else_: StepId::new("subtract"),
+          //         },
+          //       ),
+          //       (StepId::new("return_None"), Step::Return { value: Exr }),
+          //     ],
+          //   },
+          // ),
         ]),
       },
     )]),

@@ -67,7 +67,7 @@ pub enum Step {
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
   Call { target: FuncRef, args: Vec<Expr>, bind: Option<String>, ret_to: StepId },
-  Return { value: Expr },
+  Return { value: RetValue },
   ReturnVoid,
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
@@ -101,6 +101,18 @@ pub enum Expr {
   Unwrap(Box<Expr>),
   GetField(Box<Expr>, String),
   StructUpdate { base: Box<Expr>, updates: Vec<(String, Expr)> },
+}
+
+#[derive(Debug, Clone)]
+pub enum RetValue {
+  // Return a variable by name
+  Var(String),
+  // Return a literal
+  UInt64(u64),
+  Str(String),
+  // Return an Option constructor
+  Some(Box<RetValue>),
+  None,
 }
 
 #[derive(Debug, Clone)]
