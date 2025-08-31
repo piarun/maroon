@@ -142,7 +142,7 @@ fn test_ir() {
                       else_: StepId::new("subtract"),
                     },
                   ),
-                  (StepId::new("return_1"), Step::Return { value: Some(Expr::Int(1)) }),
+                  (StepId::new("return_1"), Step::Return { value: Expr::Int(1) }),
                   (
                     StepId::new("subtract"),
                     Step::Call {
@@ -171,7 +171,7 @@ fn test_ir() {
                       ret_to: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: Some(Expr::Var("result".to_string())) }),
+                  (StepId::new("return"), Step::Return { value: Expr::Var("result".to_string()) }),
                 ],
               },
             ),
@@ -333,7 +333,7 @@ fn test_ir() {
                     ret_to: StepId::new("done"),
                   },
                 ),
-                (StepId::new("done"), Step::Return { value: None }),
+                (StepId::new("done"), Step::ReturnVoid),
               ],
             }
           })]),
@@ -377,6 +377,7 @@ fn simple_ir() {
     fibers: HashMap::from([(
       "global".to_string(),
       Fiber {
+        // heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
         heap: HashMap::new(),
         in_messages: vec![],
         funcs: HashMap::from([
@@ -443,7 +444,7 @@ fn simple_ir() {
                     else_: StepId::new("subtract"),
                   },
                 ),
-                (StepId::new("return_1"), Step::Return { value: Some(Expr::Int(1)) }),
+                (StepId::new("return_1"), Step::Return { value: Expr::Int(1) }),
                 (
                   StepId::new("subtract"),
                   Step::Call {
@@ -472,7 +473,7 @@ fn simple_ir() {
                     ret_to: StepId::new("return"),
                   },
                 ),
-                (StepId::new("return"), Step::Return { value: Some(Expr::Var("result".to_string())) }),
+                (StepId::new("return"), Step::Return { value: Expr::Var("result".to_string()) }),
               ],
             },
           ),
@@ -509,7 +510,7 @@ fn simple_ir() {
                     ret_to: StepId::new("finalize"),
                   },
                 ),
-                (StepId::new("finalize"), Step::Return { value: Some(Expr::Var("subABC".to_string())) }),
+                (StepId::new("finalize"), Step::Return { value: Expr::Var("subABC".to_string()) }),
               ],
             },
           ),

@@ -197,7 +197,8 @@ pub enum StepResult {
   Branch { then_: State, else_: State },
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
-  Return(Option<Value>),
+  Return(Value),
+  ReturnVoid,
   Todo(String),
 }",
   );
@@ -370,9 +371,6 @@ fn find_func<'a>(
 // The count is computed as:
 // - For any function entry state: number of input params + locals
 fn generate_func_args_count(ir: &IR) -> String {
-  use std::collections::HashMap;
-
-  let mut counts: HashMap<String, usize> = HashMap::new();
   let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -448,13 +446,13 @@ fn generate_global_step(ir: &IR) -> String {
 
         // Built-in semantics for some primitive global functions.
         if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
-          out.push_str(&format!("      StepResult::Return(Some(Value::U64(a + b)))\n"));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a + b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
           let r_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::U64(a - b)))\n"));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a - b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
           let r_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::U64(a * b)))\n"));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
           out.push_str(&format!("      StepResult::Return(None)\n"));
         } else {
@@ -478,10 +476,9 @@ fn generate_global_step(ir: &IR) -> String {
                 }
               }
               Step::Return { value } => {
-                if let Some(e) = value {
-                  collect_vars_from_expr(&e, &mut referenced);
-                }
+                collect_vars_from_expr(value, &mut referenced);
               }
+              Step::ReturnVoid => {}
               Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
               Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
             }
@@ -543,18 +540,14 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
               }
               Step::Return { value } => {
-                let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-                if let Some(val_expr) = value {
-                  let expr_code = render_expr_code(&val_expr, func);
-                  // Return value by its underlying type wrapper
-                  out.push_str(&format!(
-                    "      StepResult::Return(Some(Value::{}({expr_code})))\n",
-                    type_variant_name(&func.out)
-                  ));
-                } else {
-                  out.push_str("      StepResult::Return(None)\n");
-                }
+                let expr_code = render_expr_code(value, func);
+                // Return value by its underlying type wrapper
+                out.push_str(&format!(
+                  "      StepResult::Return(Value::{}({expr_code})))\n",
+                  type_variant_name(&func.out)
+                ));
               }
+              Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
               Step::If { cond, then_, else_ } => {
                 let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
                 let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
@@ -610,10 +603,9 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Return { value } => {
-            if let Some(e) = value {
-              collect_vars_from_expr(&e, &mut referenced);
-            }
+            collect_vars_from_expr(value, &mut referenced);
           }
+          Step::ReturnVoid => {}
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
         }
@@ -675,16 +667,10 @@ fn generate_global_step(ir: &IR) -> String {
             out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
           }
           Step::Return { value } => {
-            if let Some(val_expr) = value {
-              let expr_code = render_expr_code(&val_expr, func);
-              out.push_str(&format!(
-                "      StepResult::Return(Some(Value::{}({expr_code})))\n",
-                type_variant_name(&func.out)
-              ));
-            } else {
-              out.push_str("      StepResult::Return(None)\n");
-            }
+            let expr_code = render_expr_code(value, func);
+            out.push_str(&format!("      StepResult::Return(Value::{}({expr_code}))\n", type_variant_name(&func.out)));
           }
+          Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
           Step::If { cond, then_, else_, .. } => {
             let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
             let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
@@ -745,7 +731,7 @@ mod tests {
                 out: Type::Option(Box::new(Type::Custom("User".into()))),
                 locals: vec![],
                 entry: StepId::new("entry"),
-                steps: vec![(StepId::new("entry"), Step::Return { value: None })],
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             )]),
           },

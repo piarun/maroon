@@ -53,7 +53,8 @@ pub enum StepResult {
   Branch { then_: State, else_: State },
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
-  Return(Option<Value>),
+  Return(Value),
+  ReturnVoid,
   Todo(String),
 }
 pub fn func_args_count(e: &State) -> usize {
@@ -81,7 +82,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     State::GlobalAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Some(Value::U64(a + b)))
+      StepResult::Return(Value::U64(a + b))
     }
     State::GlobalFactorialEntry => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -112,10 +113,10 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     }
     State::GlobalFactorialReturn => {
       let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Return(Some(Value::U64(result)))
+      StepResult::Return(Value::U64(result))
     }
     State::GlobalFactorialReturn1 => {
-      StepResult::Return(Some(Value::U64(1u64)))
+      StepResult::Return(Value::U64(1u64))
     }
     State::GlobalFactorialSubtract => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -130,12 +131,12 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     State::GlobalMultEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Some(Value::U64(a * b)))
+      StepResult::Return(Value::U64(a * b))
     }
     State::GlobalSubEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Some(Value::U64(a - b)))
+      StepResult::Return(Value::U64(a - b))
     }
     State::GlobalSubAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -151,7 +152,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     }
     State::GlobalSubAddFinalize => {
       let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      StepResult::Return(Some(Value::U64(subABC)))
+      StepResult::Return(Value::U64(subABC))
     }
     State::GlobalSubAddSubSum => {
       let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };

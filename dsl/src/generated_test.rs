@@ -2,12 +2,10 @@ use crate::generated_types::*;
 
 #[test]
 fn primitive_one_tick_function() {
-  let vars = vec![
-    StackEntry::Value("a".to_string(), Value::U64(2)),
-    StackEntry::Value("b".to_string(), Value::U64(10)),
-  ];
+  let vars =
+    vec![StackEntry::Value("a".to_string(), Value::U64(2)), StackEntry::Value("b".to_string(), Value::U64(10))];
   let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap {}));
-  if let StepResult::Return(Some(Value::U64(12))) = result {
+  if let StepResult::Return(Value::U64(12)) = result {
   } else {
     panic!("add should return 12");
   }
@@ -130,7 +128,7 @@ impl Task {
       let result = global_step(state, &self.stack[start..], &mut self.heap);
 
       match result {
-        StepResult::Return(opt) => {
+        StepResult::Return(val) => {
           // Drop used arguments
           self.stack.truncate(start);
 
@@ -141,17 +139,14 @@ impl Task {
             panic!("there is no return instruction on stack. Stack is corrupted");
           };
 
-          if let Some(val) = opt {
-            if let Some(offset) = return_instruction {
-              let ret_value_bind_index = self.stack.len() - offset;
-              let new_entry = if let StackEntry::Value(label, _) = &self.stack[ret_value_bind_index] {
-                StackEntry::Value(label.clone(), val)
-              } else {
-                StackEntry::Value("ret".to_string(), val)
-              };
-              self.stack[ret_value_bind_index] = new_entry;
+          if let Some(offset) = return_instruction {
+            let ret_value_bind_index = self.stack.len() - offset;
+            let new_entry = if let StackEntry::Value(label, _) = &self.stack[ret_value_bind_index] {
+              StackEntry::Value(label.clone(), val)
             } else {
-            }
+              StackEntry::Value("ret".to_string(), val)
+            };
+            self.stack[ret_value_bind_index] = new_entry;
           }
           // self.print_stack("After_first_return");
         }

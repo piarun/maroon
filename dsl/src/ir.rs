@@ -67,7 +67,8 @@ pub enum Step {
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
   Call { target: FuncRef, args: Vec<Expr>, bind: Option<String>, ret_to: StepId },
-  Return { value: Option<Expr> },
+  Return { value: Expr },
+  ReturnVoid,
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
   // TODO: Block with local variables that can look at variables of this function
