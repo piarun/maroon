@@ -93,7 +93,7 @@ pub struct AwaitSpec {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-  Int(u64),
+  UInt64(u64),
   Str(String),
   Var(String),
   Equal(Box<Expr>, Box<Expr>),

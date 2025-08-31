@@ -218,7 +218,7 @@ fn collect_vars_from_expr(
   acc: &mut BTreeSet<String>,
 ) {
   match expr {
-    Expr::Int(_) | Expr::Str(_) => {}
+    Expr::UInt64(_) | Expr::Str(_) => {}
     Expr::Var(name) => {
       acc.insert(name.clone());
     }
@@ -266,7 +266,7 @@ fn render_expr_code(
   _func: &Func,
 ) -> String {
   match expr {
-    Expr::Int(x) => format!("{}u64", x),
+    Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::IsSome(e) => format!("({}).is_some()", render_expr_code(e, _func)),

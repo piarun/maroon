@@ -137,17 +137,17 @@ fn test_ir() {
                   (
                     StepId::new("entry"),
                     Step::If {
-                      cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::Int(1))),
+                      cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::UInt64(1))),
                       then_: StepId::new("return_1"),
                       else_: StepId::new("subtract"),
                     },
                   ),
-                  (StepId::new("return_1"), Step::Return { value: Expr::Int(1) }),
+                  (StepId::new("return_1"), Step::Return { value: Expr::UInt64(1) }),
                   (
                     StepId::new("subtract"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var("n".to_string()), Expr::Int(1)],
+                      args: vec![Expr::Var("n".to_string()), Expr::UInt64(1)],
                       bind: Some("subtract_res".to_string()),
                       ret_to: StepId::new("factorial_call"),
                     },
@@ -263,7 +263,7 @@ fn test_ir() {
                   Step::SendToFiber {
                     fiber: "global".to_string(),
                     message: "Timeout".to_string(),
-                    args: vec![("sec".to_string(), Expr::Int(10))],
+                    args: vec![("sec".to_string(), Expr::UInt64(10))],
                     next: StepId::new("select"),
                     future_id: "timeout_await_unique_id".to_string(),
                   },
@@ -307,7 +307,7 @@ fn test_ir() {
                     target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
                     args: vec![
                       Expr::GetField(Box::new(Expr::Var("user".to_string())), "rating".to_string()),
-                      Expr::Int(1),
+                      Expr::UInt64(1),
                     ],
                     bind: Some("new_rating".to_string()),
                     ret_to: StepId::new("update_user"),
@@ -439,17 +439,17 @@ fn simple_ir() {
                 (
                   StepId::new("entry"),
                   Step::If {
-                    cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::Int(1))),
+                    cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::UInt64(1))),
                     then_: StepId::new("return_1"),
                     else_: StepId::new("subtract"),
                   },
                 ),
-                (StepId::new("return_1"), Step::Return { value: Expr::Int(1) }),
+                (StepId::new("return_1"), Step::Return { value: Expr::UInt64(1) }),
                 (
                   StepId::new("subtract"),
                   Step::Call {
                     target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                    args: vec![Expr::Var("n".to_string()), Expr::Int(1)],
+                    args: vec![Expr::Var("n".to_string()), Expr::UInt64(1)],
                     bind: Some("subtract_res".to_string()),
                     ret_to: StepId::new("factorial_call"),
                   },
