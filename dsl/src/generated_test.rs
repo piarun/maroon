@@ -4,7 +4,7 @@ use crate::generated_types::*;
 fn primitive_one_tick_function() {
   let vars =
     vec![StackEntry::Value("a".to_string(), Value::U64(2)), StackEntry::Value("b".to_string(), Value::U64(10))];
-  let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap {}));
+  let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap { binarySearchValues: vec![] }));
   if let StepResult::Return(Value::U64(12)) = result {
   } else {
     panic!("add should return 12");
@@ -37,6 +37,15 @@ fn factorial_function() {
   assert_eq!(vec![StackEntry::Value("ret".to_string(), Value::U64(6))], some_t.stack);
 }
 
+#[test]
+fn b_search_function() {
+  let mut some_t = Task::new();
+  some_t.put_binary_search_task(vec![1, 2, 3, 4, 5, 6, 7], 4);
+  some_t.run();
+
+  assert_eq!(vec![StackEntry::Value("ret".to_string(), Value::OptionU64(Some(3)))], some_t.stack);
+}
+
 pub struct Task {
   pub stack: Vec<StackEntry>,
   pub heap: Heap,
@@ -44,7 +53,30 @@ pub struct Task {
 
 impl Task {
   fn new() -> Task {
-    Task { stack: vec![], heap: Heap::Global(GlobalHeap {}) }
+    Task { stack: vec![], heap: Heap::Global(GlobalHeap { binarySearchValues: vec![] }) }
+  }
+
+  fn put_binary_search_task(
+    &mut self,
+    numbers: Vec<u64>,
+    e: u64,
+  ) {
+    let len = numbers.len() as u64;
+    self.heap = Heap::Global(GlobalHeap { binarySearchValues: numbers });
+
+    self.stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
+    self.stack.push(StackEntry::Retrn(Some(1)));
+
+    self.stack.push(StackEntry::Value("e".to_string(), Value::U64(e)));
+    self.stack.push(StackEntry::Value("left".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("right".to_string(), Value::U64(len - 1)));
+
+    self.stack.push(StackEntry::Value("div".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("left_right_sum".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("fac_call_res".to_string(), Value::U64(0)));
+
+    self.stack.push(StackEntry::State(State::GlobalBinarySearchEntry));
   }
 
   fn put_factorial_task(

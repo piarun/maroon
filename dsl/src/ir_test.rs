@@ -377,8 +377,7 @@ fn simple_ir() {
     fibers: HashMap::from([(
       "global".to_string(),
       Fiber {
-        // heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
-        heap: HashMap::new(),
+        heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
         in_messages: vec![],
         funcs: HashMap::from([
           (
@@ -409,6 +408,19 @@ fn simple_ir() {
           ),
           (
             "mult".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "a".to_string(), type_: Type::UInt64 },
+                InVar { name: "b".to_string(), type_: Type::UInt64 },
+              ],
+              out: Type::UInt64,
+              locals: vec![],
+              entry: StepId::new("entry"),
+              steps: vec![],
+            },
+          ),
+          (
+            "div".to_string(),
             Func {
               in_vars: vec![
                 InVar { name: "a".to_string(), type_: Type::UInt64 },
@@ -514,45 +526,143 @@ fn simple_ir() {
               ],
             },
           ),
-          // (
-          // fn binary_search_r(e: i32, v: &Vec<i32>, left: usize, right: usize) -> Option<usize> {
-          //     if left > right { return None }
-          //     let div = (left + right) / 2;
-          //     if v[div] < e {
-          //         return binary_search_r(e, v, div + 1, right)
-          //     } else if v[div] > e {
-          //         if div == 0 {return None}
-          //         return binary_search_r(e, v, left, div - 1)
-          //     } else {
-          //         return Some(div)
-          //     }
-          // }
-          //   "binary_search".to_string(),
-          //   Func {
-          //     in_vars: vec![
-          //       InVar { name: "e".to_string(), type_: Type::UInt64 },
-          //       InVar { name: "left".to_string(), type_: Type::UInt64 },
-          //       InVar { name: "right".to_string(), type_: Type::UInt64 },
-          //     ],
-          //     out: Type::Option(Box::new(Type::UInt64)),
-          //     locals: vec![LocalVar { name: "div".to_string(), type_: Type::UInt64 }],
-          //     entry: StepId::new("entry"),
-          //     steps: vec![
-          //       (
-          //         StepId::new("entry"),
-          //         Step::If {
-          //           cond: Expr::Greater(
-          //             Box::new(Expr::Var("left".to_string())),
-          //             Box::new(Expr::Var("right".to_string())),
-          //           ),
-          //           then_: StepId::new("return_None"),
-          //           else_: StepId::new("subtract"),
-          //         },
-          //       ),
-          //       (StepId::new("return_None"), Step::Return { value: Exr }),
-          //     ],
-          //   },
-          // ),
+          (
+            // fn binary_search_r(e: i32, v: &Vec<i32>, left: usize, right: usize) -> Option<usize> {
+            //     if left > right { return None }
+            //     let div = (left + right) / 2;
+            //     if v[div] < e {
+            //         return binary_search_r(e, v, div + 1, right)
+            //     } else if v[div] > e {
+            //         if div == 0 {return None}
+            //         return binary_search_r(e, v, left, div - 1)
+            //     } else {
+            //         return Some(div)
+            //     }
+            // }
+            "binary_search".to_string(),
+            Func {
+              in_vars: vec![
+                InVar { name: "e".to_string(), type_: Type::UInt64 },
+                InVar { name: "left".to_string(), type_: Type::UInt64 },
+                InVar { name: "right".to_string(), type_: Type::UInt64 },
+              ],
+              out: Type::Option(Box::new(Type::UInt64)),
+              locals: vec![
+                LocalVar { name: "div".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "left_right_sum".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "v_by_index_div".to_string(), type_: Type::UInt64 },
+                LocalVar { name: "fac_call_res".to_string(), type_: Type::Option(Box::new(Type::UInt64)) },
+              ],
+              entry: StepId::new("entry"),
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::If {
+                    cond: Expr::Greater(
+                      Box::new(Expr::Var("left".to_string())),
+                      Box::new(Expr::Var("right".to_string())),
+                    ),
+                    then_: StepId::new("return_None"),
+                    else_: StepId::new("summarize_left_and_right"),
+                  },
+                ),
+                (StepId::new("return_None"), Step::Return { value: RetValue::None }),
+                (
+                  StepId::new("summarize_left_and_right"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                    args: vec![Expr::Var("left".to_string()), Expr::Var("right".to_string())],
+                    bind: Some("left_right_sum".to_string()),
+                    ret_to: StepId::new("calculate_div"),
+                  },
+                ),
+                (
+                  StepId::new("calculate_div"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "div".to_string() },
+                    args: vec![Expr::Var("left_right_sum".to_string()), Expr::UInt64(2)],
+                    bind: Some("div".to_string()),
+                    ret_to: StepId::new("read_value"),
+                  },
+                ),
+                (
+                  StepId::new("read_value"),
+                  Step::HeapGetIndex {
+                    array: "binary_search_values".to_string(),
+                    index: Expr::Var("div".to_string()),
+                    bind: "v_by_index_div".to_string(),
+                    next: StepId::new("return_if_equal"),
+                  },
+                ),
+                (
+                  StepId::new("return_if_equal"),
+                  Step::If {
+                    cond: Expr::Equal(
+                      Box::new(Expr::Var("v_by_index_div".to_string())),
+                      Box::new(Expr::Var("e".to_string())),
+                    ),
+                    then_: StepId::new("return_found"),
+                    else_: StepId::new("cmp_less"),
+                  },
+                ),
+                (
+                  StepId::new("return_found"),
+                  Step::Return { value: RetValue::Some(Box::new(RetValue::Var("div".to_string()))) },
+                ),
+                (
+                  StepId::new("cmp_less"),
+                  Step::If {
+                    cond: Expr::Less(
+                      Box::new(Expr::Var("v_by_index_div".to_string())),
+                      Box::new(Expr::Var("e".to_string())),
+                    ),
+                    then_: StepId::new("go_right"),
+                    else_: StepId::new("go_left_check_overflow"),
+                  },
+                ),
+                (
+                  StepId::new("go_right"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                    args: vec![Expr::Var("div".to_string()), Expr::UInt64(1)],
+                    bind: Some("left".to_string()),
+                    ret_to: StepId::new("recursive_call"),
+                  },
+                ),
+                (
+                  StepId::new("go_left_check_overflow"),
+                  Step::If {
+                    cond: Expr::Less(Box::new(Expr::Var("div".to_string())), Box::new(Expr::UInt64(0))),
+                    then_: StepId::new("return_None"),
+                    else_: StepId::new("go_left"),
+                  },
+                ),
+                (
+                  StepId::new("go_left"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                    args: vec![Expr::Var("div".to_string()), Expr::UInt64(1)],
+                    bind: Some("right".to_string()),
+                    ret_to: StepId::new("recursive_call"),
+                  },
+                ),
+                (
+                  StepId::new("recursive_call"),
+                  Step::Call {
+                    target: FuncRef { fiber: "global".to_string(), func: "binary_search".to_string() },
+                    args: vec![
+                      Expr::Var("e".to_string()),
+                      Expr::Var("left".to_string()),
+                      Expr::Var("right".to_string()),
+                    ],
+                    bind: Some("fac_call_res".to_string()),
+                    ret_to: StepId::new("return_result"),
+                  },
+                ),
+                (StepId::new("return_result"), Step::Return { value: RetValue::Var("fac_call_res".to_string()) }),
+              ],
+            },
+          ),
         ]),
       },
     )]),

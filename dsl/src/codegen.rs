@@ -222,7 +222,7 @@ fn collect_vars_from_expr(
     Expr::Var(name) => {
       acc.insert(name.clone());
     }
-    Expr::Equal(a, b) => {
+    Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
       collect_vars_from_expr(a, acc);
       collect_vars_from_expr(b, acc);
     }
@@ -269,6 +269,8 @@ fn render_expr_code(
     Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
+    Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
+    Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::IsSome(e) => format!("({}).is_some()", render_expr_code(e, _func)),
     Expr::Unwrap(e) => format!("({}).unwrap()", render_expr_code(e, _func)),
     Expr::GetField(e, field) => format!("({}).{}", render_expr_code(e, _func), camel_ident(field)),
@@ -284,7 +286,11 @@ fn render_expr_code(
   }
 }
 
-fn render_ret_value(rv: &RetValue, expected_ty: &Type, _func: &Func) -> String {
+fn render_ret_value(
+  rv: &RetValue,
+  expected_ty: &Type,
+  _func: &Func,
+) -> String {
   match rv {
     RetValue::UInt64(x) => format!("{}u64", x),
     RetValue::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
@@ -376,7 +382,10 @@ fn render_call_step(
   s
 }
 
-fn collect_vars_from_retvalue(rv: &RetValue, acc: &mut BTreeSet<String>) {
+fn collect_vars_from_retvalue(
+  rv: &RetValue,
+  acc: &mut BTreeSet<String>,
+) {
   match rv {
     RetValue::Var(name) => {
       acc.insert(name.clone());
@@ -393,6 +402,19 @@ fn find_func<'a>(
   func: &str,
 ) -> Option<&'a Func> {
   ir.fibers.get(fiber).and_then(|f| f.funcs.get(func))
+}
+
+fn heap_array_elem_type<'a>(
+  ir: &'a IR,
+  fiber: &str,
+  array: &str,
+) -> Option<&'a Type> {
+  let fib = ir.fibers.get(fiber)?;
+  let t = fib.heap.get(array)?;
+  match t {
+    Type::Array(inner) => Some(inner.as_ref()),
+    _ => None,
+  }
 }
 
 // Generate a function that returns how many Value entries are expected to be
@@ -415,7 +437,7 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
 
-      if func_name == "add" || func_name == "sub" || func_name == "mult" {
+      if func_name == "add" || func_name == "sub" || func_name == "mult" || func_name == "div" {
         // builtin exceptions
         let v = variant_name(&[fiber_name, func_name, "entry"]);
         out.push_str(&format!("    State::{} => {},\n", v, n));
@@ -477,11 +499,11 @@ fn generate_global_step(ir: &IR) -> String {
         if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
           out.push_str(&format!("      StepResult::Return(Value::U64(a + b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
-          let r_v = variant_name(&[fiber_name, func_name, "Return"]);
           out.push_str(&format!("      StepResult::Return(Value::U64(a - b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
-          let r_v = variant_name(&[fiber_name, func_name, "Return"]);
           out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
+        } else if fiber_name.as_str() == "global" && func_name.as_str() == "div" && func.in_vars.len() == 2 {
+          out.push_str(&format!("      StepResult::Return(Value::U64(a / b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
           // Placeholder return for randGen
           out.push_str("      StepResult::Return(Value::U64(0u64))\n");
@@ -509,6 +531,7 @@ fn generate_global_step(ir: &IR) -> String {
               Step::ReturnVoid => {}
               Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
               Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+              Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
             }
             // Bind only locals (params are already bound above) using positional indices
             for var_name in referenced.iter() {
@@ -569,10 +592,7 @@ fn generate_global_step(ir: &IR) -> String {
               }
               Step::Return { value } => {
                 let code = render_ret_value(value, &func.out, func);
-                out.push_str(&format!(
-                  "      StepResult::Return(Value::{}({}))\n",
-                  type_variant_name(&func.out), code
-                ));
+                out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
               }
               Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
               Step::If { cond, then_, else_ } => {
@@ -597,6 +617,55 @@ fn generate_global_step(ir: &IR) -> String {
                 ));
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
+              }
+              Step::HeapGetIndex { array, index, bind, next } => {
+                // Update existing local `bind` in-place via Return-binding (no new stack vars)
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                let idx_code = render_expr_code(&index, func);
+                let heap_variant = pascal_case(fiber_name);
+                let heap_field = camel_ident(array);
+                let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+
+                // Compute offset to the bind variable within the current frame
+                let params_len = func.in_vars.len();
+                let locals_len = func.locals.len();
+                let total_vars = params_len + locals_len;
+                let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+                  Some(pi)
+                } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+                  Some(params_len + li)
+                } else {
+                  None
+                };
+                let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
+
+                match ety {
+                  Type::UInt64 => {
+                    // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                    let add_entry = variant_name(&["global", "add", "entry"]);
+                    out.push_str("      StepResult::Next(vec![\n");
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                    out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
+                    out.push_str(&format!(
+                      "        StackEntry::Value(\"a\".to_string(), Value::U64(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                      heap_variant, heap_field, idx_code
+                    ));
+                    out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
+                    out.push_str("      ])\n");
+                  }
+                  _ => {
+                    // Fallback to previous behavior for non-u64 (can be extended later)
+                    let vname = type_variant_name(ety);
+                    out.push_str("      StepResult::Next(vec![\n");
+                    out.push_str(&format!(
+                      "        StackEntry::Value(\"{}\".to_string(), Value::{}(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                      bind, vname, heap_variant, heap_field, idx_code
+                    ));
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                    out.push_str("      ])\n");
+                  }
+                }
               }
             }
           } else {
@@ -633,6 +702,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::ReturnVoid => {}
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+          Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
         for var_name in referenced.iter() {
@@ -693,10 +763,7 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::Return { value } => {
             let code = render_ret_value(value, &func.out, func);
-            out.push_str(&format!(
-              "      StepResult::Return(Value::{}({}))\n",
-              type_variant_name(&func.out), code
-            ));
+            out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
           }
           Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
           Step::If { cond, then_, else_, .. } => {
@@ -720,6 +787,55 @@ fn generate_global_step(ir: &IR) -> String {
             ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
+          }
+          Step::HeapGetIndex { array, index, bind, next } => {
+            // Update existing local `bind` in-place via Return-binding (no new stack vars)
+            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let idx_code = render_expr_code(&index, func);
+            let heap_variant = pascal_case(fiber_name);
+            let heap_field = camel_ident(array);
+            let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+
+            // Compute offset to the bind variable within the current frame
+            let params_len = func.in_vars.len();
+            let locals_len = func.locals.len();
+            let total_vars = params_len + locals_len;
+            let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+              Some(pi)
+            } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+              Some(params_len + li)
+            } else {
+              None
+            };
+            let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
+
+            match ety {
+              Type::UInt64 => {
+                // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                let add_entry = variant_name(&["global", "add", "entry"]);
+                out.push_str("      StepResult::Next(vec![\n");
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"a\".to_string(), Value::U64(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                  heap_variant, heap_field, idx_code
+                ));
+                out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
+                out.push_str("      ])\n");
+              }
+              _ => {
+                // Fallback to previous behavior for non-u64 (can be extended later)
+                let vname = type_variant_name(ety);
+                out.push_str("      StepResult::Next(vec![\n");
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                  bind, vname, heap_variant, heap_field, idx_code
+                ));
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                out.push_str("      ])\n");
+              }
+            }
           }
         }
         out.push_str("    }\n");

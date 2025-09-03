@@ -71,6 +71,10 @@ pub enum Step {
   ReturnVoid,
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
+  // Read an element from a heap array in the current fiber and bind to a local
+  // Example: from array `users`, index `i`, write into local `u`
+  // Only reads are modeled for now to keep things simple
+  HeapGetIndex { array: String, index: Expr, bind: String, next: StepId },
   // TODO: Block with local variables that can look at variables of this function
   // but other parts of the function can't access this block's variables
   // ex: for loop
@@ -97,6 +101,8 @@ pub enum Expr {
   Str(String),
   Var(String),
   Equal(Box<Expr>, Box<Expr>),
+  Greater(Box<Expr>, Box<Expr>),
+  Less(Box<Expr>, Box<Expr>),
   IsSome(Box<Expr>),
   Unwrap(Box<Expr>),
   GetField(Box<Expr>, String),
@@ -146,7 +152,11 @@ impl IR {
     let mut explanation = String::new();
     for fiber in self.fibers.iter() {
       for func in fiber.1.funcs.iter() {
-        if func.0 == &"add".to_string() || func.0 == &"sub".to_string() || func.0 == &"mult".to_string() {
+        if func.0 == &"add".to_string()
+          || func.0 == &"sub".to_string()
+          || func.0 == &"mult".to_string()
+          || func.0 == &"div".to_string()
+        {
           // builtin exceptions
           continue;
         }
