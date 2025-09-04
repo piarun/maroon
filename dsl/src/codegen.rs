@@ -1,8 +1,21 @@
 use crate::ir::*;
 
+fn type_variant_name(t: &Type) -> String {
+  match t {
+    Type::UInt64 => "U64".into(),
+    Type::String => "String".into(),
+    Type::Void => "Unit".into(),
+    Type::Struct(name, _) => pascal_case(name),
+    Type::Custom(name) => pascal_case(name),
+    Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
+    Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
+    Type::Map(k, v) => format!("Map{}To{}", type_variant_name(k), type_variant_name(v)),
+  }
+}
+
 fn rust_type(t: &Type) -> String {
   match t {
-    Type::Int => "u64".into(),
+    Type::UInt64 => "u64".into(),
     Type::String => "String".into(),
     Type::Void => "()".into(),
     Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", rust_type(k), rust_type(v)),
@@ -61,7 +74,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   // 1) Emit custom struct types declared at top-level IR.types
   for t in &ir.types {
     if let Type::Struct(name, fields) = t {
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
+      out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
       for f in fields {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
       }
@@ -134,41 +147,31 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("}\n\n");
 
-  // 5) Emit Value enum for function params, locals, and function return values.
-  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum Value {\n");
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
-    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
-    for (func_name, func) in funcs_sorted {
-      // Params
+  // 5) Emit Value enum compacted by Rust types actually used in IR (params, locals, returns, message fields).
+  use std::collections::BTreeMap;
+  let mut used_types: BTreeMap<String, Type> = BTreeMap::new();
+  for (_, fiber) in fibers_sorted.iter() {
+    for (_, func) in fiber.funcs.iter() {
       for p in &func.in_vars {
-        let v = variant_name(&[fiber_name, func_name, "Param", &p.name]);
-        out.push_str(&format!("  {}({}),\n", v, rust_type(&p.type_)));
+        used_types.insert(type_variant_name(&p.type_), p.type_.clone());
       }
-      // Locals
-      let mut locals_sorted = func.locals.clone();
-      locals_sorted.sort_by(|a, b| a.name.cmp(&b.name));
-      for l in &locals_sorted {
-        let v = variant_name(&[fiber_name, func_name, "Local", &l.name]);
-        out.push_str(&format!("  {}({}),\n", v, rust_type(&l.type_)));
+      for l in &func.locals {
+        used_types.insert(type_variant_name(&l.type_), l.type_.clone());
       }
-      // Return value
-      let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-      out.push_str(&format!("  {}({}),\n", ret_v, rust_type(&func.out)));
+      used_types.insert(type_variant_name(&func.out), func.out.clone());
     }
-  }
-  // Also include message payload typed wrappers, which can be handy on stacks.
-  for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut msgs = fiber.in_messages.clone();
     msgs.sort_by(|a, b| a.name.cmp(&b.name));
     for msg in &msgs {
-      let mut fields_sorted = msg.fields.clone();
-      fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
-      for (fname, fty) in &fields_sorted {
-        let v = variant_name(&[fiber_name, &msg.name, "Field", fname]);
-        out.push_str(&format!("  {}({}),\n", v, rust_type(fty)));
+      for (_, fty) in &msg.fields {
+        used_types.insert(type_variant_name(fty), fty.clone());
       }
     }
+  }
+
+  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum Value {\n");
+  for (vname, ty) in used_types.iter() {
+    out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }
   out.push_str("}\n\n");
 
@@ -178,8 +181,10 @@ pub fn generate_rust_types(ir: &IR) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StackEntry {
   State(State),
-  Retrn(State),
-  Value(Value),
+  // Option<usize> - local index offset back on stack
+  // if it's None - no value will be binded into the local variable of the function that initiated call
+  Retrn(Option<usize>),
+  Value(String, Value),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,10 +196,15 @@ pub enum StepResult {
   GoTo(State),
   Branch { then_: State, else_: State },
   Select(Vec<State>),
-  Return(Option<Value>),
+  // Return can carry an optional value to be consumed by the runtime.
+  Return(Value),
+  ReturnVoid,
   Todo(String),
 }",
   );
+
+  // Emit helper that tells how many Value entries are on the stack for a given State.
+  out.push_str(&generate_func_args_count(ir));
 
   out.push_str(&generate_global_step(ir));
 
@@ -208,11 +218,11 @@ fn collect_vars_from_expr(
   acc: &mut BTreeSet<String>,
 ) {
   match expr {
-    Expr::Int(_) | Expr::Str(_) => {}
+    Expr::UInt64(_) | Expr::Str(_) => {}
     Expr::Var(name) => {
       acc.insert(name.clone());
     }
-    Expr::Equal(a, b) => {
+    Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
       collect_vars_from_expr(a, acc);
       collect_vars_from_expr(b, acc);
     }
@@ -256,10 +266,11 @@ fn render_expr_code(
   _func: &Func,
 ) -> String {
   match expr {
-    Expr::Int(x) => format!("{}u64", x),
-    Expr::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
+    Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name),
-    Expr::Equal(a, b) => format!("(({}) == ({}))", render_expr_code(a, _func), render_expr_code(b, _func)),
+    Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
+    Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
+    Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::IsSome(e) => format!("({}).is_some()", render_expr_code(e, _func)),
     Expr::Unwrap(e) => format!("({}).unwrap()", render_expr_code(e, _func)),
     Expr::GetField(e, field) => format!("({}).{}", render_expr_code(e, _func), camel_ident(field)),
@@ -271,6 +282,117 @@ fn render_expr_code(
       s.push_str("tmp }");
       s
     }
+    Expr::Str(_) => todo!(),
+  }
+}
+
+fn render_ret_value(
+  rv: &RetValue,
+  expected_ty: &Type,
+  _func: &Func,
+) -> String {
+  match rv {
+    RetValue::UInt64(x) => format!("{}u64", x),
+    RetValue::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
+    RetValue::Var(name) => camel_ident(name),
+    RetValue::Some(inner) => {
+      if let Type::Option(inner_ty) = expected_ty {
+        let inner_code = render_ret_value(inner, inner_ty, _func);
+        format!("Some({})", inner_code)
+      } else {
+        let inner_code = render_ret_value(inner, expected_ty, _func);
+        format!("Some({})", inner_code)
+      }
+    }
+    RetValue::None => "None".to_string(),
+  }
+}
+
+fn default_value_expr(t: &Type) -> String {
+  match t {
+    Type::UInt64 => "0u64".to_string(),
+    Type::String => "String::new()".to_string(),
+    Type::Void => "()".to_string(),
+    Type::Option(_) => "None".to_string(),
+    Type::Array(inner) => format!("Vec::<{}>::new()", rust_type(inner)),
+    Type::Map(k, v) => format!("std::collections::HashMap::<{}, {}>::new()", rust_type(k), rust_type(v)),
+    Type::Struct(name, _) | Type::Custom(name) => format!("{}::default()", pascal_case(name)),
+  }
+}
+
+fn render_call_step(
+  ir: &IR,
+  current_fiber: &str,
+  current_func_name: &str,
+  current_func: &Func,
+  target: &FuncRef,
+  args: &Vec<Expr>,
+  ret_to: &StepId,
+  bind: &Option<String>,
+) -> String {
+  let mut s = String::new();
+  let ret_state = variant_name(&[current_fiber, current_func_name, &ret_to.0]);
+  if let Some(callee) = find_func(ir, &target.fiber, &target.func) {
+    s.push_str("      StepResult::Next(vec![\n");
+    s.push_str(&format!("        StackEntry::State(State::{}),\n", ret_state));
+    // Compute bind offset if provided
+    if let Some(var_name) = bind {
+      let params_len = current_func.in_vars.len();
+      let locals_len = current_func.locals.len();
+      let total_vars = params_len + locals_len;
+      let var_index = if let Some(pi) = current_func.in_vars.iter().position(|p| &p.name == var_name) {
+        Some(pi)
+      } else if let Some(li) = current_func.locals.iter().position(|l| &l.name == var_name) {
+        Some(params_len + li)
+      } else {
+        None
+      };
+      if let Some(var_ind) = var_index {
+        // +1 for the continuation state we just pushed
+        let offset = (total_vars + 1) - var_ind;
+        s.push_str(&format!("        StackEntry::Retrn(Some({})),\n", offset));
+      } else {
+        s.push_str("        StackEntry::Retrn(None),\n");
+      }
+    } else {
+      s.push_str("        StackEntry::Retrn(None),\n");
+    }
+    for (idx, p) in callee.in_vars.iter().enumerate() {
+      if let Some(arg) = args.get(idx) {
+        let vname = type_variant_name(&p.type_);
+        let expr_code = render_expr_code(arg, current_func);
+        s.push_str(&format!(
+          "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+          p.name, vname, expr_code
+        ));
+      }
+    }
+    // Push default placeholders for callee locals to allocate its frame fully
+    for l in &callee.locals {
+      let vname = type_variant_name(&l.type_);
+      let def_expr = default_value_expr(&l.type_);
+      s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", l.name, vname, def_expr));
+    }
+    let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
+    s.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
+    s.push_str("      ])\n");
+  } else {
+    s.push_str(&format!("      StepResult::GoTo(State::{})\n", ret_state));
+  }
+  s
+}
+
+fn collect_vars_from_retvalue(
+  rv: &RetValue,
+  acc: &mut BTreeSet<String>,
+) {
+  match rv {
+    RetValue::Var(name) => {
+      acc.insert(name.clone());
+    }
+    RetValue::UInt64(_) | RetValue::Str(_) => {}
+    RetValue::Some(inner) => collect_vars_from_retvalue(inner, acc),
+    RetValue::None => {}
   }
 }
 
@@ -282,9 +404,70 @@ fn find_func<'a>(
   ir.fibers.get(fiber).and_then(|f| f.funcs.get(func))
 }
 
+fn heap_array_elem_type<'a>(
+  ir: &'a IR,
+  fiber: &str,
+  array: &str,
+) -> Option<&'a Type> {
+  let fib = ir.fibers.get(fiber)?;
+  let t = fib.heap.get(array)?;
+  match t {
+    Type::Array(inner) => Some(inner.as_ref()),
+    _ => None,
+  }
+}
+
+// Generate a function that returns how many Value entries are expected to be
+// located for function. So it shows the stack deep only for XXXEntry steps
+// The count is computed as:
+// - For any function entry state: number of input params + locals
+fn generate_func_args_count(ir: &IR) -> String {
+  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+
+  let mut out = r"
+pub fn func_args_count(e: &State) -> usize {
+  match e {
+"
+  .to_string();
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
+    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (func_name, func) in funcs_sorted {
+      let n = func.in_vars.len() + func.locals.len();
+
+      if func_name == "add" || func_name == "sub" || func_name == "mult" || func_name == "div" {
+        // builtin exceptions
+        let v = variant_name(&[fiber_name, func_name, "entry"]);
+        out.push_str(&format!("    State::{} => {},\n", v, n));
+        continue;
+      }
+
+      let mut steps_sorted: Vec<&(StepId, Step)> = func.steps.iter().collect();
+      steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+
+      for (step_id, _) in steps_sorted {
+        let v = variant_name(&[fiber_name, func_name, &step_id.0]);
+
+        out.push_str(&format!("    State::{} => {},\n", v, n));
+      }
+    }
+  }
+  out.push_str(&format!("    State::Idle => 0,\n"));
+  out.push_str(&format!("    State::Completed => 0,\n"));
+
+  out.push_str(
+    r"  }
+}
+",
+  );
+  out
+}
+
 fn generate_global_step(ir: &IR) -> String {
   let mut out = String::new();
-  out.push_str("pub fn global_step(state: State, vars: &Vec<Value>, _heap: &mut Heap) -> StepResult {\n");
+  out.push_str("pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepResult {\n");
   out.push_str("  match state {\n");
   out.push_str("    State::Completed => StepResult::Done,\n");
   out.push_str("    State::Idle => panic!(\"shoudnt be here\"),\n");
@@ -299,60 +482,196 @@ fn generate_global_step(ir: &IR) -> String {
       let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
       if seen.insert(entry_variant.clone()) {
         out.push_str(&format!("    State::{entry_variant} => {{\n"));
+
+        // put variables from stack according to the IR needs
+        // TODO: some steps won't need all the variables, so later it should be a bit trickier, when it comes to get indexes in a stack for variables
+        for (i, var) in func.in_vars.iter().enumerate() {
+          let vname = type_variant_name(&var.type_);
+          out.push_str(&format!("      let {}: {} = if let StackEntry::Value(_, Value::{vname}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n", var.name, rust_type(&var.type_), i));
+        }
+
+        // Bind referenced locals for entry step using positional indices (after params)
+        for (i, _var) in func.locals.iter().enumerate() {
+          let _ = i;
+        }
+
         // Built-in semantics for some primitive global functions.
         if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} + {})))\n", ret_v, a_local, b_local));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a + b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} - {})))\n", ret_v, a_local, b_local));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a - b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
-          let a = &func.in_vars[0];
-          let b = &func.in_vars[1];
-          let a_local = camel_ident(&a.name);
-          let b_local = camel_ident(&b.name);
-          let a_variant = variant_name(&[fiber_name, func_name, "Param", &a.name]);
-          let b_variant = variant_name(&[fiber_name, func_name, "Param", &b.name]);
-          out.push_str(&format!(
-            "      let {a_local}: u64 = vars.iter().find_map(|v| if let Value::{a_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {a_variant} on stack\");\n"
-          ));
-          out.push_str(&format!(
-            "      let {b_local}: u64 = vars.iter().find_map(|v| if let Value::{b_variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {b_variant} on stack\");\n"
-          ));
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}({} * {})))\n", ret_v, a_local, b_local));
+          out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
+        } else if fiber_name.as_str() == "global" && func_name.as_str() == "div" && func.in_vars.len() == 2 {
+          out.push_str(&format!("      StepResult::Return(Value::U64(a / b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
-          let ret_v = variant_name(&[fiber_name, func_name, "Return"]);
-          out.push_str(&format!("      StepResult::Return(Some(Value::{}(rand::random::<u64>())))\n", ret_v));
+          // Placeholder return for randGen
+          out.push_str("      StepResult::Return(Value::U64(0u64))\n");
         } else {
-          // Default: nothing special, fall back to a no-op transition.
-          out.push_str("      StepResult::GoTo(State::");
-          out.push_str(&entry_variant);
-          out.push_str(")\n");
+          // If the entry step is explicitly defined in IR, emit its logic here; otherwise, fallback.
+          if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
+            // Collect referenced vars for this entry step
+            let mut referenced: BTreeSet<String> = BTreeSet::new();
+            match entry_step {
+              Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+              Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
+              Step::SendToFiber { args, .. } => {
+                for (_, e) in args {
+                  collect_vars_from_expr(&e, &mut referenced);
+                }
+              }
+              Step::Await(_) => {}
+              Step::Select { arms: _ } => {}
+              Step::Call { args, .. } => {
+                for e in args {
+                  collect_vars_from_expr(&e, &mut referenced);
+                }
+              }
+              Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
+              Step::ReturnVoid => {}
+              Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
+              Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+              Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
+            }
+            // Bind only locals (params are already bound above) using positional indices
+            for var_name in referenced.iter() {
+              if let Some(ty) = var_type_of(func, var_name) {
+                if !var_is_param(func, var_name) {
+                  if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
+                    let idx = func.in_vars.len() + pos;
+                    let rust_ty = rust_type(ty);
+                    let tname = type_variant_name(ty);
+                    let local_ident = camel_ident(var_name);
+                    out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+                  }
+                }
+              } else {
+                out.push_str(&format!(
+                  "      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"
+                ));
+              }
+            }
+            match entry_step {
+              Step::Sleep { ms, next } => {
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                let ms_code = render_expr_code(&ms, func);
+                out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
+              }
+              Step::Write { text, next } => {
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                let text_code = render_expr_code(&text, func);
+                out.push_str(&format!(
+                  "      StepResult::Write(format!(\"{}\", {}), State::{})\n",
+                  "{}", text_code, next_v
+                ));
+              }
+              Step::SendToFiber { next, .. } => {
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              }
+              Step::Await(spec) => {
+                let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
+                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              }
+              Step::Select { arms } => {
+                let mut arm_states: Vec<String> = Vec::new();
+                for arm in arms {
+                  arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
+                }
+                out.push_str("      StepResult::Select(vec![");
+                for (i, st) in arm_states.iter().enumerate() {
+                  if i > 0 {
+                    out.push_str(", ");
+                  }
+                  out.push_str(&format!("State::{}", st));
+                }
+                out.push_str("])\n");
+              }
+              Step::Call { target, args, ret_to, bind } => {
+                out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
+              }
+              Step::Return { value } => {
+                let code = render_ret_value(value, &func.out, func);
+                out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
+              }
+              Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
+              Step::If { cond, then_, else_ } => {
+                let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
+                let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
+                let cond_code = render_expr_code(&cond, func);
+                out.push_str(&format!(
+                  "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
+                  cond_code, then_v, else_v
+                ));
+              }
+              Step::Let { local, expr, next } => {
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                // Set a local by pushing a value of the underlying type. Runtime will bind it.
+                let lty = var_type_of(func, local).expect("unknown local var in Let");
+                let vname = type_variant_name(lty);
+                let expr_code = render_expr_code(&expr, func);
+                out.push_str("      StepResult::Next(vec![\n");
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+                  local, vname, expr_code
+                ));
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                out.push_str("      ])\n");
+              }
+              Step::HeapGetIndex { array, index, bind, next } => {
+                // Update existing local `bind` in-place via Return-binding (no new stack vars)
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                let idx_code = render_expr_code(&index, func);
+                let heap_variant = pascal_case(fiber_name);
+                let heap_field = camel_ident(array);
+                let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+
+                // Compute offset to the bind variable within the current frame
+                let params_len = func.in_vars.len();
+                let locals_len = func.locals.len();
+                let total_vars = params_len + locals_len;
+                let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+                  Some(pi)
+                } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+                  Some(params_len + li)
+                } else {
+                  None
+                };
+                let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
+
+                match ety {
+                  Type::UInt64 => {
+                    // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                    let add_entry = variant_name(&["global", "add", "entry"]);
+                    out.push_str("      StepResult::Next(vec![\n");
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                    out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
+                    out.push_str(&format!(
+                      "        StackEntry::Value(\"a\".to_string(), Value::U64(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                      heap_variant, heap_field, idx_code
+                    ));
+                    out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
+                    out.push_str("      ])\n");
+                  }
+                  _ => {
+                    // Fallback to previous behavior for non-u64 (can be extended later)
+                    let vname = type_variant_name(ety);
+                    out.push_str("      StepResult::Next(vec![\n");
+                    out.push_str(&format!(
+                      "        StackEntry::Value(\"{}\".to_string(), Value::{}(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                      bind, vname, heap_variant, heap_field, idx_code
+                    ));
+                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                    out.push_str("      ])\n");
+                  }
+                }
+              }
+            }
+          } else {
+            // Default: nothing special, fall back to a no-op transition.
+            out.push_str(&format!("      StepResult::GoTo(State::{})\n", &entry_variant));
+          }
         }
         out.push_str("    }\n");
       }
@@ -379,25 +698,28 @@ fn generate_global_step(ir: &IR) -> String {
               collect_vars_from_expr(&e, &mut referenced);
             }
           }
-          Step::Return { value } => {
-            if let Some(e) = value {
-              collect_vars_from_expr(&e, &mut referenced);
-            }
-          }
+          Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
+          Step::ReturnVoid => {}
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+          Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
         for var_name in referenced.iter() {
           if let Some(ty) = var_type_of(func, var_name) {
-            let variant = if var_is_param(func, var_name) {
-              variant_name(&[fiber_name, func_name, "Param", var_name])
-            } else {
-              variant_name(&[fiber_name, func_name, "Local", var_name])
-            };
             let rust_ty = rust_type(ty);
+            let tname = type_variant_name(ty);
             let local_ident = camel_ident(var_name);
-            out.push_str(&format!("      let {local_ident}: {rust_ty} = vars.iter().find_map(|v| if let Value::{variant}(x) = v {{ Some(x.clone()) }} else {{ None }}).expect(\"Missing variable {variant} on stack\");\n"));
+            if var_is_param(func, var_name) {
+              if let Some(pos) = func.in_vars.iter().position(|p| &p.name == var_name) {
+                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{pos}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+              }
+            } else {
+              if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
+                let idx = func.in_vars.len() + pos;
+                out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
+              }
+            }
           } else {
             out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
           }
@@ -436,50 +758,84 @@ fn generate_global_step(ir: &IR) -> String {
             }
             out.push_str("])\n");
           }
-          Step::Call { target, args, ret_to, .. } => {
-            let ret_state = variant_name(&[fiber_name, func_name, &ret_to.0]);
-            if let Some(callee) = find_func(ir, &target.fiber, &target.func) {
-              out.push_str("      StepResult::Next(vec![\n");
-              out.push_str(&format!("        StackEntry::Retrn(State::{}),\n", ret_state));
-              for (idx, p) in callee.in_vars.iter().enumerate() {
-                if let Some(arg) = args.get(idx) {
-                  let vname = variant_name(&[&target.fiber, &target.func, "Param", &p.name]);
-                  let expr_code = render_expr_code(&arg, func);
-                  out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
-                }
-              }
-              let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
-              out.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
-              out.push_str("      ])\n");
-            } else {
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", ret_state));
-            }
+          Step::Call { target, args, ret_to, bind } => {
+            out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
           }
           Step::Return { value } => {
-            if let Some(val) = value {
-              let vname = variant_name(&[fiber_name, func_name, "Return"]);
-              let expr_code = render_expr_code(&val, func);
-              out.push_str(&format!("      StepResult::Return(Some(Value::{}({})))\n", vname, expr_code));
-            } else {
-              out.push_str("      StepResult::Return(None)\n");
-            }
+            let code = render_ret_value(value, &func.out, func);
+            out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
           }
-          Step::If { then_, else_, .. } => {
+          Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
+          Step::If { cond, then_, else_, .. } => {
             let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
             let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
+            let cond_code = render_expr_code(&cond, func);
             out.push_str(&format!(
-              "      StepResult::Branch {{ then_: State::{}, else_: State::{} }}\n",
-              then_v, else_v
+              "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
+              cond_code, then_v, else_v
             ));
           }
           Step::Let { local, expr, next } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            let vname = variant_name(&[fiber_name, func_name, "Local", &local]);
+            let lty = var_type_of(func, local).expect("unknown local var in Let");
+            let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
             out.push_str("      StepResult::Next(vec![\n");
-            out.push_str(&format!("        StackEntry::Value(Value::{}({})),\n", vname, expr_code));
+            out.push_str(&format!(
+              "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+              local, vname, expr_code
+            ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
+          }
+          Step::HeapGetIndex { array, index, bind, next } => {
+            // Update existing local `bind` in-place via Return-binding (no new stack vars)
+            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let idx_code = render_expr_code(&index, func);
+            let heap_variant = pascal_case(fiber_name);
+            let heap_field = camel_ident(array);
+            let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+
+            // Compute offset to the bind variable within the current frame
+            let params_len = func.in_vars.len();
+            let locals_len = func.locals.len();
+            let total_vars = params_len + locals_len;
+            let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+              Some(pi)
+            } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+              Some(params_len + li)
+            } else {
+              None
+            };
+            let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
+
+            match ety {
+              Type::UInt64 => {
+                // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                let add_entry = variant_name(&["global", "add", "entry"]);
+                out.push_str("      StepResult::Next(vec![\n");
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"a\".to_string(), Value::U64(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                  heap_variant, heap_field, idx_code
+                ));
+                out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
+                out.push_str("      ])\n");
+              }
+              _ => {
+                // Fallback to previous behavior for non-u64 (can be extended later)
+                let vname = type_variant_name(ety);
+                out.push_str("      StepResult::Next(vec![\n");
+                out.push_str(&format!(
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(match _heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
+                  bind, vname, heap_variant, heap_field, idx_code
+                ));
+                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                out.push_str("      ])\n");
+              }
+            }
           }
         }
         out.push_str("    }\n");
@@ -501,7 +857,7 @@ mod tests {
     let ir = IR {
       types: vec![Type::Struct(
         "User".into(),
-        vec![StructField { name: "id".into(), ty: Type::String }, StructField { name: "age".into(), ty: Type::Int }],
+        vec![StructField { name: "id".into(), ty: Type::String }, StructField { name: "age".into(), ty: Type::UInt64 }],
       )],
       fibers: HashMap::from([
         (
@@ -519,7 +875,7 @@ mod tests {
                 out: Type::Option(Box::new(Type::Custom("User".into()))),
                 locals: vec![],
                 entry: StepId::new("entry"),
-                steps: vec![(StepId::new("entry"), Step::Return { value: None })],
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             )]),
           },
@@ -536,6 +892,8 @@ mod tests {
     assert!(code.contains("pub enum State"));
     assert!(code.contains("UserManagerGetEntry"));
     assert!(code.contains("pub enum Value"));
-    assert!(code.contains("UserManagerGetParamKey"));
+    // With compact-by-type Value enum, we expect used types only
+    assert!(code.contains("String(String)"));
+    assert!(code.contains("OptionUser(Option<User>)"));
   }
 }
