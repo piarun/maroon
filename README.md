@@ -13,7 +13,7 @@ Pieces so far:
 
 [https://piarun.github.io/maroon/util/visualize_log.html](https://piarun.github.io/maroon/util/visualize_log.html).
 
-# Useful run scenarious
+# Useful run scenarios
 
 ## Local test in a single node mode
 
@@ -29,7 +29,7 @@ Runs imitation of gateway with the given key-range
 make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 ```
 
-## +- realistic run scenarious
+## +- realistic run scenarios
 
 1. Run etcd:
 - `make start-test-etcd`
@@ -85,4 +85,4 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
 - [ ] dump data to s3?? (??: what exactly we need to persist? Format? Easy to bootstrap later??)
 - [ ] write script that finds leader, pauses the container and then restores it after a new leader elected
 - [ ] G. make it working as a server/sidecar/library
-- [ ] MN. Bootstratp node from s3
+- [ ] MN. Bootstrap node from s3
