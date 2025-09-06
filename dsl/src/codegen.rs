@@ -132,10 +132,42 @@ pub fn generate_rust_types(ir: &IR) -> String {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (func_name, func) in funcs_sorted {
+      // Identify direct-return RustBlock next steps to suppress from code generation
+      use std::collections::BTreeSet as __BTS_CODEGEN;
+      let mut suppressed: __BTS_CODEGEN<String> = __BTS_CODEGEN::new();
+      for (_sid, st) in &func.steps {
+        if let Step::RustBlock { binds, next, .. } = st {
+          if binds.len() == 1 {
+            if let Some((_, Step::Return { value })) = func
+              .steps
+              .iter()
+              .find(|(nsid, _)| nsid.0 == next.0)
+            {
+              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            }
+          }
+        }
+      }
+      // Identify direct-return RustBlock next steps to suppress from State enum
+      use std::collections::BTreeSet as __BTS;
+      let mut suppressed: __BTS<String> = __BTS::new();
+      for (_sid, st) in &func.steps {
+        if let Step::RustBlock { binds, next, .. } = st {
+          if binds.len() == 1 {
+            if let Some((_, Step::Return { value })) = func
+              .steps
+              .iter()
+              .find(|(nsid, _)| nsid.0 == next.0)
+            {
+              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            }
+          }
+        }
+      }
       let mut steps: Vec<String> = Vec::new();
       steps.push(func.entry.0.clone());
       for (step_id, _step) in &func.steps {
-        steps.push(step_id.0.clone());
+        if !suppressed.contains(&step_id.0) { steps.push(step_id.0.clone()); }
       }
       steps.sort();
       steps.dedup();
@@ -494,13 +526,31 @@ pub fn func_args_count(e: &State) -> usize {
         continue;
       }
 
+      // Identify direct-return RustBlock next steps to suppress from func_args_count
+      use std::collections::BTreeSet as __BTS2;
+      let mut suppressed: __BTS2<String> = __BTS2::new();
+      for (_sid, st) in &func.steps {
+        if let Step::RustBlock { binds, next, .. } = st {
+          if binds.len() == 1 {
+            if let Some((_, Step::Return { value })) = func
+              .steps
+              .iter()
+              .find(|(nsid, _)| nsid.0 == next.0)
+            {
+              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            }
+          }
+        }
+      }
+
       let mut steps_sorted: Vec<&(StepId, Step)> = func.steps.iter().collect();
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
       for (step_id, _) in steps_sorted {
-        let v = variant_name(&[fiber_name, func_name, &step_id.0]);
-
-        out.push_str(&format!("    State::{} => {},\n", v, n));
+        if !suppressed.contains(&step_id.0) {
+          let v = variant_name(&[fiber_name, func_name, &step_id.0]);
+          out.push_str(&format!("    State::{} => {},\n", v, n));
+        }
       }
     }
   }
@@ -527,6 +577,22 @@ fn generate_global_step(ir: &IR) -> String {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (func_name, func) in funcs_sorted {
+      // Compute suppressed steps (direct-return next of RustBlock) for this function
+      use std::collections::BTreeSet as __BTS_CODEGEN2;
+      let mut suppressed: __BTS_CODEGEN2<String> = __BTS_CODEGEN2::new();
+      for (_sid, st) in &func.steps {
+        if let Step::RustBlock { binds, next, .. } = st {
+          if binds.len() == 1 {
+            if let Some((_, Step::Return { value })) = func
+              .steps
+              .iter()
+              .find(|(nsid, _)| nsid.0 == next.0)
+            {
+              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            }
+          }
+        }
+      }
       use std::collections::BTreeSet;
       let mut seen: BTreeSet<String> = BTreeSet::new();
       let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
@@ -808,6 +874,7 @@ fn generate_global_step(ir: &IR) -> String {
       let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
       for (step_id, step) in steps_sorted {
+        if suppressed.contains(&step_id.0) { continue; }
         let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
         if !seen.insert(state_variant.clone()) {
           continue;
