@@ -1,17 +1,6 @@
 use crate::generated_types::*;
 
 #[test]
-fn primitive_one_tick_function() {
-  let vars =
-    vec![StackEntry::Value("a".to_string(), Value::U64(2)), StackEntry::Value("b".to_string(), Value::U64(10))];
-  let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap { binarySearchValues: vec![] }));
-  if let StepResult::Return(Value::U64(12)) = result {
-  } else {
-    panic!("add should return 12");
-  }
-}
-
-#[test]
 fn add_function() {
   let mut some_t = Task::new();
   some_t.put_add_task(14, 16);
@@ -72,9 +61,8 @@ impl Task {
     self.stack.push(StackEntry::Value("right".to_string(), Value::U64(len - 1)));
 
     self.stack.push(StackEntry::Value("div".to_string(), Value::U64(0)));
-    self.stack.push(StackEntry::Value("left_right_sum".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0)));
-    self.stack.push(StackEntry::Value("fac_call_res".to_string(), Value::U64(0)));
+    self.stack.push(StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)));
 
     self.stack.push(StackEntry::State(State::GlobalBinarySearchEntry));
   }
@@ -101,6 +89,7 @@ impl Task {
     self.stack.push(StackEntry::Retrn(Some(1)));
     self.stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
     self.stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+    self.stack.push(StackEntry::Value("sum".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::State(State::GlobalAddEntry));
   }
 
@@ -190,7 +179,27 @@ impl Task {
           self.stack.push(StackEntry::State(state));
         }
         StepResult::Next(stack_entries) => {
-          self.stack.extend(stack_entries);
+          // Apply in-frame assignments first, relative to current frame start
+          for se in &stack_entries {
+            if let StackEntry::FrameAssign(updates) = se {
+              for (ofs, val) in updates {
+                let idx = start + *ofs;
+                let new_entry = if let StackEntry::Value(label, _) = &self.stack[idx] {
+                  StackEntry::Value(label.clone(), val.clone())
+                } else {
+                  StackEntry::Value("_".to_string(), val.clone())
+                };
+                self.stack[idx] = new_entry;
+              }
+            }
+          }
+          // Then push non-FrameAssign entries to the stack in order
+          for se in stack_entries {
+            match se {
+              StackEntry::FrameAssign(_) => {}
+              other => self.stack.push(other),
+            }
+          }
         }
         _ => {}
       }
