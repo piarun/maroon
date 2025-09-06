@@ -91,9 +91,24 @@ out
                 InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
               out: Type::UInt64,
-              locals: vec![],
+              locals: vec![LocalVar { name: "sub".to_string(), type_: Type::UInt64 }],
               entry: StepId::new("entry"),
-              steps: vec![],
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::RustBlock {
+                    args: vec!["a".to_string(), "b".to_string()],
+                    binds: vec!["sub".to_string()],
+                    code: r#"
+let out = a - b;
+out
+"#
+                    .to_string(),
+                    next: StepId::new("return"),
+                  },
+                ),
+                (StepId::new("return"), Step::Return { value: RetValue::Var("sub".to_string()) }),
+              ],
             },
           ),
           (

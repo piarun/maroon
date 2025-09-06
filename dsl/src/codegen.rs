@@ -487,7 +487,7 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
 
-      if func_name == "sub" || func_name == "mult" || func_name == "div" {
+      if func_name == "mult" || func_name == "div" {
         // builtin exceptions
         let v = variant_name(&[fiber_name, func_name, "entry"]);
         out.push_str(&format!("    State::{} => {},\n", v, n));
@@ -546,9 +546,7 @@ fn generate_global_step(ir: &IR) -> String {
         }
 
         // Built-in semantics for some primitive global functions.
-        if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
-          out.push_str(&format!("      StepResult::Return(Value::U64(a - b))\n"));
-        } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
+        if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
           out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "div" && func.in_vars.len() == 2 {
           out.push_str(&format!("      StepResult::Return(Value::U64(a / b))\n"));
