@@ -1,3 +1,5 @@
+# Global queue
+
 Global queue defines a deterministic total order of transactions across all `KeyRange`s using quorum offsets and epochs.
 
 - Inputs: Every node periodically advertises, per `KeyRange r`, the highest contiguous `KeyOffset` it has locally, `o[i,r]`.
@@ -31,6 +33,9 @@ Total order is the concatenation of epoch expansions.
 
 Notes
 
-- Safety model: This quorum is crash-fault tolerant; Byzantine behavior is out of scope.
+- Safety model: This quorum is crash-fault tolerant.
 - Liveness: The ring-based scheduler (see leader-election) staggers commit attempts; etcd CAS resolves races if multiple nodes attempt the same sequence number.
 - Determinism: All nodes observe the same epochs and expand intervals identically, yielding the same total order. See [aligned execution](./aligned-execution.md).
+- Self-Healing: nodes that fall behind can get missing indexes from `/maroon/history` and fetch missing transactions from peers. Or recover through bootstrapping mechanism(that we'll add somewhere in the future)
+- Etcd as arbiter: We use etcd only to CAS-commit epochs, batching many transactions per epoch—
+no per-tick Raft confirmations

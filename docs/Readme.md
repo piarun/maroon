@@ -11,4 +11,3 @@ Guarantees (current design)
 - Deterministic application: Same inputs produce the same state, no extra coordination needed.
 - Idempotency: Transactions are uniquely identified by `UniqueU64BlobId`.
 - Eventual consistency: Nodes that fall behind catch up by replaying epochs and fetching missing transactions.
-
