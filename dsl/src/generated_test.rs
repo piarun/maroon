@@ -180,23 +180,19 @@ impl Task {
         }
         StepResult::Next(stack_entries) => {
           // Apply in-frame assignments first, relative to current frame start
-          for se in &stack_entries {
-            if let StackEntry::FrameAssign(updates) = se {
-              for (ofs, val) in updates {
-                let idx = start + *ofs;
-                let new_entry = if let StackEntry::Value(label, _) = &self.stack[idx] {
-                  StackEntry::Value(label.clone(), val.clone())
-                } else {
-                  StackEntry::Value("_".to_string(), val.clone())
-                };
-                self.stack[idx] = new_entry;
-              }
-            }
-          }
-          // Then push non-FrameAssign entries to the stack in order
           for se in stack_entries {
             match se {
-              StackEntry::FrameAssign(_) => {}
+              StackEntry::FrameAssign(updates) => {
+                for (ofs, val) in updates {
+                  let idx = start + ofs;
+                  let new_entry = if let StackEntry::Value(label, _) = &self.stack[idx] {
+                    StackEntry::Value(label.clone(), val.clone())
+                  } else {
+                    StackEntry::Value("_".to_string(), val.clone())
+                  };
+                  self.stack[idx] = new_entry;
+                }
+              }
               other => self.stack.push(other),
             }
           }
