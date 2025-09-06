@@ -142,9 +142,9 @@ impl Task {
       // StackEntry::Retrn is not here, only arguments + local_vars
       let start = self.stack.len() - arguments_number;
 
-      println!("Star {}", start);
-      println!("Vars: {:?}", &self.stack[start..]);
-      self.print_stack("BeforeGlobalStep");
+      // println!("Star {}", start);
+      // println!("Vars: {:?}", &self.stack[start..]);
+      // self.print_stack("BeforeGlobalStep");
 
       let result = global_step(state, &self.stack[start..], &mut self.heap);
 
@@ -196,7 +196,7 @@ impl Task {
           // Then push non-FrameAssign entries to the stack in order
           for se in stack_entries {
             match se {
-              StackEntry::FrameAssign(_) => {},
+              StackEntry::FrameAssign(_) => {}
               other => self.stack.push(other),
             }
           }
