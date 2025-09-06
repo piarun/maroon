@@ -206,8 +206,66 @@ pub enum StepResult {
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
 
+  // Emit helper functions for RustBlock steps so they’re in scope for global_step
+  out.push_str(&generate_rustblock_helpers(ir));
+
   out.push_str(&generate_global_step(ir));
 
+  out
+}
+
+fn rustblock_helper_name(fiber_name: &str, func_name: &str, step_id: &str) -> String {
+  format!(
+    "__inline_{}_{}_{}",
+    camel_ident(fiber_name),
+    camel_ident(func_name),
+    camel_ident(step_id)
+  )
+}
+
+fn generate_rustblock_helpers(ir: &IR) -> String {
+  let mut out = String::new();
+  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
+    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (func_name, func) in funcs_sorted {
+      for (step_id, step) in &func.steps {
+        if let Step::RustBlock { args, binds, code, .. } = step {
+          let helper_name = rustblock_helper_name(fiber_name, func_name, &step_id.0);
+          // Build helper signature: only requested args + &mut Heap
+          let mut params: Vec<String> = Vec::new();
+          for a in args {
+            let ty = var_type_of(func, a).expect("arg var not found");
+            params.push(format!("{}: {}", camel_ident(a), rust_type(ty)));
+          }
+          params.push("_heap: &mut Heap".into());
+
+          // Output type as single type or tuple of types
+          let mut out_types: Vec<String> = Vec::new();
+          for b in binds {
+            let ty = var_type_of(func, b).expect("bind var not found");
+            out_types.push(rust_type(ty));
+          }
+          let outputs_ty = if out_types.len() == 1 {
+            out_types[0].clone()
+          } else {
+            format!("({})", out_types.join(", "))
+          };
+
+          out.push_str(&format!(
+            "fn {}({}) -> {} {{\n{}\n}}\n\n",
+            helper_name,
+            params.join(", "),
+            outputs_ty,
+            code
+          ));
+        }
+      }
+    }
+  }
   out
 }
 
@@ -437,7 +495,7 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
 
-      if func_name == "add" || func_name == "sub" || func_name == "mult" || func_name == "div" {
+      if func_name == "sub" || func_name == "mult" || func_name == "div" {
         // builtin exceptions
         let v = variant_name(&[fiber_name, func_name, "entry"]);
         out.push_str(&format!("    State::{} => {},\n", v, n));
@@ -496,9 +554,7 @@ fn generate_global_step(ir: &IR) -> String {
         }
 
         // Built-in semantics for some primitive global functions.
-        if fiber_name.as_str() == "global" && func_name.as_str() == "add" && func.in_vars.len() == 2 {
-          out.push_str(&format!("      StepResult::Return(Value::U64(a + b))\n"));
-        } else if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
+        if fiber_name.as_str() == "global" && func_name.as_str() == "sub" && func.in_vars.len() == 2 {
           out.push_str(&format!("      StepResult::Return(Value::U64(a - b))\n"));
         } else if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
           out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
@@ -532,6 +588,10 @@ fn generate_global_step(ir: &IR) -> String {
               Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
               Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
               Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
+              Step::RustBlock { .. } => {
+                for p in &func.in_vars { referenced.insert(p.name.clone()); }
+                for l in &func.locals { referenced.insert(l.name.clone()); }
+              }
             }
             // Bind only locals (params are already bound above) using positional indices
             for var_name in referenced.iter() {
@@ -641,7 +701,7 @@ fn generate_global_step(ir: &IR) -> String {
 
                 match ety {
                   Type::UInt64 => {
-                    // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                    // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)), with proper callee locals
                     let add_entry = variant_name(&["global", "add", "entry"]);
                     out.push_str("      StepResult::Next(vec![\n");
                     out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
@@ -651,11 +711,12 @@ fn generate_global_step(ir: &IR) -> String {
                       heap_variant, heap_field, idx_code
                     ));
                     out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                    out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
                     out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
                     out.push_str("      ])\n");
                   }
                   _ => {
-                    // Fallback to previous behavior for non-u64 (can be extended later)
+                    // Directly stage the read value into the local `bind` (non-u64)
                     let vname = type_variant_name(ety);
                     out.push_str("      StepResult::Next(vec![\n");
                     out.push_str(&format!(
@@ -665,6 +726,60 @@ fn generate_global_step(ir: &IR) -> String {
                     out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                     out.push_str("      ])\n");
                   }
+                }
+              }
+              Step::RustBlock { args: rargs, binds, next, .. } => {
+                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+                let helper_name = rustblock_helper_name(fiber_name, func_name, "entry");
+                let mut args: Vec<String> = Vec::new();
+                for a in rargs { args.push(camel_ident(a)); }
+                args.push("_heap".into());
+
+                let mut bind_types: Vec<&Type> = Vec::new();
+                for b in binds { bind_types.push(var_type_of(func, b).expect("bind var type")); }
+                if bind_types.len() == 1 {
+                  // Optimization: if next step is `Return { value: Var(binds[0]) }`, return directly
+                  let direct_return = func
+                    .steps
+                    .iter()
+                    .find(|(sid, _)| sid.0 == next.0)
+                    .and_then(|(_, st)| if let Step::Return { value } = st { Some(value) } else { None })
+                    .and_then(|rv| if let RetValue::Var(vn) = rv { Some(vn) } else { None })
+                    .map(|vn| vn == &binds[0])
+                    .unwrap_or(false);
+                  if direct_return {
+                    let ty_name = type_variant_name(bind_types[0]);
+                    out.push_str(&format!(
+                      "      {{ let out = {}({}); StepResult::Return(Value::{}(out)) }}\n",
+                      helper_name,
+                      args.join(", "),
+                      ty_name
+                    ));
+                  } else {
+                  // Single bind: write value directly to the named var
+                  let ty_name = type_variant_name(bind_types[0]);
+                  let bname = binds.get(0).unwrap();
+                  out.push_str(&format!(
+                    "      {{ let out = {}({}); StepResult::Next(vec![\n          StackEntry::Value(\"{}\".to_string(), Value::{}(out)),\n          StackEntry::State(State::{}),\n        ]) }}\n",
+                    helper_name,
+                    args.join(", "),
+                    bname,
+                    ty_name,
+                    next_v
+                  ));
+                  }
+                } else {
+                  out.push_str(&format!("      {{ let out = {}({});\n", helper_name, args.join(", ")));
+                  let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
+                  out.push_str(&format!("        let ({}) = out;\n        StepResult::Next(vec![\n", tuple_names.join(", ")));
+                  for (i, b) in binds.iter().enumerate() {
+                    let ty_name = type_variant_name(bind_types[i]);
+                    out.push_str(&format!(
+                      "          StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+                      b, ty_name, tuple_names[i]
+                    ));
+                  }
+                  out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
                 }
               }
             }
@@ -703,6 +818,9 @@ fn generate_global_step(ir: &IR) -> String {
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
+          Step::RustBlock { args, .. } => {
+            for a in args { referenced.insert(a.clone()); }
+          }
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
         for var_name in referenced.iter() {
@@ -811,7 +929,7 @@ fn generate_global_step(ir: &IR) -> String {
 
             match ety {
               Type::UInt64 => {
-                // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset))
+                // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)) with callee locals
                 let add_entry = variant_name(&["global", "add", "entry"]);
                 out.push_str("      StepResult::Next(vec![\n");
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
@@ -821,6 +939,7 @@ fn generate_global_step(ir: &IR) -> String {
                   heap_variant, heap_field, idx_code
                 ));
                 out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
                 out.push_str("      ])\n");
               }
@@ -835,6 +954,62 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
               }
+            }
+          }
+          Step::RustBlock { args: rargs, binds, next, .. } => {
+            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let helper_name = rustblock_helper_name(fiber_name, func_name, &step_id.0);
+            // Build argument list: only the requested args
+            let mut args: Vec<String> = Vec::new();
+            for a in rargs { args.push(camel_ident(a)); }
+            args.push("_heap".into());
+
+            // Types by bind order
+            let mut bind_types: Vec<&Type> = Vec::new();
+            for b in binds { bind_types.push(var_type_of(func, b).expect("bind var type")); }
+            if bind_types.len() == 1 {
+              // Optimization: if next step is Return of the bound var, just return it
+              let direct_return = func
+                .steps
+                .iter()
+                .find(|(sid, _)| sid.0 == next.0)
+                .and_then(|(_, st)| if let Step::Return { value } = st { Some(value) } else { None })
+                .and_then(|rv| if let RetValue::Var(vn) = rv { Some(vn) } else { None })
+                .map(|vn| vn == &binds[0])
+                .unwrap_or(false);
+              if direct_return {
+                let ty_name = type_variant_name(bind_types[0]);
+                out.push_str(&format!(
+                  "      {{ let out = {}({}); StepResult::Return(Value::{}(out)) }}\n",
+                  helper_name,
+                  args.join(", "),
+                  ty_name
+                ));
+              } else {
+                // Single bind: write value directly to the named var
+                let ty_name = type_variant_name(bind_types[0]);
+                let bname = binds.get(0).unwrap();
+                out.push_str(&format!(
+                  "      {{ let out = {}({}); StepResult::Next(vec![\n          StackEntry::Value(\"{}\".to_string(), Value::{}(out)),\n          StackEntry::State(State::{}),\n        ]) }}\n",
+                  helper_name,
+                  args.join(", "),
+                  bname,
+                  ty_name,
+                  next_v
+                ));
+              }
+            } else {
+              out.push_str(&format!("      {{ let out = {}({});\n", helper_name, args.join(", ")));
+              let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
+              out.push_str(&format!("        let ({}) = out;\n        StepResult::Next(vec![\n", tuple_names.join(", ")));
+              for (i, b) in binds.iter().enumerate() {
+                let ty_name = type_variant_name(bind_types[i]);
+                out.push_str(&format!(
+                  "          StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+                  b, ty_name, tuple_names[i]
+                ));
+              }
+              out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
             }
           }
         }

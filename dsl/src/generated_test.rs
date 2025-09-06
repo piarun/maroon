@@ -1,17 +1,6 @@
 use crate::generated_types::*;
 
 #[test]
-fn primitive_one_tick_function() {
-  let vars =
-    vec![StackEntry::Value("a".to_string(), Value::U64(2)), StackEntry::Value("b".to_string(), Value::U64(10))];
-  let result = global_step(State::GlobalAddEntry, &vars, &mut Heap::Global(GlobalHeap { binarySearchValues: vec![] }));
-  if let StepResult::Return(Value::U64(12)) = result {
-  } else {
-    panic!("add should return 12");
-  }
-}
-
-#[test]
 fn add_function() {
   let mut some_t = Task::new();
   some_t.put_add_task(14, 16);
@@ -101,6 +90,7 @@ impl Task {
     self.stack.push(StackEntry::Retrn(Some(1)));
     self.stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
     self.stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+    self.stack.push(StackEntry::Value("sum".to_string(), Value::U64(0)));
     self.stack.push(StackEntry::State(State::GlobalAddEntry));
   }
 
@@ -153,9 +143,9 @@ impl Task {
       // StackEntry::Retrn is not here, only arguments + local_vars
       let start = self.stack.len() - arguments_number;
 
-      // println!("Star {}", start);
-      // println!("Vars: {:?}", &self.stack[start..]);
-      // self.print_stack("BeforeGlobalStep");
+      println!("Star {}", start);
+      println!("Vars: {:?}", &self.stack[start..]);
+      self.print_stack("BeforeGlobalStep");
 
       let result = global_step(state, &self.stack[start..], &mut self.heap);
 

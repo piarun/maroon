@@ -16,6 +16,7 @@ pub enum State {
   Completed,
   Idle,
   GlobalAddEntry,
+  GlobalAddReturn,
   GlobalBinarySearchCalculateDiv,
   GlobalBinarySearchCmpLess,
   GlobalBinarySearchEntry,
@@ -75,7 +76,8 @@ pub enum StepResult {
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
-    State::GlobalAddEntry => 2,
+    State::GlobalAddEntry => 3,
+    State::GlobalAddReturn => 3,
     State::GlobalBinarySearchCalculateDiv => 7,
     State::GlobalBinarySearchCmpLess => 7,
     State::GlobalBinarySearchEntry => 7,
@@ -105,6 +107,13 @@ pub fn func_args_count(e: &State) -> usize {
     State::Completed => 0,
   }
 }
+fn __inline_global_add_entry(a: u64, b: u64, _heap: &mut Heap) -> u64 {
+
+let out = a + b;
+out
+
+}
+
 pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepResult {
   match state {
     State::Completed => StepResult::Done,
@@ -112,7 +121,12 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
     State::GlobalAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(a + b))
+      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      { let out = __inline_global_add_entry(a, b, _heap); StepResult::Return(Value::U64(out)) }
+    }
+    State::GlobalAddReturn => {
+      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::U64(sum))
     }
     State::GlobalBinarySearchEntry => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -156,6 +170,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
         StackEntry::Retrn(Some(7)),
         StackEntry::Value("a".to_string(), Value::U64(div)),
         StackEntry::Value("b".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
@@ -166,6 +181,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
         StackEntry::Retrn(Some(3)),
         StackEntry::Value("a".to_string(), Value::U64(match _heap { Heap::Global(h) => h.binarySearchValues[(div as usize)].clone(), _ => unreachable!() })),
         StackEntry::Value("b".to_string(), Value::U64(0u64)),
+        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
@@ -210,6 +226,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
         StackEntry::Retrn(Some(4)),
         StackEntry::Value("a".to_string(), Value::U64(left)),
         StackEntry::Value("b".to_string(), Value::U64(right)),
+        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
@@ -281,6 +298,7 @@ pub fn global_step(state: State, vars: &[StackEntry], _heap: &mut Heap) -> StepR
         StackEntry::Retrn(Some(3)),
         StackEntry::Value("a".to_string(), Value::U64(a)),
         StackEntry::Value("b".to_string(), Value::U64(b)),
+        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }

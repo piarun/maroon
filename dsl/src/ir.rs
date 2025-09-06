@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use pest::iterators::Pair;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StepId(pub String);
 
@@ -75,6 +73,14 @@ pub enum Step {
   // Example: from array `users`, index `i`, write into local `u`
   // Only reads are modeled for now to keep things simple
   HeapGetIndex { array: String, index: Expr, bind: String, next: StepId },
+  // Inline Rust block that can perform any amount of computations.
+  //     However we'll be aming to keep it 'relatively small'
+  //     The block must be pure computational with no side effects
+  // `args` are the names of variables (params or locals) the block will read.
+  //     Only these will be passed into the generated helper function.
+  // `binds` are the local/param names to write results into (in order).
+  // `code` is the Rust body of a helper function that returns the values.
+  RustBlock { args: Vec<String>, binds: Vec<String>, code: String, next: StepId },
   // TODO: Block with local variables that can look at variables of this function
   // but other parts of the function can't access this block's variables
   // ex: for loop
