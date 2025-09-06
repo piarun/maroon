@@ -239,7 +239,6 @@ out
               out: Type::Option(Box::new(Type::UInt64)),
               locals: vec![
                 LocalVar { name: "div".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "left_right_sum".to_string(), type_: Type::UInt64 },
                 LocalVar { name: "v_by_index_div".to_string(), type_: Type::UInt64 },
                 LocalVar { name: "fac_call_res".to_string(), type_: Type::Option(Box::new(Type::UInt64)) },
               ],
@@ -253,34 +252,21 @@ out
                       Box::new(Expr::Var("right".to_string())),
                     ),
                     then_: StepId::new("return_None"),
-                    else_: StepId::new("summarize_left_and_right"),
+                    else_: StepId::new("calculate_div"),
                   },
                 ),
                 (StepId::new("return_None"), Step::Return { value: RetValue::None }),
                 (
-                  StepId::new("summarize_left_and_right"),
-                  Step::Call {
-                    target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
-                    args: vec![Expr::Var("left".to_string()), Expr::Var("right".to_string())],
-                    bind: Some("left_right_sum".to_string()),
-                    ret_to: StepId::new("calculate_div"),
-                  },
-                ),
-                (
                   StepId::new("calculate_div"),
-                  Step::Call {
-                    target: FuncRef { fiber: "global".to_string(), func: "div".to_string() },
-                    args: vec![Expr::Var("left_right_sum".to_string()), Expr::UInt64(2)],
-                    bind: Some("div".to_string()),
-                    ret_to: StepId::new("read_value"),
-                  },
-                ),
-                (
-                  StepId::new("read_value"),
-                  Step::HeapGetIndex {
-                    array: "binary_search_values".to_string(),
-                    index: Expr::Var("div".to_string()),
-                    bind: "v_by_index_div".to_string(),
+                  Step::RustBlock {
+                    args: vec!["left".to_string(), "right".to_string()],
+                    binds: vec!["div".to_string(), "v_by_index_div".to_string()],
+                    code: r#"
+                    let o_div = (left + right) / 2;
+                    let Heap::Global(s) = heap;
+                    (o_div, s.binarySearchValues[o_div as usize])
+                    "#
+                    .to_string(),
                     next: StepId::new("return_if_equal"),
                   },
                 ),
