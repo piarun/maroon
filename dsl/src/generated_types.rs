@@ -309,3 +309,140 @@ pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepRe
     }
   }
 }
+pub fn global_prepare_add(a: u64, b: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("sum".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::GlobalAddEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_add(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_binarySearch(e: u64, left: u64, right: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("e".to_string(), Value::U64(e)));
+  stack.push(StackEntry::Value("left".to_string(), Value::U64(left)));
+  stack.push(StackEntry::Value("right".to_string(), Value::U64(right)));
+  stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)));
+  stack.push(StackEntry::State(State::GlobalBinarySearchEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_binarySearch(stack: &[StackEntry]) -> Option<u64> {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_div(a: u64, b: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::State(State::GlobalDivEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_div(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("n".to_string(), Value::U64(n)));
+  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::GlobalFactorialEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_factorial(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_mult(a: u64, b: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::State(State::GlobalMultEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_mult(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_sub(a: u64, b: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("sub".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::GlobalSubEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_sub(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+pub fn global_prepare_subAdd(a: u64, b: u64, c: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("c".to_string(), Value::U64(c)));
+  stack.push(StackEntry::Value("sumAB".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("subABC".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::GlobalSubAddEntry));
+  let heap = Heap::Global(GlobalHeap::default());
+  (stack, heap)
+}
+
+pub fn global_result_subAdd(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
