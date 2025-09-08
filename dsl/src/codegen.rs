@@ -245,6 +245,9 @@ pub enum StepResult {
 
   out.push_str(&generate_global_step(ir));
 
+  // Emit helpers to prepare initial stack/heap and extract result
+  out.push_str(&generate_prepare_and_result_helpers(ir));
+
   out
 }
 
@@ -254,6 +257,90 @@ fn rustblock_helper_name(
   step_id: &str,
 ) -> String {
   format!("__inline_{}_{}_{}", camel_ident(fiber_name), camel_ident(func_name), camel_ident(step_id))
+}
+
+fn generate_prepare_and_result_helpers(ir: &IR) -> String {
+  let mut out = String::new();
+
+  // Iterate fibers and functions deterministically
+  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let heap_struct = variant_name(&[fiber_name, "Heap"]);
+    let heap_enum_variant = pascal_case(fiber_name);
+
+    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
+    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (func_name, func) in funcs_sorted {
+      // Prepare function signature
+      let prepare_fn_name = format!("{}_prepare_{}", camel_ident(fiber_name), camel_ident(func_name));
+      let mut params: Vec<String> = Vec::new();
+      for p in &func.in_vars {
+        params.push(format!("{}: {}", camel_ident(&p.name), rust_type(&p.type_)));
+      }
+
+      // Return type always: (Vec<StackEntry>, Heap)
+      out.push_str(&format!("pub fn {}({}) -> (Vec<StackEntry>, Heap) {{\n", prepare_fn_name, params.join(", ")));
+      out.push_str("  let mut stack: Vec<StackEntry> = Vec::new();\n");
+
+      // 1) Push placeholder for return value and continuation marker
+      let ret_vname = type_variant_name(&func.out);
+      let ret_default = default_value_expr(&func.out);
+      out.push_str(&format!(
+        "  stack.push(StackEntry::Value(\"ret\".to_string(), Value::{}({})));\n",
+        ret_vname, ret_default
+      ));
+      out.push_str("  stack.push(StackEntry::Retrn(Some(1)));\n");
+
+      // 2) Push input params in order
+      for p in &func.in_vars {
+        let vname = type_variant_name(&p.type_);
+        out.push_str(&format!(
+          "  stack.push(StackEntry::Value(\"{}\".to_string(), Value::{}({})));\n",
+          p.name,
+          vname,
+          camel_ident(&p.name)
+        ));
+      }
+
+      // 3) Allocate locals with defaults
+      for l in &func.locals {
+        let vname = type_variant_name(&l.type_);
+        let def_expr = default_value_expr(&l.type_);
+        out.push_str(&format!(
+          "  stack.push(StackEntry::Value(\"{}\".to_string(), Value::{}({})));\n",
+          l.name, vname, def_expr
+        ));
+      }
+
+      // 4) Push entry state
+      let entry_state = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      out.push_str(&format!("  stack.push(StackEntry::State(State::{}));\n", entry_state));
+
+      // 5) Initialize heap with defaults for this fiber
+      out.push_str(&format!(
+        "  let heap = Heap::{}({}::default());\n  (stack, heap)\n}}\n\n",
+        heap_enum_variant, heap_struct
+      ));
+
+      // Result extraction function
+      let result_fn_name = format!("{}_result_{}", camel_ident(fiber_name), camel_ident(func_name));
+      let ret_ty = rust_type(&func.out);
+      out.push_str(&format!(
+        "pub fn {}(stack: &[StackEntry]) -> {} {{\n",
+        result_fn_name, ret_ty
+      ));
+      out.push_str("  match stack.last() {\n");
+      out.push_str("    Some(StackEntry::Value(_, ");
+      out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
+      out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
+      out.push_str("  }\n}\n\n");
+    }
+  }
+
+  out
 }
 
 fn generate_rustblock_helpers(ir: &IR) -> String {
