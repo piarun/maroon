@@ -1,4 +1,4 @@
-use crate::generated_types::*;
+use crate::simple_functions_generated::*;
 
 #[test]
 fn add_function() {
