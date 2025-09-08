@@ -242,23 +242,12 @@ pub enum StepResult {
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
 
-  // Inline RustBlock code directly in global_step (no helper fns)
-  // Intentionally do not emit separate helper functions.
-
   out.push_str(&generate_global_step(ir));
 
   // Emit helpers to prepare initial stack/heap and extract result
   out.push_str(&generate_prepare_and_result_helpers(ir));
 
   out
-}
-
-fn rustblock_helper_name(
-  fiber_name: &str,
-  func_name: &str,
-  step_id: &str,
-) -> String {
-  format!("__inline_{}_{}_{}", camel_ident(fiber_name), camel_ident(func_name), camel_ident(step_id))
 }
 
 fn generate_prepare_and_result_helpers(ir: &IR) -> String {
@@ -339,43 +328,6 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
     }
   }
 
-  out
-}
-
-fn generate_rustblock_helpers(ir: &IR) -> String {
-  let mut out = String::new();
-  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
-  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
-
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
-    funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
-    for (func_name, func) in funcs_sorted {
-      for (step_id, step) in &func.steps {
-        if let Step::RustBlock { args, binds, code, .. } = step {
-          let helper_name = rustblock_helper_name(fiber_name, func_name, &step_id.0);
-          // Build helper signature: only requested args + &mut Heap
-          let mut params: Vec<String> = Vec::new();
-          for a in args {
-            let ty = var_type_of(func, a).expect("arg var not found");
-            params.push(format!("{}: {}", camel_ident(a), rust_type(ty)));
-          }
-          params.push("heap: &mut Heap".into());
-
-          // Output type as single type or tuple of types
-          let mut out_types: Vec<String> = Vec::new();
-          for b in binds {
-            let ty = var_type_of(func, b).expect("bind var not found");
-            out_types.push(rust_type(ty));
-          }
-          let outputs_ty =
-            if out_types.len() == 1 { out_types[0].clone() } else { format!("({})", out_types.join(", ")) };
-
-          out.push_str(&format!("fn {}({}) -> {} {{\n{}\n}}\n\n", helper_name, params.join(", "), outputs_ty, code));
-        }
-      }
-    }
-  }
   out
 }
 
@@ -874,7 +826,7 @@ fn generate_global_step(ir: &IR) -> String {
                   }
                 }
               }
-              Step::RustBlock { args: rargs, binds, next, code: rcode } => {
+              Step::RustBlock { binds, next, code: rcode } => {
                 let next_v = variant_name(&[fiber_name, func_name, &next.0]);
                 let mut bind_types: Vec<&Type> = Vec::new();
                 for b in binds {
@@ -981,9 +933,12 @@ fn generate_global_step(ir: &IR) -> String {
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
-          Step::RustBlock { args, .. } => {
-            for a in args {
-              referenced.insert(a.clone());
+          Step::RustBlock { .. } => {
+            for p in &func.in_vars {
+              referenced.insert(p.name.clone());
+            }
+            for l in &func.locals {
+              referenced.insert(l.name.clone());
             }
           }
         }
@@ -1121,7 +1076,7 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
           }
-          Step::RustBlock { args: rargs, binds, next, code: rcode } => {
+          Step::RustBlock { binds, next, code: rcode } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
             // Types by bind order
             let mut bind_types: Vec<&Type> = Vec::new();

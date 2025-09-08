@@ -69,7 +69,6 @@ fn simple_ir() {
                 (
                   StepId::new("entry"),
                   Step::RustBlock {
-                    args: vec!["a".to_string(), "b".to_string()],
                     binds: vec!["sum".to_string()],
                     code: r#"
 let out = a + b;
@@ -97,7 +96,6 @@ out
                 (
                   StepId::new("entry"),
                   Step::RustBlock {
-                    args: vec!["a".to_string(), "b".to_string()],
                     binds: vec!["sub".to_string()],
                     code: r#"
 let out = a - b;
@@ -274,7 +272,6 @@ out
                 (
                   StepId::new("calculate_div"),
                   Step::RustBlock {
-                    args: vec!["left".to_string(), "right".to_string()],
                     binds: vec!["div".to_string(), "v_by_index_div".to_string()],
                     code: r#"
                     let o_div = (left + right) / 2;

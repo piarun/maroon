@@ -125,8 +125,12 @@ out
       if left > right { StepResult::GoTo(State::GlobalBinarySearchReturnNone) } else { StepResult::GoTo(State::GlobalBinarySearchCalculateDiv) }
     }
     State::GlobalBinarySearchCalculateDiv => {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let facCallRes: Option<u64> = if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let vByIndexDiv: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       { let out = {
 
                     let o_div = (left + right) / 2;
