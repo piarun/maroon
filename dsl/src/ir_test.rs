@@ -36,6 +36,7 @@ use crate::ir::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[test]
 fn simple_ir() {
@@ -365,4 +366,6 @@ out
     fs::create_dir_all(parent).unwrap();
   }
   fs::write(&out_path, code).expect("write generated types");
+
+  _ = Command::new("rustfmt").args(["src/generated_types.rs"]).status().unwrap();
 }
