@@ -103,28 +103,6 @@ pub fn func_args_count(e: &State) -> usize {
     State::Completed => 0,
   }
 }
-fn __inline_global_add_entry(a: u64, b: u64, heap: &mut Heap) -> u64 {
-
-let out = a + b;
-out
-
-}
-
-fn __inline_global_binarySearch_calculateDiv(left: u64, right: u64, heap: &mut Heap) -> (u64, u64) {
-
-                    let o_div = (left + right) / 2;
-                    let Heap::Global(s) = heap;
-                    (o_div, s.binarySearchValues[o_div as usize])
-                    
-}
-
-fn __inline_global_sub_entry(a: u64, b: u64, heap: &mut Heap) -> u64 {
-
-let out = a - b;
-out
-
-}
-
 pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepResult {
   match state {
     State::Completed => StepResult::Done,
@@ -133,7 +111,12 @@ pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepRe
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      { let out = __inline_global_add_entry(a, b, heap); StepResult::Return(Value::U64(out)) }
+      { let out = {
+
+let out = a + b;
+out
+
+      }; StepResult::Return(Value::U64(out)) }
     }
     State::GlobalBinarySearchEntry => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -144,7 +127,13 @@ pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepRe
     State::GlobalBinarySearchCalculateDiv => {
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      { let out = __inline_global_binarySearch_calculateDiv(left, right, heap);
+      { let out = {
+
+                    let o_div = (left + right) / 2;
+                    let Heap::Global(s) = heap;
+                    (o_div, s.binarySearchValues[o_div as usize])
+                    
+      };
         let (o0, o1) = out;
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![
@@ -276,7 +265,12 @@ pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepRe
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let sub: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      { let out = __inline_global_sub_entry(a, b, heap); StepResult::Return(Value::U64(out)) }
+      { let out = {
+
+let out = a - b;
+out
+
+      }; StepResult::Return(Value::U64(out)) }
     }
     State::GlobalSubAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };

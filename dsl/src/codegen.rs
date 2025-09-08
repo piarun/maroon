@@ -138,12 +138,12 @@ pub fn generate_rust_types(ir: &IR) -> String {
       for (_sid, st) in &func.steps {
         if let Step::RustBlock { binds, next, .. } = st {
           if binds.len() == 1 {
-            if let Some((_, Step::Return { value })) = func
-              .steps
-              .iter()
-              .find(|(nsid, _)| nsid.0 == next.0)
-            {
-              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            if let Some((_, Step::Return { value })) = func.steps.iter().find(|(nsid, _)| nsid.0 == next.0) {
+              if let RetValue::Var(vn) = value {
+                if vn == &binds[0] {
+                  suppressed.insert(next.0.clone());
+                }
+              }
             }
           }
         }
@@ -154,12 +154,12 @@ pub fn generate_rust_types(ir: &IR) -> String {
       for (_sid, st) in &func.steps {
         if let Step::RustBlock { binds, next, .. } = st {
           if binds.len() == 1 {
-            if let Some((_, Step::Return { value })) = func
-              .steps
-              .iter()
-              .find(|(nsid, _)| nsid.0 == next.0)
-            {
-              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            if let Some((_, Step::Return { value })) = func.steps.iter().find(|(nsid, _)| nsid.0 == next.0) {
+              if let RetValue::Var(vn) = value {
+                if vn == &binds[0] {
+                  suppressed.insert(next.0.clone());
+                }
+              }
             }
           }
         }
@@ -167,7 +167,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
       let mut steps: Vec<String> = Vec::new();
       steps.push(func.entry.0.clone());
       for (step_id, _step) in &func.steps {
-        if !suppressed.contains(&step_id.0) { steps.push(step_id.0.clone()); }
+        if !suppressed.contains(&step_id.0) {
+          steps.push(step_id.0.clone());
+        }
       }
       steps.sort();
       steps.dedup();
@@ -240,8 +242,8 @@ pub enum StepResult {
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
 
-  // Emit helper functions for RustBlock steps so they’re in scope for global_step
-  out.push_str(&generate_rustblock_helpers(ir));
+  // Inline RustBlock code directly in global_step (no helper fns)
+  // Intentionally do not emit separate helper functions.
 
   out.push_str(&generate_global_step(ir));
 
@@ -328,10 +330,7 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       // Result extraction function
       let result_fn_name = format!("{}_result_{}", camel_ident(fiber_name), camel_ident(func_name));
       let ret_ty = rust_type(&func.out);
-      out.push_str(&format!(
-        "pub fn {}(stack: &[StackEntry]) -> {} {{\n",
-        result_fn_name, ret_ty
-      ));
+      out.push_str(&format!("pub fn {}(stack: &[StackEntry]) -> {} {{\n", result_fn_name, ret_ty));
       out.push_str("  match stack.last() {\n");
       out.push_str("    Some(StackEntry::Value(_, ");
       out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
@@ -619,12 +618,12 @@ pub fn func_args_count(e: &State) -> usize {
       for (_sid, st) in &func.steps {
         if let Step::RustBlock { binds, next, .. } = st {
           if binds.len() == 1 {
-            if let Some((_, Step::Return { value })) = func
-              .steps
-              .iter()
-              .find(|(nsid, _)| nsid.0 == next.0)
-            {
-              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            if let Some((_, Step::Return { value })) = func.steps.iter().find(|(nsid, _)| nsid.0 == next.0) {
+              if let RetValue::Var(vn) = value {
+                if vn == &binds[0] {
+                  suppressed.insert(next.0.clone());
+                }
+              }
             }
           }
         }
@@ -670,12 +669,12 @@ fn generate_global_step(ir: &IR) -> String {
       for (_sid, st) in &func.steps {
         if let Step::RustBlock { binds, next, .. } = st {
           if binds.len() == 1 {
-            if let Some((_, Step::Return { value })) = func
-              .steps
-              .iter()
-              .find(|(nsid, _)| nsid.0 == next.0)
-            {
-              if let RetValue::Var(vn) = value { if vn == &binds[0] { suppressed.insert(next.0.clone()); } }
+            if let Some((_, Step::Return { value })) = func.steps.iter().find(|(nsid, _)| nsid.0 == next.0) {
+              if let RetValue::Var(vn) = value {
+                if vn == &binds[0] {
+                  suppressed.insert(next.0.clone());
+                }
+              }
             }
           }
         }
@@ -875,15 +874,8 @@ fn generate_global_step(ir: &IR) -> String {
                   }
                 }
               }
-              Step::RustBlock { args: rargs, binds, next, .. } => {
+              Step::RustBlock { args: rargs, binds, next, code: rcode } => {
                 let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                let helper_name = rustblock_helper_name(fiber_name, func_name, "entry");
-                let mut args: Vec<String> = Vec::new();
-                for a in rargs {
-                  args.push(camel_ident(a));
-                }
-                args.push("heap".into());
-
                 let mut bind_types: Vec<&Type> = Vec::new();
                 for b in binds {
                   bind_types.push(var_type_of(func, b).expect("bind var type"));
@@ -900,12 +892,10 @@ fn generate_global_step(ir: &IR) -> String {
                     .unwrap_or(false);
                   if direct_return {
                     let ty_name = type_variant_name(bind_types[0]);
-                    out.push_str(&format!(
-                      "      {{ let out = {}({}); StepResult::Return(Value::{}(out)) }}\n",
-                      helper_name,
-                      args.join(", "),
-                      ty_name
-                    ));
+                    out.push_str("      { let out = {\n");
+                    out.push_str(rcode);
+                    out.push_str("\n      }; ");
+                    out.push_str(&format!("StepResult::Return(Value::{}(out)) }}\n", ty_name));
                   } else {
                     // Single bind: assign directly into the current frame using offset
                     let ty_name = type_variant_name(bind_types[0]);
@@ -917,17 +907,19 @@ fn generate_global_step(ir: &IR) -> String {
                     } else {
                       "0".to_string()
                     };
+                    out.push_str("      { let out = {\n");
+                    out.push_str(rcode);
+                    out.push_str("\n      }; StepResult::Next(vec![\n");
                     out.push_str(&format!(
-                    "      {{ let out = {}({}); StepResult::Next(vec![\n          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n          StackEntry::State(State::{}),\n        ]) }}\n",
-                    helper_name,
-                    args.join(", "),
-                    pos_expr,
-                    ty_name,
-                    next_v
-                  ));
+                      "          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n",
+                      pos_expr, ty_name
+                    ));
+                    out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
                   }
                 } else {
-                  out.push_str(&format!("      {{ let out = {}({});\n", helper_name, args.join(", ")));
+                  out.push_str("      { let out = {\n");
+                  out.push_str(rcode);
+                  out.push_str("\n      };\n");
                   let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
                   out.push_str(&format!(
                     "        let ({}) = out;\n        StepResult::Next(vec![\n",
@@ -961,7 +953,9 @@ fn generate_global_step(ir: &IR) -> String {
       let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
       for (step_id, step) in steps_sorted {
-        if suppressed.contains(&step_id.0) { continue; }
+        if suppressed.contains(&step_id.0) {
+          continue;
+        }
         let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
         if !seen.insert(state_variant.clone()) {
           continue;
@@ -1127,16 +1121,8 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
           }
-          Step::RustBlock { args: rargs, binds, next, .. } => {
+          Step::RustBlock { args: rargs, binds, next, code: rcode } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            let helper_name = rustblock_helper_name(fiber_name, func_name, &step_id.0);
-            // Build argument list: only the requested args
-            let mut args: Vec<String> = Vec::new();
-            for a in rargs {
-              args.push(camel_ident(a));
-            }
-            args.push("heap".into());
-
             // Types by bind order
             let mut bind_types: Vec<&Type> = Vec::new();
             for b in binds {
@@ -1154,12 +1140,10 @@ fn generate_global_step(ir: &IR) -> String {
                 .unwrap_or(false);
               if direct_return {
                 let ty_name = type_variant_name(bind_types[0]);
-                out.push_str(&format!(
-                  "      {{ let out = {}({}); StepResult::Return(Value::{}(out)) }}\n",
-                  helper_name,
-                  args.join(", "),
-                  ty_name
-                ));
+                out.push_str("      { let out = {\n");
+                out.push_str(rcode);
+                out.push_str("\n      }; ");
+                out.push_str(&format!("StepResult::Return(Value::{}(out)) }}\n", ty_name));
               } else {
                 // Single bind: assign directly into the current frame using offset
                 let ty_name = type_variant_name(bind_types[0]);
@@ -1171,17 +1155,19 @@ fn generate_global_step(ir: &IR) -> String {
                 } else {
                   "0".to_string()
                 };
+                out.push_str("      { let out = {\n");
+                out.push_str(rcode);
+                out.push_str("\n      }; StepResult::Next(vec![\n");
                 out.push_str(&format!(
-                "      {{ let out = {}({}); StepResult::Next(vec![\n          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n          StackEntry::State(State::{}),\n        ]) }}\n",
-                helper_name,
-                args.join(", "),
-                pos_expr,
-                ty_name,
-                next_v
-              ));
+                  "          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n",
+                  pos_expr, ty_name
+                ));
+                out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
               }
             } else {
-              out.push_str(&format!("      {{ let out = {}({});\n", helper_name, args.join(", ")));
+              out.push_str("      { let out = {\n");
+              out.push_str(rcode);
+              out.push_str("\n      };\n");
               let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
               out.push_str(&format!(
                 "        let ({}) = out;\n        StepResult::Next(vec![\n",
