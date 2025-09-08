@@ -70,11 +70,7 @@ fn simple_ir() {
                   StepId::new("entry"),
                   Step::RustBlock {
                     binds: vec!["sum".to_string()],
-                    code: r#"
-let out = a + b;
-out
-"#
-                    .to_string(),
+                    code: "a+b".to_string(),
                     next: StepId::new("return"),
                   },
                 ),

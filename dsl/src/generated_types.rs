@@ -112,10 +112,7 @@ pub fn global_step(state: State, vars: &[StackEntry], heap: &mut Heap) -> StepRe
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       { let out = {
-
-let out = a + b;
-out
-
+a+b
       }; StepResult::Return(Value::U64(out)) }
     }
     State::GlobalBinarySearchEntry => {
