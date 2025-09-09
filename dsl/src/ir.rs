@@ -157,10 +157,6 @@ impl IR {
     let mut explanation = String::new();
     for fiber in self.fibers.iter() {
       for func in fiber.1.funcs.iter() {
-        if func.0 == &"mult".to_string() || func.0 == &"div".to_string() {
-          // builtin exceptions
-          continue;
-        }
         let mut has_entry = false; // each function should start with 'entry' stepId
         for step in func.1.steps.iter() {
           if step.0 == StepId::new("entry") {

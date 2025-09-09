@@ -559,13 +559,6 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
 
-      if func_name == "mult" || func_name == "div" {
-        // builtin exceptions
-        let v = variant_name(&[fiber_name, func_name, "entry"]);
-        out.push_str(&format!("    State::{} => {},\n", v, n));
-        continue;
-      }
-
       // Identify direct-return RustBlock next steps to suppress from func_args_count
       use std::collections::BTreeSet as __BTS2;
       let mut suppressed: __BTS2<String> = __BTS2::new();
@@ -651,257 +644,247 @@ fn generate_global_step(ir: &IR) -> String {
           let _ = i;
         }
 
-        // Built-in semantics for some primitive global functions.
-        if fiber_name.as_str() == "global" && func_name.as_str() == "mult" && func.in_vars.len() == 2 {
-          out.push_str(&format!("      StepResult::Return(Value::U64(a * b))\n"));
-        } else if fiber_name.as_str() == "global" && func_name.as_str() == "div" && func.in_vars.len() == 2 {
-          out.push_str(&format!("      StepResult::Return(Value::U64(a / b))\n"));
-        } else if fiber_name.as_str() == "global" && func_name.as_str() == "randGen" && func.in_vars.is_empty() {
-          // Placeholder return for randGen
-          out.push_str("      StepResult::Return(Value::U64(0u64))\n");
-        } else {
-          // If the entry step is explicitly defined in IR, emit its logic here; otherwise, fallback.
-          if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
-            // Collect referenced vars for this entry step
-            let mut referenced: BTreeSet<String> = BTreeSet::new();
-            match entry_step {
-              Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
-              Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
-              Step::SendToFiber { args, .. } => {
-                for (_, e) in args {
-                  collect_vars_from_expr(&e, &mut referenced);
-                }
-              }
-              Step::Await(_) => {}
-              Step::Select { arms: _ } => {}
-              Step::Call { args, .. } => {
-                for e in args {
-                  collect_vars_from_expr(&e, &mut referenced);
-                }
-              }
-              Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
-              Step::ReturnVoid => {}
-              Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
-              Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
-              Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
-              Step::RustBlock { .. } => {
-                for p in &func.in_vars {
-                  referenced.insert(p.name.clone());
-                }
-                for l in &func.locals {
-                  referenced.insert(l.name.clone());
-                }
+        // If the entry step is explicitly defined in IR, emit its logic here; otherwise, fallback.
+        if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
+          // Collect referenced vars for this entry step
+          let mut referenced: BTreeSet<String> = BTreeSet::new();
+          match entry_step {
+            Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+            Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
+            Step::SendToFiber { args, .. } => {
+              for (_, e) in args {
+                collect_vars_from_expr(&e, &mut referenced);
               }
             }
-            // Bind only locals (params are already bound above) using positional indices
-            for var_name in referenced.iter() {
-              if let Some(ty) = var_type_of(func, var_name) {
-                if !var_is_param(func, var_name) {
-                  if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
-                    let idx = func.in_vars.len() + pos;
-                    let rust_ty = rust_type(ty);
-                    let tname = type_variant_name(ty);
-                    let local_ident = camel_ident(var_name);
-                    out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
-                  }
+            Step::Await(_) => {}
+            Step::Select { arms: _ } => {}
+            Step::Call { args, .. } => {
+              for e in args {
+                collect_vars_from_expr(&e, &mut referenced);
+              }
+            }
+            Step::Return { value } => collect_vars_from_retvalue(value, &mut referenced),
+            Step::ReturnVoid => {}
+            Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
+            Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
+            Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
+            Step::RustBlock { .. } => {
+              for p in &func.in_vars {
+                referenced.insert(p.name.clone());
+              }
+              for l in &func.locals {
+                referenced.insert(l.name.clone());
+              }
+            }
+          }
+          // Bind only locals (params are already bound above) using positional indices
+          for var_name in referenced.iter() {
+            if let Some(ty) = var_type_of(func, var_name) {
+              if !var_is_param(func, var_name) {
+                if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
+                  let idx = func.in_vars.len() + pos;
+                  let rust_ty = rust_type(ty);
+                  let tname = type_variant_name(ty);
+                  let local_ident = camel_ident(var_name);
+                  out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
                 }
+              }
+            } else {
+              out
+                .push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
+            }
+          }
+          match entry_step {
+            Step::Sleep { ms, next } => {
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let ms_code = render_expr_code(&ms, func);
+              out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
+            }
+            Step::Write { text, next } => {
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let text_code = render_expr_code(&text, func);
+              out.push_str(&format!(
+                "      StepResult::Write(format!(\"{}\", {}), State::{})\n",
+                "{}", text_code, next_v
+              ));
+            }
+            Step::SendToFiber { next, .. } => {
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            }
+            Step::Await(spec) => {
+              let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
+              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            }
+            Step::Select { arms } => {
+              let mut arm_states: Vec<String> = Vec::new();
+              for arm in arms {
+                arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
+              }
+              out.push_str("      StepResult::Select(vec![");
+              for (i, st) in arm_states.iter().enumerate() {
+                if i > 0 {
+                  out.push_str(", ");
+                }
+                out.push_str(&format!("State::{}", st));
+              }
+              out.push_str("])\n");
+            }
+            Step::Call { target, args, ret_to, bind } => {
+              out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
+            }
+            Step::Return { value } => {
+              let code = render_ret_value(value, &func.out, func);
+              out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
+            }
+            Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
+            Step::If { cond, then_, else_ } => {
+              let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
+              let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
+              let cond_code = render_expr_code(&cond, func);
+              out.push_str(&format!(
+                "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
+                cond_code, then_v, else_v
+              ));
+            }
+            Step::Let { local, expr, next } => {
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              // Set a local by pushing a value of the underlying type. Runtime will bind it.
+              let lty = var_type_of(func, local).expect("unknown local var in Let");
+              let vname = type_variant_name(lty);
+              let expr_code = render_expr_code(&expr, func);
+              out.push_str("      StepResult::Next(vec![\n");
+              out.push_str(&format!(
+                "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
+                local, vname, expr_code
+              ));
+              out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+              out.push_str("      ])\n");
+            }
+            Step::HeapGetIndex { array, index, bind, next } => {
+              // Update existing local `bind` in-place via Return-binding (no new stack vars)
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let idx_code = render_expr_code(&index, func);
+              let heap_variant = pascal_case(fiber_name);
+              let heap_field = camel_ident(array);
+              let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+
+              // Compute offset to the bind variable within the current frame
+              let params_len = func.in_vars.len();
+              let locals_len = func.locals.len();
+              let total_vars = params_len + locals_len;
+              let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+                Some(pi)
+              } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+                Some(params_len + li)
               } else {
-                out.push_str(&format!(
-                  "      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"
-                ));
-              }
-            }
-            match entry_step {
-              Step::Sleep { ms, next } => {
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                let ms_code = render_expr_code(&ms, func);
-                out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
-              }
-              Step::Write { text, next } => {
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                let text_code = render_expr_code(&text, func);
-                out.push_str(&format!(
-                  "      StepResult::Write(format!(\"{}\", {}), State::{})\n",
-                  "{}", text_code, next_v
-                ));
-              }
-              Step::SendToFiber { next, .. } => {
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-              }
-              Step::Await(spec) => {
-                let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-              }
-              Step::Select { arms } => {
-                let mut arm_states: Vec<String> = Vec::new();
-                for arm in arms {
-                  arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
-                }
-                out.push_str("      StepResult::Select(vec![");
-                for (i, st) in arm_states.iter().enumerate() {
-                  if i > 0 {
-                    out.push_str(", ");
-                  }
-                  out.push_str(&format!("State::{}", st));
-                }
-                out.push_str("])\n");
-              }
-              Step::Call { target, args, ret_to, bind } => {
-                out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
-              }
-              Step::Return { value } => {
-                let code = render_ret_value(value, &func.out, func);
-                out.push_str(&format!("      StepResult::Return(Value::{}({}))\n", type_variant_name(&func.out), code));
-              }
-              Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
-              Step::If { cond, then_, else_ } => {
-                let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
-                let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
-                let cond_code = render_expr_code(&cond, func);
-                out.push_str(&format!(
-                  "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
-                  cond_code, then_v, else_v
-                ));
-              }
-              Step::Let { local, expr, next } => {
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                // Set a local by pushing a value of the underlying type. Runtime will bind it.
-                let lty = var_type_of(func, local).expect("unknown local var in Let");
-                let vname = type_variant_name(lty);
-                let expr_code = render_expr_code(&expr, func);
-                out.push_str("      StepResult::Next(vec![\n");
-                out.push_str(&format!(
-                  "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-                  local, vname, expr_code
-                ));
-                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                out.push_str("      ])\n");
-              }
-              Step::HeapGetIndex { array, index, bind, next } => {
-                // Update existing local `bind` in-place via Return-binding (no new stack vars)
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                let idx_code = render_expr_code(&index, func);
-                let heap_variant = pascal_case(fiber_name);
-                let heap_field = camel_ident(array);
-                let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+                None
+              };
+              let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
 
-                // Compute offset to the bind variable within the current frame
-                let params_len = func.in_vars.len();
-                let locals_len = func.locals.len();
-                let total_vars = params_len + locals_len;
-                let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
-                  Some(pi)
-                } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
-                  Some(params_len + li)
-                } else {
-                  None
-                };
-                let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
-
-                match ety {
-                  Type::UInt64 => {
-                    // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)), with proper callee locals
-                    let add_entry = variant_name(&["global", "add", "entry"]);
-                    out.push_str("      StepResult::Next(vec![\n");
-                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                    out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
-                    out.push_str(&format!(
+              match ety {
+                Type::UInt64 => {
+                  // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)), with proper callee locals
+                  let add_entry = variant_name(&["global", "add", "entry"]);
+                  out.push_str("      StepResult::Next(vec![\n");
+                  out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                  out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
+                  out.push_str(&format!(
                       "        StackEntry::Value(\"a\".to_string(), Value::U64(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
                       heap_variant, heap_field, idx_code
                     ));
-                    out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
-                    out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
-                    out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
-                    out.push_str("      ])\n");
-                  }
-                  _ => {
-                    // Directly stage the read value into the local `bind` (non-u64)
-                    let vname = type_variant_name(ety);
-                    out.push_str("      StepResult::Next(vec![\n");
-                    out.push_str(&format!(
+                  out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
+                  out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
+                  out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
+                  out.push_str("      ])\n");
+                }
+                _ => {
+                  // Directly stage the read value into the local `bind` (non-u64)
+                  let vname = type_variant_name(ety);
+                  out.push_str("      StepResult::Next(vec![\n");
+                  out.push_str(&format!(
                       "        StackEntry::Value(\"{}\".to_string(), Value::{}(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
                       bind, vname, heap_variant, heap_field, idx_code
                     ));
-                    out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                    out.push_str("      ])\n");
-                  }
-                }
-              }
-              Step::RustBlock { binds, next, code: rcode } => {
-                let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-                let mut bind_types: Vec<&Type> = Vec::new();
-                for b in binds {
-                  bind_types.push(var_type_of(func, b).expect("bind var type"));
-                }
-                if bind_types.len() == 1 {
-                  // Optimization: if next step is `Return { value: Var(binds[0]) }`, return directly
-                  let direct_return = func
-                    .steps
-                    .iter()
-                    .find(|(sid, _)| sid.0 == next.0)
-                    .and_then(|(_, st)| if let Step::Return { value } = st { Some(value) } else { None })
-                    .and_then(|rv| if let RetValue::Var(vn) = rv { Some(vn) } else { None })
-                    .map(|vn| vn == &binds[0])
-                    .unwrap_or(false);
-                  if direct_return {
-                    let ty_name = type_variant_name(bind_types[0]);
-                    out.push_str("      { let out = {\n");
-                    out.push_str(rcode);
-                    out.push_str("\n      }; ");
-                    out.push_str(&format!("StepResult::Return(Value::{}(out)) }}\n", ty_name));
-                  } else {
-                    // Single bind: assign directly into the current frame using offset
-                    let ty_name = type_variant_name(bind_types[0]);
-                    let bname = binds.get(0).unwrap();
-                    let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bname) {
-                      format!("{}", pi)
-                    } else if let Some(li) = func.locals.iter().position(|l| &l.name == bname) {
-                      format!("{}", func.in_vars.len() + li)
-                    } else {
-                      "0".to_string()
-                    };
-                    out.push_str("      { let out = {\n");
-                    out.push_str(rcode);
-                    out.push_str("\n      }; StepResult::Next(vec![\n");
-                    out.push_str(&format!(
-                      "          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n",
-                      pos_expr, ty_name
-                    ));
-                    out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
-                  }
-                } else {
-                  out.push_str("      { let out = {\n");
-                  out.push_str(rcode);
-                  out.push_str("\n      };\n");
-                  let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
-                  out.push_str(&format!(
-                    "        let ({}) = out;\n        StepResult::Next(vec![\n",
-                    tuple_names.join(", ")
-                  ));
-                  // Build FrameAssign with all bind updates
-                  out.push_str("          StackEntry::FrameAssign(vec![\n");
-                  for (i, b) in binds.iter().enumerate() {
-                    let ty_name = type_variant_name(bind_types[i]);
-                    let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == b) {
-                      format!("{}", pi)
-                    } else if let Some(li) = func.locals.iter().position(|l| &l.name == b) {
-                      format!("{}", func.in_vars.len() + li)
-                    } else {
-                      "0".to_string()
-                    };
-                    out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
-                  }
-                  out.push_str("          ]),\n");
-                  out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
+                  out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
+                  out.push_str("      ])\n");
                 }
               }
             }
-          } else {
-            // Default: nothing special, fall back to a no-op transition.
-            out.push_str(&format!("      StepResult::GoTo(State::{})\n", &entry_variant));
+            Step::RustBlock { binds, next, code: rcode } => {
+              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let mut bind_types: Vec<&Type> = Vec::new();
+              for b in binds {
+                bind_types.push(var_type_of(func, b).expect("bind var type"));
+              }
+              if bind_types.len() == 1 {
+                // Optimization: if next step is `Return { value: Var(binds[0]) }`, return directly
+                let direct_return = func
+                  .steps
+                  .iter()
+                  .find(|(sid, _)| sid.0 == next.0)
+                  .and_then(|(_, st)| if let Step::Return { value } = st { Some(value) } else { None })
+                  .and_then(|rv| if let RetValue::Var(vn) = rv { Some(vn) } else { None })
+                  .map(|vn| vn == &binds[0])
+                  .unwrap_or(false);
+                if direct_return {
+                  let ty_name = type_variant_name(bind_types[0]);
+                  out.push_str("      { let out = {\n");
+                  out.push_str(rcode);
+                  out.push_str("\n      }; ");
+                  out.push_str(&format!("StepResult::Return(Value::{}(out)) }}\n", ty_name));
+                } else {
+                  // Single bind: assign directly into the current frame using offset
+                  let ty_name = type_variant_name(bind_types[0]);
+                  let bname = binds.get(0).unwrap();
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bname) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| &l.name == bname) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  out.push_str("      { let out = {\n");
+                  out.push_str(rcode);
+                  out.push_str("\n      }; StepResult::Next(vec![\n");
+                  out.push_str(&format!(
+                    "          StackEntry::FrameAssign(vec![( {}, Value::{}(out) )]),\n",
+                    pos_expr, ty_name
+                  ));
+                  out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
+                }
+              } else {
+                out.push_str("      { let out = {\n");
+                out.push_str(rcode);
+                out.push_str("\n      };\n");
+                let tuple_names: Vec<String> = (0..bind_types.len()).map(|i| format!("o{}", i)).collect();
+                out.push_str(&format!(
+                  "        let ({}) = out;\n        StepResult::Next(vec![\n",
+                  tuple_names.join(", ")
+                ));
+                // Build FrameAssign with all bind updates
+                out.push_str("          StackEntry::FrameAssign(vec![\n");
+                for (i, b) in binds.iter().enumerate() {
+                  let ty_name = type_variant_name(bind_types[i]);
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == b) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| &l.name == b) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
+                }
+                out.push_str("          ]),\n");
+                out.push_str(&format!("          StackEntry::State(State::{}),\n        ]) }}\n", next_v));
+              }
+            }
           }
+        } else {
+          // Default: nothing special, fall back to a no-op transition.
+          out.push_str(&format!("      StepResult::GoTo(State::{})\n", &entry_variant));
         }
+
         out.push_str("    }\n");
       }
       let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
