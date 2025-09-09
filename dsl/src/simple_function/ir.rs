@@ -68,9 +68,19 @@ out
                 InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
               out: Type::UInt64,
-              locals: vec![],
+              locals: vec![LocalVar { name: "mult".to_string(), type_: Type::UInt64 }],
               entry: StepId::new("entry"),
-              steps: vec![],
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::RustBlock {
+                    binds: vec!["mult".to_string()],
+                    code: "a*b".to_string(),
+                    next: StepId::new("return"),
+                  },
+                ),
+                (StepId::new("return"), Step::Return { value: RetValue::Var("mult".to_string()) }),
+              ],
             },
           ),
           (
@@ -81,9 +91,19 @@ out
                 InVar { name: "b".to_string(), type_: Type::UInt64 },
               ],
               out: Type::UInt64,
-              locals: vec![],
+              locals: vec![LocalVar { name: "div".to_string(), type_: Type::UInt64 }],
               entry: StepId::new("entry"),
-              steps: vec![],
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::RustBlock {
+                    binds: vec!["div".to_string()],
+                    code: "a/b".to_string(),
+                    next: StepId::new("return"),
+                  },
+                ),
+                (StepId::new("return"), Step::Return { value: RetValue::Var("div".to_string()) }),
+              ],
             },
           ),
           (

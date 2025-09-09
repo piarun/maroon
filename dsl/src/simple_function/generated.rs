@@ -88,14 +88,14 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalBinarySearchReturnFound => 6,
     State::GlobalBinarySearchReturnIfEqual => 6,
     State::GlobalBinarySearchReturnResult => 6,
-    State::GlobalDivEntry => 2,
+    State::GlobalDivEntry => 3,
     State::GlobalFactorialEntry => 4,
     State::GlobalFactorialFactorialCall => 4,
     State::GlobalFactorialMultiply => 4,
     State::GlobalFactorialReturn => 4,
     State::GlobalFactorialReturn1 => 4,
     State::GlobalFactorialSubtract => 4,
-    State::GlobalMultEntry => 2,
+    State::GlobalMultEntry => 3,
     State::GlobalSubEntry => 3,
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
@@ -232,7 +232,11 @@ pub fn global_step(
     State::GlobalDivEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(a / b))
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      {
+        let out = { a / b };
+        StepResult::Return(Value::U64(out))
+      }
     }
     State::GlobalFactorialEntry => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -263,6 +267,7 @@ pub fn global_step(
         StackEntry::Retrn(Some(2)),
         StackEntry::Value("a".to_string(), Value::U64(n)),
         StackEntry::Value("b".to_string(), Value::U64(facCallRes)),
+        StackEntry::Value("mult".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalMultEntry),
       ])
     }
@@ -285,7 +290,11 @@ pub fn global_step(
     State::GlobalMultEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(a * b))
+      let mult: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      {
+        let out = { a * b };
+        StepResult::Return(Value::U64(out))
+      }
     }
     State::GlobalSubEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -387,6 +396,7 @@ pub fn global_prepare_div(
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalDivEntry));
   let heap = Heap::Global(GlobalHeap::default());
   (stack, heap)
@@ -428,6 +438,7 @@ pub fn global_prepare_mult(
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("mult".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalMultEntry));
   let heap = Heap::Global(GlobalHeap::default());
   (stack, heap)
