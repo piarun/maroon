@@ -1,55 +1,9 @@
-// NOTEs
-// in IR - highlevel struct that has different fibers and these fibers have their own typed stacks
-// queues between fibers makes sense to keep in IR?
-//
-// cancelable future
-
-//   type IR {
-//     fibers: {
-//       key: {
-//         is_singleton/daemon: bool
-//         heap {}
-//         funcs {
-//           name: {
-//             steps[
-//               {
-
-//                 local_vars_for_this_step // on stack
-//                 local_vars_out_for_next_step // also on stack
-//                 steps[...] // calls of other functions?
-
-//               }
-//             ]
-//           }
-//           in_params_type
-//           ret_value_type
-//         }
-//       }
-//     }
-//     types {
-//       // all types? Or only in/out function types
-//     }
-//   }
-
-use crate::codegen::generate_rust_types;
 use crate::ir::*;
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
 
-#[test]
-fn simple_ir() {
-  /*
-     global {
-      add
-      sub
-      subadd
-     }
-
-  */
-
-  let ir = IR {
+// Shared IR specification used by build.rs (via include!) and by tests.
+pub fn sample_ir() -> IR {
+  IR {
     fibers: HashMap::from([(
       "global".to_string(),
       Fiber {
@@ -133,10 +87,7 @@ out
             },
           ),
           (
-            // factorial(n) {
-            //   if n == 1 { return 1 }
-            //   return n * factorial(n - 1)
-            // }
+            // factorial(n) { if n == 1 { return 1 } return n * factorial(n - 1) }
             "factorial".to_string(),
             Func {
               in_vars: vec![InVar { name: "n".to_string(), type_: Type::UInt64 }],
@@ -169,7 +120,6 @@ out
                 (
                   StepId::new("factorial_call"),
                   Step::Call {
-                    // or instead of global.factorial use self.factorial?
                     target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
                     args: vec![Expr::Var("subtract_res".to_string())],
                     bind: Some("fac_call_res".to_string()),
@@ -227,18 +177,7 @@ out
             },
           ),
           (
-            // fn binary_search_r(e: i32, v: &Vec<i32>, left: usize, right: usize) -> Option<usize> {
-            //     if left > right { return None }
-            //     let div = (left + right) / 2;
-            //     if v[div] < e {
-            //         return binary_search_r(e, v, div + 1, right)
-            //     } else if v[div] > e {
-            //         if div == 0 {return None}
-            //         return binary_search_r(e, v, left, div - 1)
-            //     } else {
-            //         return Some(div)
-            //     }
-            // }
+            // binary_search IR
             "binary_search".to_string(),
             Func {
               in_vars: vec![
@@ -352,20 +291,5 @@ out
       },
     )]),
     types: vec![],
-  };
-
-  let (valid, explanation) = ir.is_valid();
-  assert!(valid, "{explanation}");
-
-  // Generate Rust code from IR and write it into state/src/generated_types.rs
-  let code = generate_rust_types(&ir);
-  let mut out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-  out_path.pop(); // move from dsl/ to workspace root
-  out_path.push("dsl/src/generated_types.rs");
-  if let Some(parent) = out_path.parent() {
-    fs::create_dir_all(parent).unwrap();
   }
-  fs::write(&out_path, code).expect("write generated types");
-
-  _ = Command::new("rustfmt").args(["src/generated_types.rs"]).status().unwrap();
 }
