@@ -189,10 +189,12 @@ pub fn generate_rust_types(ir: &IR) -> String {
   for (_, fiber) in fibers_sorted.iter() {
     for (_, func) in fiber.funcs.iter() {
       for p in &func.in_vars {
-        used_types.insert(type_variant_name(&p.type_), p.type_.clone());
+        let ty = &p.1;
+        used_types.insert(type_variant_name(ty), ty.clone());
       }
       for l in &func.locals {
-        used_types.insert(type_variant_name(&l.type_), l.type_.clone());
+        let ty = &l.1;
+        used_types.insert(type_variant_name(ty), ty.clone());
       }
       used_types.insert(type_variant_name(&func.out), func.out.clone());
     }
@@ -271,7 +273,9 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       let prepare_fn_name = format!("{}_prepare_{}", camel_ident(fiber_name), camel_ident(func_name));
       let mut params: Vec<String> = Vec::new();
       for p in &func.in_vars {
-        params.push(format!("{}: {}", camel_ident(&p.name), rust_type(&p.type_)));
+        let name = p.0;
+        let ty = &p.1;
+        params.push(format!("{}: {}", camel_ident(name), rust_type(ty)));
       }
 
       // Return type always: (Vec<StackEntry>, Heap)
@@ -289,22 +293,26 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
 
       // 2) Push input params in order
       for p in &func.in_vars {
-        let vname = type_variant_name(&p.type_);
+        let name = p.0;
+        let ty = &p.1;
+        let vname = type_variant_name(ty);
         out.push_str(&format!(
           "  stack.push(StackEntry::Value(\"{}\".to_string(), Value::{}({})));\n",
-          p.name,
+          name,
           vname,
-          camel_ident(&p.name)
+          camel_ident(name)
         ));
       }
 
       // 3) Allocate locals with defaults
       for l in &func.locals {
-        let vname = type_variant_name(&l.type_);
-        let def_expr = default_value_expr(&l.type_);
+        let lname = l.0;
+        let lty = &l.1;
+        let vname = type_variant_name(lty);
+        let def_expr = default_value_expr(lty);
         out.push_str(&format!(
           "  stack.push(StackEntry::Value(\"{}\".to_string(), Value::{}({})));\n",
-          l.name, vname, def_expr
+          lname, vname, def_expr
         ));
       }
 
@@ -359,28 +367,22 @@ fn collect_vars_from_expr(
   }
 }
 
-fn var_type_of<'a>(
-  func: &'a Func,
-  name: &str,
-) -> Option<&'a Type> {
+fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
   for p in &func.in_vars {
-    if p.name == name {
-      return Some(&p.type_);
+    if p.0 == name {
+      return Some(&p.1);
     }
   }
   for l in &func.locals {
-    if l.name == name {
-      return Some(&l.type_);
+    if l.0 == name {
+      return Some(&l.1);
     }
   }
   None
 }
 
-fn var_is_param(
-  func: &Func,
-  name: &str,
-) -> bool {
-  func.in_vars.iter().any(|p| p.name == name)
+fn var_is_param(func: &Func, name: &str) -> bool {
+  func.in_vars.iter().any(|p| p.0 == name)
 }
 
 fn render_expr_code(
@@ -462,9 +464,9 @@ fn render_call_step(
       let params_len = current_func.in_vars.len();
       let locals_len = current_func.locals.len();
       let total_vars = params_len + locals_len;
-      let var_index = if let Some(pi) = current_func.in_vars.iter().position(|p| &p.name == var_name) {
+      let var_index = if let Some(pi) = current_func.in_vars.iter().position(|p| p.0 == var_name.as_str()) {
         Some(pi)
-      } else if let Some(li) = current_func.locals.iter().position(|l| &l.name == var_name) {
+      } else if let Some(li) = current_func.locals.iter().position(|l| l.0 == var_name.as_str()) {
         Some(params_len + li)
       } else {
         None
@@ -481,19 +483,23 @@ fn render_call_step(
     }
     for (idx, p) in callee.in_vars.iter().enumerate() {
       if let Some(arg) = args.get(idx) {
-        let vname = type_variant_name(&p.type_);
+        let pname = p.0;
+        let pty = &p.1;
+        let vname = type_variant_name(pty);
         let expr_code = render_expr_code(arg, current_func);
         s.push_str(&format!(
           "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-          p.name, vname, expr_code
+          pname, vname, expr_code
         ));
       }
     }
     // Push default placeholders for callee locals to allocate its frame fully
     for l in &callee.locals {
-      let vname = type_variant_name(&l.type_);
-      let def_expr = default_value_expr(&l.type_);
-      s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", l.name, vname, def_expr));
+      let lname = l.0;
+      let lty = &l.1;
+      let vname = type_variant_name(lty);
+      let def_expr = default_value_expr(lty);
+      s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", lname, vname, def_expr));
     }
     let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
     s.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
@@ -635,8 +641,13 @@ fn generate_global_step(ir: &IR) -> String {
         // put variables from stack according to the IR needs
         // TODO: some steps won't need all the variables, so later it should be a bit trickier, when it comes to get indexes in a stack for variables
         for (i, var) in func.in_vars.iter().enumerate() {
-          let vname = type_variant_name(&var.type_);
-          out.push_str(&format!("      let {}: {} = if let StackEntry::Value(_, Value::{vname}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n", var.name, rust_type(&var.type_), i));
+          let vname_str = var.0;
+          let vty = &var.1;
+          let vname_ty = type_variant_name(vty);
+          out.push_str(&format!(
+            "      let {}: {} = if let StackEntry::Value(_, Value::{vname_ty}(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }};\n",
+            vname_str, rust_type(vty), i
+          ));
         }
 
         // Bind referenced locals for entry step using positional indices (after params)
@@ -670,10 +681,10 @@ fn generate_global_step(ir: &IR) -> String {
             Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
             Step::RustBlock { .. } => {
               for p in &func.in_vars {
-                referenced.insert(p.name.clone());
+                referenced.insert(p.0.to_string());
               }
               for l in &func.locals {
-                referenced.insert(l.name.clone());
+                referenced.insert(l.0.to_string());
               }
             }
           }
@@ -681,7 +692,7 @@ fn generate_global_step(ir: &IR) -> String {
           for var_name in referenced.iter() {
             if let Some(ty) = var_type_of(func, var_name) {
               if !var_is_param(func, var_name) {
-                if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
+                if let Some(pos) = func.locals.iter().position(|l| l.0 == var_name.as_str()) {
                   let idx = func.in_vars.len() + pos;
                   let rust_ty = rust_type(ty);
                   let tname = type_variant_name(ty);
@@ -773,9 +784,9 @@ fn generate_global_step(ir: &IR) -> String {
               let params_len = func.in_vars.len();
               let locals_len = func.locals.len();
               let total_vars = params_len + locals_len;
-              let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+              let var_index = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bind.as_str()) {
                 Some(pi)
-              } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+              } else if let Some(li) = func.locals.iter().position(|l| l.0 == bind.as_str()) {
                 Some(params_len + li)
               } else {
                 None
@@ -837,13 +848,13 @@ fn generate_global_step(ir: &IR) -> String {
                   // Single bind: assign directly into the current frame using offset
                   let ty_name = type_variant_name(bind_types[0]);
                   let bname = binds.get(0).unwrap();
-                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bname) {
-                    format!("{}", pi)
-                  } else if let Some(li) = func.locals.iter().position(|l| &l.name == bname) {
-                    format!("{}", func.in_vars.len() + li)
-                  } else {
-                    "0".to_string()
-                  };
+            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+              format!("{}", pi)
+            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+              format!("{}", func.in_vars.len() + li)
+            } else {
+              "0".to_string()
+            };
                   out.push_str("      { let out = {\n");
                   out.push_str(rcode);
                   out.push_str("\n      }; StepResult::Next(vec![\n");
@@ -866,13 +877,13 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str("          StackEntry::FrameAssign(vec![\n");
                 for (i, b) in binds.iter().enumerate() {
                   let ty_name = type_variant_name(bind_types[i]);
-                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == b) {
-                    format!("{}", pi)
-                  } else if let Some(li) = func.locals.iter().position(|l| &l.name == b) {
-                    format!("{}", func.in_vars.len() + li)
-                  } else {
-                    "0".to_string()
-                  };
+            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+              format!("{}", pi)
+            } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+              format!("{}", func.in_vars.len() + li)
+            } else {
+              "0".to_string()
+            };
                   out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
                 }
                 out.push_str("          ]),\n");
@@ -919,12 +930,12 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
           Step::RustBlock { .. } => {
-            for p in &func.in_vars {
-              referenced.insert(p.name.clone());
-            }
-            for l in &func.locals {
-              referenced.insert(l.name.clone());
-            }
+              for p in &func.in_vars {
+                referenced.insert(p.0.to_string());
+              }
+              for l in &func.locals {
+                referenced.insert(l.0.to_string());
+              }
           }
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
@@ -934,11 +945,11 @@ fn generate_global_step(ir: &IR) -> String {
             let tname = type_variant_name(ty);
             let local_ident = camel_ident(var_name);
             if var_is_param(func, var_name) {
-              if let Some(pos) = func.in_vars.iter().position(|p| &p.name == var_name) {
+              if let Some(pos) = func.in_vars.iter().position(|p| p.0 == var_name.as_str()) {
                 out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{pos}] {{ x.clone() }} else {{ unreachable!() }};\n"));
               }
             } else {
-              if let Some(pos) = func.locals.iter().position(|l| &l.name == var_name) {
+              if let Some(pos) = func.locals.iter().position(|l| l.0 == var_name.as_str()) {
                 let idx = func.in_vars.len() + pos;
                 out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
               }
@@ -1023,9 +1034,9 @@ fn generate_global_step(ir: &IR) -> String {
             let params_len = func.in_vars.len();
             let locals_len = func.locals.len();
             let total_vars = params_len + locals_len;
-            let var_index = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bind) {
+            let var_index = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bind.as_str()) {
               Some(pi)
-            } else if let Some(li) = func.locals.iter().position(|l| &l.name == bind) {
+            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bind.as_str()) {
               Some(params_len + li)
             } else {
               None
@@ -1088,9 +1099,9 @@ fn generate_global_step(ir: &IR) -> String {
                 // Single bind: assign directly into the current frame using offset
                 let ty_name = type_variant_name(bind_types[0]);
                 let bname = binds.get(0).unwrap();
-                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == bname) {
+                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
                   format!("{}", pi)
-                } else if let Some(li) = func.locals.iter().position(|l| &l.name == bname) {
+                } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
                   format!("{}", func.in_vars.len() + li)
                 } else {
                   "0".to_string()
@@ -1116,9 +1127,9 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str("          StackEntry::FrameAssign(vec![\n");
               for (i, b) in binds.iter().enumerate() {
                 let ty_name = type_variant_name(bind_types[i]);
-                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| &p.name == b) {
+                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
                   format!("{}", pi)
-                } else if let Some(li) = func.locals.iter().position(|l| &l.name == b) {
+                } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
                   format!("{}", func.in_vars.len() + li)
                 } else {
                   "0".to_string()
@@ -1163,7 +1174,7 @@ mod tests {
             funcs: HashMap::from([(
               "get".into(),
               Func {
-                in_vars: vec![InVar { name: "key".into(), type_: Type::String }],
+                in_vars: vec![InVar("key", Type::String)],
                 out: Type::Option(Box::new(Type::Custom("User".into()))),
                 locals: vec![],
                 entry: StepId::new("entry"),
