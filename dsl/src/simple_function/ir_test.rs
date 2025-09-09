@@ -1,5 +1,5 @@
 use crate::ir::*;
-use crate::simple_functions_ir::sample_ir;
+use crate::simple_function::ir::sample_ir;
 
 #[test]
 fn simple_ir() {
@@ -7,3 +7,4 @@ fn simple_ir() {
   let (valid, explanation) = ir.is_valid();
   assert!(valid, "{explanation}");
 }
+

@@ -10,7 +10,7 @@ mod codegen {
   include!("src/codegen.rs");
 }
 mod ir_spec {
-  include!("src/simple_functions_ir.rs");
+  include!("src/simple_function/ir.rs");
 }
 
 use std::env;
@@ -22,8 +22,8 @@ fn main() {
   // Invalidate build when inputs change.
   println!("cargo:rerun-if-changed=src/ir.rs");
   println!("cargo:rerun-if-changed=src/codegen.rs");
-  println!("cargo:rerun-if-changed=src/ir_spec.rs");
-  println!("cargo:rerun-if-changed=src/simple_functions_generated.rs");
+  println!("cargo:rerun-if-changed=src/simple_function/ir.rs");
+  println!("cargo:rerun-if-changed=src/simple_function/generated.rs");
 
   // Build IR and generate code.
   let ir = ir_spec::sample_ir();
@@ -31,7 +31,7 @@ fn main() {
 
   // Write into the crate source tree for later compilation.
   let mut out_file = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("set by Cargo"));
-  out_file.push("src/simple_functions_generated.rs");
+  out_file.push("src/simple_function/generated.rs");
   if let Some(parent) = out_file.parent() {
     let _ = fs::create_dir_all(parent);
   }

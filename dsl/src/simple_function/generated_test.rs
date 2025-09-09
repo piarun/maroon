@@ -1,4 +1,4 @@
-use crate::simple_functions_generated::*;
+use crate::simple_function::generated::*;
 
 #[test]
 fn add_function() {
@@ -88,10 +88,6 @@ impl Task {
       // StackEntry::Retrn is not here, only arguments + local_vars
       let start = self.stack.len() - arguments_number;
 
-      // println!("Star {}", start);
-      // println!("Vars: {:?}", &self.stack[start..]);
-      // self.print_stack("BeforeGlobalStep");
-
       let result = global_step(state, &self.stack[start..], &mut self.heap);
 
       match result {
@@ -115,13 +111,8 @@ impl Task {
             };
             self.stack[ret_value_bind_index] = new_entry;
           }
-          // self.print_stack("After_first_return");
         }
         StepResult::GoTo(state) => {
-          // if it's call a function in the same fiber - straightforward
-          // TODO: add here cross-fiber async-await shit?
-          // But async await has it's own IR state Step::Await
-          // then I should check somehow that this is only normal local state, and not async one?
           self.stack.push(StackEntry::State(state));
         }
         StepResult::Next(stack_entries) => {
@@ -149,28 +140,3 @@ impl Task {
   }
 }
 
-/*
-stack:
-
-retVal<None>
-argA
-argB
-func1
-addRetVal<None>
-argA<3>
-argB<4>
-addEntry
-
-
-retVal<None>
-argA
-argB
-func1
-addRetVal<7>
-argA<3>
-argB<4>
-addDone
-
-
-
-*/
