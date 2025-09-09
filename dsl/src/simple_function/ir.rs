@@ -13,12 +13,9 @@ pub fn sample_ir() -> IR {
           (
             "add".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::UInt64 },
-                InVar { name: "b".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![LocalVar { name: "sum".to_string(), type_: Type::UInt64 }],
+              locals: vec![LocalVar("sum", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -36,12 +33,9 @@ pub fn sample_ir() -> IR {
           (
             "sub".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::UInt64 },
-                InVar { name: "b".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![LocalVar { name: "sub".to_string(), type_: Type::UInt64 }],
+              locals: vec![LocalVar("sub", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -63,12 +57,9 @@ out
           (
             "mult".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::UInt64 },
-                InVar { name: "b".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![LocalVar { name: "mult".to_string(), type_: Type::UInt64 }],
+              locals: vec![LocalVar("mult", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -86,12 +77,9 @@ out
           (
             "div".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::UInt64 },
-                InVar { name: "b".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![LocalVar { name: "div".to_string(), type_: Type::UInt64 }],
+              locals: vec![LocalVar("div", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -110,13 +98,9 @@ out
             // factorial(n) { if n == 1 { return 1 } return n * factorial(n - 1) }
             "factorial".to_string(),
             Func {
-              in_vars: vec![InVar { name: "n".to_string(), type_: Type::UInt64 }],
+              in_vars: vec![InVar("n", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![
-                LocalVar { name: "fac_call_res".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "subtract_res".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "result".to_string(), type_: Type::UInt64 },
-              ],
+              locals: vec![LocalVar("fac_call_res", Type::UInt64), LocalVar("subtract_res", Type::UInt64), LocalVar("result", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -162,16 +146,9 @@ out
           (
             "subAdd".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "a".to_string(), type_: Type::UInt64 },
-                InVar { name: "b".to_string(), type_: Type::UInt64 },
-                InVar { name: "c".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64), InVar("c", Type::UInt64)],
               out: Type::UInt64,
-              locals: vec![
-                LocalVar { name: "sumAB".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "subABC".to_string(), type_: Type::UInt64 },
-              ],
+              locals: vec![LocalVar("sumAB", Type::UInt64), LocalVar("subABC", Type::UInt64)],
               entry: StepId::new("entry"),
               steps: vec![
                 (
@@ -200,16 +177,12 @@ out
             // binary_search IR
             "binary_search".to_string(),
             Func {
-              in_vars: vec![
-                InVar { name: "e".to_string(), type_: Type::UInt64 },
-                InVar { name: "left".to_string(), type_: Type::UInt64 },
-                InVar { name: "right".to_string(), type_: Type::UInt64 },
-              ],
+              in_vars: vec![InVar("e", Type::UInt64), InVar("left", Type::UInt64), InVar("right", Type::UInt64)],
               out: Type::Option(Box::new(Type::UInt64)),
               locals: vec![
-                LocalVar { name: "div".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "v_by_index_div".to_string(), type_: Type::UInt64 },
-                LocalVar { name: "fac_call_res".to_string(), type_: Type::Option(Box::new(Type::UInt64)) },
+                LocalVar("div", Type::UInt64),
+                LocalVar("v_by_index_div", Type::UInt64),
+                LocalVar("fac_call_res", Type::Option(Box::new(Type::UInt64))),
               ],
               entry: StepId::new("entry"),
               steps: vec![

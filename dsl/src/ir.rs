@@ -39,16 +39,10 @@ pub struct Func {
 }
 
 #[derive(Debug, Clone)]
-pub struct InVar {
-  pub name: String,
-  pub type_: Type,
-}
+pub struct InVar(pub &'static str, pub Type);
 
 #[derive(Debug, Clone)]
-pub struct LocalVar {
-  pub name: String,
-  pub type_: Type,
-}
+pub struct LocalVar(pub &'static str, pub Type);
 
 #[derive(Debug, Clone)]
 pub enum Step {
