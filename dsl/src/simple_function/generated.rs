@@ -3,20 +3,33 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ApplicationAsyncFooMsg {
+  pub a: u64,
+  pub b: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ApplicationHeap {}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GlobalHeap {
   pub binarySearchValues: Vec<u64>,
 }
 
-#[derive(Clone, Debug)]
-pub enum Heap {
-  Global(GlobalHeap),
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Heap {
+  pub application: ApplicationHeap,
+  pub global: GlobalHeap,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum State {
   Completed,
   Idle,
+  ApplicationAsyncFooAwait,
+  ApplicationAsyncFooEntry,
+  ApplicationAsyncFooReturn,
   GlobalAddEntry,
   GlobalBinarySearchCalculateDiv,
   GlobalBinarySearchCmpLess,
@@ -76,7 +89,13 @@ pub enum StepResult {
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
+    State::ApplicationAsyncFooEntry => 3,
+    State::ApplicationAsyncFooAwait => 3,
+    State::ApplicationAsyncFooEntry => 3,
+    State::ApplicationAsyncFooReturn => 3,
     State::GlobalAddEntry => 3,
+    State::GlobalAddEntry => 3,
+    State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchCalculateDiv => 6,
     State::GlobalBinarySearchCmpLess => 6,
     State::GlobalBinarySearchEntry => 6,
@@ -89,6 +108,8 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalBinarySearchReturnIfEqual => 6,
     State::GlobalBinarySearchReturnResult => 6,
     State::GlobalDivEntry => 3,
+    State::GlobalDivEntry => 3,
+    State::GlobalFactorialEntry => 4,
     State::GlobalFactorialEntry => 4,
     State::GlobalFactorialFactorialCall => 4,
     State::GlobalFactorialMultiply => 4,
@@ -96,7 +117,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalFactorialReturn1 => 4,
     State::GlobalFactorialSubtract => 4,
     State::GlobalMultEntry => 3,
+    State::GlobalMultEntry => 3,
     State::GlobalSubEntry => 3,
+    State::GlobalSubEntry => 3,
+    State::GlobalSubAddEntry => 5,
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
@@ -112,6 +136,16 @@ pub fn global_step(
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
+    State::ApplicationAsyncFooEntry => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::GoTo(State::ApplicationAsyncFooAwait)
+    }
+    State::ApplicationAsyncFooAwait => StepResult::GoTo(State::ApplicationAsyncFooReturn),
+    State::ApplicationAsyncFooReturn => {
+      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::U64(sum))
+    }
     State::GlobalAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -143,7 +177,7 @@ pub fn global_step(
       {
         let out = {
           let o_div = (left + right) / 2;
-          let Heap::Global(s) = heap;
+          let s = &heap.global;
           (o_div, s.binarySearchValues[o_div as usize])
         };
         let (o0, o1) = out;
@@ -339,6 +373,28 @@ pub fn global_step(
     }
   }
 }
+pub fn application_prepare_asyncFoo(
+  a: u64,
+  b: u64,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("sum".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::ApplicationAsyncFooEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn application_result_asyncFoo(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
 pub fn global_prepare_add(
   a: u64,
   b: u64,
@@ -350,7 +406,7 @@ pub fn global_prepare_add(
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
   stack.push(StackEntry::Value("sum".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalAddEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -376,7 +432,7 @@ pub fn global_prepare_binarySearch(
   stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)));
   stack.push(StackEntry::State(State::GlobalBinarySearchEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -398,7 +454,7 @@ pub fn global_prepare_div(
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
   stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalDivEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -418,7 +474,7 @@ pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalFactorialEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -440,7 +496,7 @@ pub fn global_prepare_mult(
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
   stack.push(StackEntry::Value("mult".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalMultEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -462,7 +518,7 @@ pub fn global_prepare_sub(
   stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
   stack.push(StackEntry::Value("sub".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalSubEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 
@@ -487,7 +543,7 @@ pub fn global_prepare_subAdd(
   stack.push(StackEntry::Value("sumAB".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("subABC".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::GlobalSubAddEntry));
-  let heap = Heap::Global(GlobalHeap::default());
+  let heap = Heap::default();
   (stack, heap)
 }
 

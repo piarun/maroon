@@ -1,51 +1,5 @@
 use crate::simple_function::generated::*;
 
-#[test]
-fn add_function() {
-  let mut some_t = Task::new();
-
-  let (entries, _) = global_prepare_add(14, 16);
-  some_t.stack.extend(entries);
-  some_t.run();
-
-  assert_eq!(30, global_result_add(&some_t.stack));
-}
-
-#[test]
-fn sub_add_function() {
-  let mut some_t = Task::new();
-
-  let (entries, _) = global_prepare_subAdd(6, 5, 4);
-  some_t.stack.extend(entries);
-  some_t.run();
-
-  assert_eq!(7, global_result_subAdd(&some_t.stack));
-}
-
-#[test]
-fn factorial_function() {
-  let mut some_t = Task::new();
-
-  let (entries, _) = global_prepare_factorial(3);
-  some_t.stack.extend(entries);
-  some_t.run();
-
-  assert_eq!(6, global_result_factorial(&some_t.stack));
-}
-
-#[test]
-fn b_search_function() {
-  let mut some_t = Task::new();
-
-  let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
-  let (entries, _) = global_prepare_binarySearch(4, 0, (search_elements.len() - 1) as u64);
-  some_t.stack.extend(entries);
-  some_t.heap = Heap::Global(GlobalHeap { binarySearchValues: search_elements });
-  some_t.run();
-
-  assert_eq!(Some(3), global_result_binarySearch(&some_t.stack));
-}
-
 pub struct Task {
   pub stack: Vec<StackEntry>,
   pub heap: Heap,
@@ -53,7 +7,7 @@ pub struct Task {
 
 impl Task {
   fn new() -> Task {
-    Task { stack: vec![], heap: Heap::Global(GlobalHeap { binarySearchValues: vec![] }) }
+    Task { stack: vec![], heap: Heap::default() }
   }
 
   fn print_stack(
@@ -69,9 +23,7 @@ impl Task {
   fn run(&mut self) {
     loop {
       self.print_stack("");
-      let Some(head) = self.stack.pop() else {
-        break;
-      };
+      let Some(head) = self.stack.pop() else { break };
 
       let StackEntry::State(state) = head else {
         // if no next state - return
@@ -140,3 +92,48 @@ impl Task {
   }
 }
 
+#[test]
+fn add_function() {
+  let mut some_t = Task::new();
+
+  let (entries, _) = global_prepare_add(14, 16);
+  some_t.stack.extend(entries);
+  some_t.run();
+
+  assert_eq!(30, global_result_add(&some_t.stack));
+}
+
+#[test]
+fn sub_add_function() {
+  let mut some_t = Task::new();
+
+  let (entries, _) = global_prepare_subAdd(6, 5, 4);
+  some_t.stack.extend(entries);
+  some_t.run();
+
+  assert_eq!(7, global_result_subAdd(&some_t.stack));
+}
+
+#[test]
+fn factorial_function() {
+  let mut some_t = Task::new();
+
+  let (entries, _) = global_prepare_factorial(3);
+  some_t.stack.extend(entries);
+  some_t.run();
+
+  assert_eq!(6, global_result_factorial(&some_t.stack));
+}
+
+#[test]
+fn b_search_function() {
+  let mut some_t = Task::new();
+
+  let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
+  let (entries, _) = global_prepare_binarySearch(4, 0, (search_elements.len() - 1) as u64);
+  some_t.stack.extend(entries);
+  some_t.heap.global.binarySearchValues = search_elements;
+  some_t.run();
+
+  assert_eq!(Some(3), global_result_binarySearch(&some_t.stack));
+}
