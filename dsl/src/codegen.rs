@@ -89,11 +89,11 @@ pub fn generate_rust_types(ir: &IR) -> String {
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      let msg_ty = variant_name(&[fiber_name, &msg.name, "Msg"]);
+      let msg_ty = variant_name(&[fiber_name, &msg.0, "Msg"]);
       out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
-      let mut fields_sorted = msg.fields.clone();
+      let mut fields_sorted = msg.1.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(fname), rust_type(fty)));
@@ -199,9 +199,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
       used_types.insert(type_variant_name(&func.out), func.out.clone());
     }
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      for (_, fty) in &msg.fields {
+      for (_, fty) in &msg.1 {
         used_types.insert(type_variant_name(fty), fty.clone());
       }
     }
@@ -367,7 +367,10 @@ fn collect_vars_from_expr(
   }
 }
 
-fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
+fn var_type_of<'a>(
+  func: &'a Func,
+  name: &str,
+) -> Option<&'a Type> {
   for p in &func.in_vars {
     if p.0 == name {
       return Some(&p.1);
@@ -381,7 +384,10 @@ fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
   None
 }
 
-fn var_is_param(func: &Func, name: &str) -> bool {
+fn var_is_param(
+  func: &Func,
+  name: &str,
+) -> bool {
   func.in_vars.iter().any(|p| p.0 == name)
 }
 
@@ -564,6 +570,9 @@ pub fn func_args_count(e: &State) -> usize {
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
+      // Always include the function's entry state
+      let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      out.push_str(&format!("    State::{} => {},\n", entry_variant, n));
 
       // Identify direct-return RustBlock next steps to suppress from func_args_count
       use std::collections::BTreeSet as __BTS2;
@@ -848,13 +857,13 @@ fn generate_global_step(ir: &IR) -> String {
                   // Single bind: assign directly into the current frame using offset
                   let ty_name = type_variant_name(bind_types[0]);
                   let bname = binds.get(0).unwrap();
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str("      { let out = {\n");
                   out.push_str(rcode);
                   out.push_str("\n      }; StepResult::Next(vec![\n");
@@ -877,13 +886,13 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str("          StackEntry::FrameAssign(vec![\n");
                 for (i, b) in binds.iter().enumerate() {
                   let ty_name = type_variant_name(bind_types[i]);
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
                 }
                 out.push_str("          ]),\n");
@@ -930,12 +939,12 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
           Step::RustBlock { .. } => {
-              for p in &func.in_vars {
-                referenced.insert(p.0.to_string());
-              }
-              for l in &func.locals {
-                referenced.insert(l.0.to_string());
-              }
+            for p in &func.in_vars {
+              referenced.insert(p.0.to_string());
+            }
+            for l in &func.locals {
+              referenced.insert(l.0.to_string());
+            }
           }
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
@@ -1170,7 +1179,7 @@ mod tests {
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
-            in_messages: vec![MessageSpec { name: "GetUser".into(), fields: vec![("key".into(), Type::String)] }],
+            in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
             funcs: HashMap::from([(
               "get".into(),
               Func {

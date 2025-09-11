@@ -24,10 +24,7 @@ pub struct Fiber {
 }
 
 #[derive(Debug, Clone)]
-pub struct MessageSpec {
-  pub name: String,
-  pub fields: Vec<(String, Type)>, // (name, type)
-}
+pub struct MessageSpec(pub &'static str, pub Vec<(&'static str, Type)>); // (func_name, [(var_name, type)])
 
 #[derive(Debug, Clone)]
 pub struct Func {
