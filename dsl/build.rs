@@ -9,7 +9,7 @@ mod ir {
 mod codegen {
   include!("src/codegen.rs");
 }
-mod ir_spec {
+mod simple_f_ir_spec {
   include!("src/simple_function/ir.rs");
 }
 
@@ -22,21 +22,27 @@ fn main() {
   // Invalidate build when inputs change.
   println!("cargo:rerun-if-changed=src/ir.rs");
   println!("cargo:rerun-if-changed=src/codegen.rs");
-  println!("cargo:rerun-if-changed=src/simple_function/ir.rs");
-  println!("cargo:rerun-if-changed=src/simple_function/generated.rs");
 
-  // Build IR and generate code.
-  let ir = ir_spec::sample_ir();
-  let code = codegen::generate_rust_types(&ir);
+  let to_gen = vec![(simple_f_ir_spec::sample_ir(), "simple_function")];
 
-  // Write into the crate source tree for later compilation.
-  let mut out_file = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("set by Cargo"));
-  out_file.push("src/simple_function/generated.rs");
-  if let Some(parent) = out_file.parent() {
-    let _ = fs::create_dir_all(parent);
+  for info in &to_gen {
+    println!("cargo:rerun-if-changed=src/{}/ir.rs", info.1);
+    println!("cargo:rerun-if-changed=src/{}/generated.rs", info.1);
   }
-  fs::write(&out_file, code).expect("write generated types");
 
-  // Best-effort formatting; ignore failure if rustfmt isn't installed.
-  let _ = Command::new("rustfmt").arg(&out_file).status();
+  for info in &to_gen {
+    // Build IR and generate code.
+    let code = codegen::generate_rust_types(&info.0);
+
+    // Write into the crate source tree for later compilation.
+    let mut out_file = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("set by Cargo"));
+    out_file.push(format!("src/{}/generated.rs", info.1));
+    if let Some(parent) = out_file.parent() {
+      let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&out_file, code).expect("write generated types");
+
+    // Best-effort formatting; ignore failure if rustfmt isn't installed.
+    let _ = Command::new("rustfmt").arg(&out_file).status();
+  }
 }
