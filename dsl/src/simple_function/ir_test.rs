@@ -7,4 +7,3 @@ fn simple_ir() {
   let (valid, explanation) = ir.is_valid();
   assert!(valid, "{explanation}");
 }
-

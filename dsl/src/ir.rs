@@ -9,6 +9,15 @@ impl StepId {
   }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FutureId(pub String);
+
+impl FutureId {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct IR {
   pub types: Vec<Type>,
@@ -24,10 +33,7 @@ pub struct Fiber {
 }
 
 #[derive(Debug, Clone)]
-pub struct MessageSpec {
-  pub name: String,
-  pub fields: Vec<(String, Type)>, // (name, type)
-}
+pub struct MessageSpec(pub &'static str, pub Vec<(&'static str, Type)>); // (func_name, [(var_name, type)])
 
 #[derive(Debug, Clone)]
 pub struct Func {
@@ -52,7 +58,7 @@ pub enum Step {
   // doesn't awaits by default. I think that makes sense?
   // but it can be used with await
   // args: (name on the incoming side, variable)
-  SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: String },
+  SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureId },
   Await(AwaitSpec),
   Select { arms: Vec<AwaitSpec> },
   // `ret_to` is the continuation step in the caller
@@ -91,7 +97,7 @@ pub enum Opcode {
 pub struct AwaitSpec {
   pub bind: Option<String>,
   pub ret_to: StepId,
-  pub future_id: String,
+  pub future_id: FutureId,
 }
 
 #[derive(Debug, Clone)]

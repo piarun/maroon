@@ -89,11 +89,11 @@ pub fn generate_rust_types(ir: &IR) -> String {
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      let msg_ty = variant_name(&[fiber_name, &msg.name, "Msg"]);
+      let msg_ty = variant_name(&[fiber_name, &msg.0, "Msg"]);
       out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
-      let mut fields_sorted = msg.fields.clone();
+      let mut fields_sorted = msg.1.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(fname), rust_type(fty)));
@@ -103,7 +103,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
 
   // 3) Emit per-fiber heap structs and a unified Heap enum
-  let mut heap_variants: Vec<(String, String)> = Vec::new();
+  let mut heap_structs: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let heap_struct = variant_name(&[fiber_name, "Heap"]);
     out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", heap_struct));
@@ -113,16 +113,13 @@ pub fn generate_rust_types(ir: &IR) -> String {
       out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(ty)));
     }
     out.push_str("}\n\n");
-    heap_variants.push((pascal_case(fiber_name), heap_struct));
+    heap_structs.push((camel_ident(fiber_name), heap_struct));
   }
-  out.push_str("#[derive(Clone, Debug)]\npub enum Heap {\n");
-  if heap_variants.is_empty() {
-    out.push_str("  Empty,\n");
-  } else {
-    heap_variants.sort_by(|a, b| a.0.cmp(&b.0));
-    for (variant, struct_name) in heap_variants {
-      out.push_str(&format!("  {}({}),\n", variant, struct_name));
-    }
+  // Unified Heap as a struct with all fiber heaps accessible at once
+  out.push_str("#[derive(Clone, Debug, Default, PartialEq)]\npub struct Heap {\n");
+  heap_structs.sort_by(|a, b| a.0.cmp(&b.0));
+  for (field_name, struct_name) in heap_structs {
+    out.push_str(&format!("  pub {}: {},\n", field_name, struct_name));
   }
   out.push_str("}\n\n");
 
@@ -199,9 +196,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
       used_types.insert(type_variant_name(&func.out), func.out.clone());
     }
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      for (_, fty) in &msg.fields {
+      for (_, fty) in &msg.1 {
         used_types.insert(type_variant_name(fty), fty.clone());
       }
     }
@@ -240,6 +237,7 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
+  Await(String),
 }",
   );
 
@@ -261,10 +259,16 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
 
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let heap_struct = variant_name(&[fiber_name, "Heap"]);
-    let heap_enum_variant = pascal_case(fiber_name);
+  // Registry typedefs
+  out.push_str("\n// Registry: function key -> (prepare_from_values, result_to_value)\n");
+  out.push_str("pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;\n");
+  out.push_str("pub type ResultFn = fn(&[StackEntry]) -> Value;\n\n");
 
+  // Collect match arms for registries as we go
+  let mut prepare_arms: Vec<String> = Vec::new();
+  let mut result_arms: Vec<String> = Vec::new();
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -321,10 +325,7 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("  stack.push(StackEntry::State(State::{}));\n", entry_state));
 
       // 5) Initialize heap with defaults for this fiber
-      out.push_str(&format!(
-        "  let heap = Heap::{}({}::default());\n  (stack, heap)\n}}\n\n",
-        heap_enum_variant, heap_struct
-      ));
+      out.push_str(&format!("  let heap = Heap::default();\n  (stack, heap)\n}}\n\n"));
 
       // Result extraction function
       let result_fn_name = format!("{}_result_{}", camel_ident(fiber_name), camel_ident(func_name));
@@ -335,8 +336,50 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
       out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
       out.push_str("  }\n}\n\n");
+      // 6) Generate untyped wrappers for registry
+      // Prepare-from-Vec<Value>
+      let wrapper_prepare = format!("fn {}_from_values(args: Vec<Value>) -> Vec<StackEntry> {{\n", prepare_fn_name);
+      out.push_str(&wrapper_prepare);
+      for (idx, p) in func.in_vars.iter().enumerate() {
+        let pname = camel_ident(p.0);
+        let vname = type_variant_name(&p.1);
+        let rty = rust_type(&p.1);
+        out.push_str(&format!(
+          "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid args for {}.{}\") }};\n",
+          pname, rty, vname, idx, fiber_name, func_name
+        ));
+      }
+      let arg_list = func.in_vars.iter().map(|p| camel_ident(p.0)).collect::<Vec<_>>().join(", ");
+      out.push_str(&format!("  let (stack, _heap) = {}({});\n  stack\n}}\n\n", prepare_fn_name, arg_list));
+
+      // Result-to-Value wrapper
+      let out_vname = type_variant_name(&func.out);
+      out.push_str(&format!(
+        "fn {}_value(stack: &[StackEntry]) -> Value {{ Value::{}({}(stack)) }}\n\n",
+        result_fn_name, out_vname, result_fn_name
+      ));
+
+      // 7) Append registry match arms (use IR names as-is)
+      let key_exact = format!("{}.{}", fiber_name, func_name);
+      prepare_arms.push(format!("    \"{}\" => {}_from_values,\n", key_exact, prepare_fn_name));
+      result_arms.push(format!("    \"{}\" => {}_value,\n", key_exact, result_fn_name));
     }
   }
+
+  // Emit registry functions
+  out.push_str("pub fn get_prepare_fn(key: &str) -> PrepareFn {\n  match key {\n");
+  prepare_arms.sort();
+  for arm in prepare_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
+
+  out.push_str("pub fn get_result_fn(key: &str) -> ResultFn {\n  match key {\n");
+  result_arms.sort();
+  for arm in result_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
 
   out
 }
@@ -367,7 +410,10 @@ fn collect_vars_from_expr(
   }
 }
 
-fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
+fn var_type_of<'a>(
+  func: &'a Func,
+  name: &str,
+) -> Option<&'a Type> {
   for p in &func.in_vars {
     if p.0 == name {
       return Some(&p.1);
@@ -381,7 +427,10 @@ fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
   None
 }
 
-fn var_is_param(func: &Func, name: &str) -> bool {
+fn var_is_param(
+  func: &Func,
+  name: &str,
+) -> bool {
   func.in_vars.iter().any(|p| p.0 == name)
 }
 
@@ -564,6 +613,9 @@ pub fn func_args_count(e: &State) -> usize {
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
+      // Always include the function's entry state
+      let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      out.push_str(&format!("    State::{} => {},\n", entry_variant, n));
 
       // Identify direct-return RustBlock next steps to suppress from func_args_count
       use std::collections::BTreeSet as __BTS2;
@@ -776,7 +828,7 @@ fn generate_global_step(ir: &IR) -> String {
               // Update existing local `bind` in-place via Return-binding (no new stack vars)
               let next_v = variant_name(&[fiber_name, func_name, &next.0]);
               let idx_code = render_expr_code(&index, func);
-              let heap_variant = pascal_case(fiber_name);
+              let heap_field_fiber = camel_ident(fiber_name);
               let heap_field = camel_ident(array);
               let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
 
@@ -801,9 +853,9 @@ fn generate_global_step(ir: &IR) -> String {
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                   out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
                   out.push_str(&format!(
-                      "        StackEntry::Value(\"a\".to_string(), Value::U64(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                      heap_variant, heap_field, idx_code
-                    ));
+                    "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
+                    heap_field_fiber, heap_field, idx_code
+                  ));
                   out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
                   out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
@@ -814,9 +866,9 @@ fn generate_global_step(ir: &IR) -> String {
                   let vname = type_variant_name(ety);
                   out.push_str("      StepResult::Next(vec![\n");
                   out.push_str(&format!(
-                      "        StackEntry::Value(\"{}\".to_string(), Value::{}(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                      bind, vname, heap_variant, heap_field, idx_code
-                    ));
+                    "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
+                    bind, vname, heap_field_fiber, heap_field, idx_code
+                  ));
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                   out.push_str("      ])\n");
                 }
@@ -848,13 +900,13 @@ fn generate_global_step(ir: &IR) -> String {
                   // Single bind: assign directly into the current frame using offset
                   let ty_name = type_variant_name(bind_types[0]);
                   let bname = binds.get(0).unwrap();
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str("      { let out = {\n");
                   out.push_str(rcode);
                   out.push_str("\n      }; StepResult::Next(vec![\n");
@@ -877,13 +929,13 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str("          StackEntry::FrameAssign(vec![\n");
                 for (i, b) in binds.iter().enumerate() {
                   let ty_name = type_variant_name(bind_types[i]);
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
                 }
                 out.push_str("          ]),\n");
@@ -930,12 +982,12 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
           Step::RustBlock { .. } => {
-              for p in &func.in_vars {
-                referenced.insert(p.0.to_string());
-              }
-              for l in &func.locals {
-                referenced.insert(l.0.to_string());
-              }
+            for p in &func.in_vars {
+              referenced.insert(p.0.to_string());
+            }
+            for l in &func.locals {
+              referenced.insert(l.0.to_string());
+            }
           }
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
@@ -1026,7 +1078,7 @@ fn generate_global_step(ir: &IR) -> String {
             // Update existing local `bind` in-place via Return-binding (no new stack vars)
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
             let idx_code = render_expr_code(&index, func);
-            let heap_variant = pascal_case(fiber_name);
+            let heap_field_fiber = camel_ident(fiber_name);
             let heap_field = camel_ident(array);
             let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
 
@@ -1051,8 +1103,8 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
                 out.push_str(&format!(
-                  "        StackEntry::Value(\"a\".to_string(), Value::U64(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                  heap_variant, heap_field, idx_code
+                  "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
+                  heap_field_fiber, heap_field, idx_code
                 ));
                 out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
                 out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
@@ -1064,8 +1116,8 @@ fn generate_global_step(ir: &IR) -> String {
                 let vname = type_variant_name(ety);
                 out.push_str("      StepResult::Next(vec![\n");
                 out.push_str(&format!(
-                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                  bind, vname, heap_variant, heap_field, idx_code
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
+                  bind, vname, heap_field_fiber, heap_field, idx_code
                 ));
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
@@ -1170,7 +1222,7 @@ mod tests {
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
-            in_messages: vec![MessageSpec { name: "GetUser".into(), fields: vec![("key".into(), Type::String)] }],
+            in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
             funcs: HashMap::from([(
               "get".into(),
               Func {
@@ -1191,7 +1243,7 @@ mod tests {
     // Spot-check a few important bits are present.
     assert!(code.contains("pub struct User"));
     assert!(code.contains("pub struct UserManagerGetUserMsg"));
-    assert!(code.contains("pub enum Heap"));
+    assert!(code.contains("pub struct Heap"));
     assert!(code.contains("pub enum State"));
     assert!(code.contains("UserManagerGetEntry"));
     assert!(code.contains("pub enum Value"));

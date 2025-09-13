@@ -1,9 +1,9 @@
-pub mod ir;
+mod active_tasks;
 mod generated;
-pub use generated::*;
+pub mod ir;
+mod task;
 
-#[cfg(test)]
-mod ir_test;
 #[cfg(test)]
 mod generated_test;
-
+#[cfg(test)]
+mod ir_test;
