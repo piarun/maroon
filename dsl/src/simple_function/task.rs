@@ -1,4 +1,7 @@
-use crate::{ir::Func, simple_function::generated::*};
+use crate::{
+  ir::{Func, FutureId},
+  simple_function::generated::*,
+};
 
 pub struct Task {
   stack: Vec<StackEntry>,
@@ -10,6 +13,8 @@ pub struct Task {
 
 pub enum RunResult {
   Done(Value),
+  Await(FutureId),
+  AsyncCall(),
 }
 
 impl Task {
@@ -101,9 +106,11 @@ impl Task {
             }
           }
         }
+        StepResult::Await(future_id) => {
+          return RunResult::Await(FutureId(future_id));
+        }
         _ => {}
       }
     }
-
   }
 }

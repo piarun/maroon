@@ -86,6 +86,7 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
+  Await(String),
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {

@@ -237,6 +237,7 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
+  Await(String),
 }",
   );
 

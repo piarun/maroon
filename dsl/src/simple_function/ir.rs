@@ -311,7 +311,7 @@ out
                       ("b".to_string(), Expr::Var("b".to_string())),
                     ],
                     next: StepId::new("await"),
-                    future_id: "async_add_future_1".to_string(),
+                    future_id: FutureId::new("async_add_future_1"),
                   },
                 ),
                 (
@@ -319,7 +319,7 @@ out
                   Step::Await(AwaitSpec {
                     bind: Some("sum".to_string()),
                     ret_to: StepId::new("return"),
-                    future_id: "async_add_future_1".to_string(),
+                    future_id: FutureId::new("async_add_future_1"),
                   }),
                 ),
                 (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
