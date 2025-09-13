@@ -6,7 +6,9 @@ use crate::{
 pub struct Task {
   stack: Vec<StackEntry>,
   heap: Heap,
-  get_result: fn(stack: &Vec<StackEntry>, heap: &Heap) -> RunResult,
+  // holds an information for which function this task was created for
+  // used for preparing the stack before run and for getting the result
+  function_key: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -19,11 +21,17 @@ pub enum RunResult {
 
 impl Task {
   pub fn new(
-    stack_init: Vec<StackEntry>,
+    // TODO: heap_init is a bit hacky right now
+    // because, ideally it should be prepared through get_prepare_fn map, but it's ok for now
+    // when I'll get more usecases for Heap I'll do smth with it
     heap_init: Heap,
-    get_result: fn(stack: &Vec<StackEntry>, heap: &Heap) -> RunResult,
+    key: impl Into<String>,
+    init_values: Vec<Value>,
   ) -> Task {
-    Task { stack: stack_init, heap: heap_init, get_result }
+    let function_key: String = key.into();
+    let f = get_prepare_fn(function_key.as_str());
+    let stack = f(init_values);
+    Task { stack: stack, heap: heap_init, function_key: function_key }
   }
 
   pub fn print_stack(
@@ -47,8 +55,8 @@ impl Task {
       let StackEntry::State(state) = head else {
         // if no next state - return
         self.stack.push(head);
-
-        return (self.get_result)(&self.stack, &self.heap);
+        let f = get_result_fn(&self.function_key);
+        return RunResult::Done(f(&self.stack));
       };
 
       let arguments_number = func_args_count(&state);

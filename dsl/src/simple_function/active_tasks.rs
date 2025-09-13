@@ -7,8 +7,6 @@ use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LogicalTimeAbsoluteMs(u64);
 
-pub struct Future {}
-
 pub struct Runtime {
   pub active_tasks: LinkedList<(LogicalTimeAbsoluteMs, VecDeque<Task>)>,
   //   pub time_unbounded: BinaryHeap<>

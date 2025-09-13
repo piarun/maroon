@@ -259,6 +259,15 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
 
+  // Registry typedefs
+  out.push_str("\n// Registry: function key -> (prepare_from_values, result_to_value)\n");
+  out.push_str("pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;\n");
+  out.push_str("pub type ResultFn = fn(&[StackEntry]) -> Value;\n\n");
+
+  // Collect match arms for registries as we go
+  let mut prepare_arms: Vec<String> = Vec::new();
+  let mut result_arms: Vec<String> = Vec::new();
+
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -327,8 +336,50 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
       out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
       out.push_str("  }\n}\n\n");
+      // 6) Generate untyped wrappers for registry
+      // Prepare-from-Vec<Value>
+      let wrapper_prepare = format!("fn {}_from_values(args: Vec<Value>) -> Vec<StackEntry> {{\n", prepare_fn_name);
+      out.push_str(&wrapper_prepare);
+      for (idx, p) in func.in_vars.iter().enumerate() {
+        let pname = camel_ident(p.0);
+        let vname = type_variant_name(&p.1);
+        let rty = rust_type(&p.1);
+        out.push_str(&format!(
+          "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid args for {}.{}\") }};\n",
+          pname, rty, vname, idx, fiber_name, func_name
+        ));
+      }
+      let arg_list = func.in_vars.iter().map(|p| camel_ident(p.0)).collect::<Vec<_>>().join(", ");
+      out.push_str(&format!("  let (stack, _heap) = {}({});\n  stack\n}}\n\n", prepare_fn_name, arg_list));
+
+      // Result-to-Value wrapper
+      let out_vname = type_variant_name(&func.out);
+      out.push_str(&format!(
+        "fn {}_value(stack: &[StackEntry]) -> Value {{ Value::{}({}(stack)) }}\n\n",
+        result_fn_name, out_vname, result_fn_name
+      ));
+
+      // 7) Append registry match arms (use IR names as-is)
+      let key_exact = format!("{}.{}", fiber_name, func_name);
+      prepare_arms.push(format!("    \"{}\" => {}_from_values,\n", key_exact, prepare_fn_name));
+      result_arms.push(format!("    \"{}\" => {}_value,\n", key_exact, result_fn_name));
     }
   }
+
+  // Emit registry functions
+  out.push_str("pub fn get_prepare_fn(key: &str) -> PrepareFn {\n  match key {\n");
+  prepare_arms.sort();
+  for arm in prepare_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
+
+  out.push_str("pub fn get_result_fn(key: &str) -> ResultFn {\n  match key {\n");
+  result_arms.sort();
+  for arm in result_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
 
   out
 }
