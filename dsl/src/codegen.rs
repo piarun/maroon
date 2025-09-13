@@ -238,6 +238,8 @@ pub enum StepResult {
   ReturnVoid,
   Todo(String),
   Await(String),
+  // Send a message to a fiber with function and typed args, then continue to `next`.
+  SendToFiber { fiber: String, func: String, args: Vec<Value>, next: State, future_id: String },
 }",
   );
 
@@ -771,9 +773,32 @@ fn generate_global_step(ir: &IR) -> String {
                 "{}", text_code, next_v
               ));
             }
-            Step::SendToFiber { next, .. } => {
+            Step::SendToFiber { fiber, message, args, next, future_id } => {
               let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              // Build args vector in callee's param order/types
+              if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
+                let mut arg_elems: Vec<String> = Vec::new();
+                for (aname, aexpr) in args.iter() {
+                  if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
+                    let vname = type_variant_name(&param.1);
+                    let expr_code = render_expr_code(aexpr, func);
+                    arg_elems.push(format!("Value::{}({})", vname, expr_code));
+                  }
+                }
+                out.push_str("      StepResult::SendToFiber { fiber: \"");
+                out.push_str(fiber);
+                out.push_str("\".to_string(), func: \"");
+                out.push_str(message);
+                out.push_str("\".to_string(), args: vec![");
+                out.push_str(&arg_elems.join(", "));
+                out.push_str("], next: State::");
+                out.push_str(&next_v);
+                out.push_str(", future_id: \"");
+                out.push_str(&future_id.0);
+                out.push_str("\".to_string() }\n");
+              } else {
+                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              }
             }
             Step::Await(spec) => {
               let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
@@ -1022,9 +1047,31 @@ fn generate_global_step(ir: &IR) -> String {
             out
               .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
           }
-          Step::SendToFiber { next, .. } => {
+          Step::SendToFiber { fiber, message, args, next, future_id } => {
             let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
+              let mut arg_elems: Vec<String> = Vec::new();
+              for (aname, aexpr) in args.iter() {
+                if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
+                  let vname = type_variant_name(&param.1);
+                  let expr_code = render_expr_code(aexpr, func);
+                  arg_elems.push(format!("Value::{}({})", vname, expr_code));
+                }
+              }
+              out.push_str("      StepResult::SendToFiber { fiber: \"");
+              out.push_str(fiber);
+              out.push_str("\".to_string(), func: \"");
+              out.push_str(message);
+              out.push_str("\".to_string(), args: vec![");
+              out.push_str(&arg_elems.join(", "));
+              out.push_str("], next: State::");
+              out.push_str(&next_v);
+              out.push_str(", future_id: \"");
+              out.push_str(&future_id.0);
+              out.push_str("\".to_string() }\n");
+            } else {
+              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            }
           }
           Step::Await(spec) => {
             let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);

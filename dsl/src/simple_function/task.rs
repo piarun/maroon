@@ -9,14 +9,29 @@ pub struct Task {
   // holds an information for which function this task was created for
   // used for preparing the stack before run and for getting the result
   function_key: String,
+
+  pub options: Options,
+}
+
+// TODO: don't like this name
+pub struct Options {
+  pub future_id: Option<FutureId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-
 pub enum RunResult {
   Done(Value),
   Await(FutureId),
-  AsyncCall(),
+  AsyncCall { fiber: String, func: String, args: Vec<Value>, future_id: FutureId },
+}
+
+impl std::fmt::Display for Task {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter,
+  ) -> std::fmt::Result {
+    write!(f, "{}", self.function_key)
+  }
 }
 
 impl Task {
@@ -27,11 +42,13 @@ impl Task {
     heap_init: Heap,
     key: impl Into<String>,
     init_values: Vec<Value>,
+    options: Option<Options>,
   ) -> Task {
     let function_key: String = key.into();
     let f = get_prepare_fn(function_key.as_str());
     let stack = f(init_values);
-    Task { stack: stack, heap: heap_init, function_key: function_key }
+    let options = options.unwrap_or(Options { future_id: None });
+    Task { stack, heap: heap_init, function_key, options }
   }
 
   pub fn print_stack(
@@ -116,6 +133,11 @@ impl Task {
         }
         StepResult::Await(future_id) => {
           return RunResult::Await(FutureId(future_id));
+        }
+        StepResult::SendToFiber { fiber, func, args, next, future_id } => {
+          // Continue to `next` and bubble up async call details
+          self.stack.push(StackEntry::State(next));
+          return RunResult::AsyncCall { fiber, func, args, future_id: FutureId(future_id) };
         }
         _ => {}
       }
