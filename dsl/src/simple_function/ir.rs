@@ -293,6 +293,7 @@ out
         Fiber {
           heap: HashMap::new(),
           in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
+          // (StepId::new("await_in_message"), Step::Await(())),
           funcs: HashMap::from([(
             "async_foo".to_string(),
             Func {
