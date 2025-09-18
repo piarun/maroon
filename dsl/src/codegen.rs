@@ -237,7 +237,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  Await(String),
+  // Await a future: (future_id, bind_var, next_state)
+  Await(String, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { fiber: String, func: String, args: Vec<Value>, next: State, future_id: String },
 }",
@@ -801,8 +802,13 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(spec) => {
+              // Pause current task until future resolves; push continuation state on stack when resuming.
+              let bind_name = spec.bind.clone().unwrap_or("_".to_string());
               let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              out.push_str(&format!(
+                "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+                spec.future_id.0, bind_name, next_v
+              ));
             }
             Step::Select { arms } => {
               let mut arm_states: Vec<String> = Vec::new();
@@ -1074,8 +1080,13 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(spec) => {
+            // Pause current task until future resolves; push continuation state on stack when resuming.
+            let bind_name = spec.bind.clone().unwrap_or("_".to_string());
             let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-            out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            out.push_str(&format!(
+              "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+              spec.future_id.0, bind_name, next_v
+            ));
           }
           Step::Select { arms } => {
             let mut arm_states: Vec<String> = Vec::new();

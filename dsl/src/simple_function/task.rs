@@ -3,6 +3,8 @@ use crate::{
   simple_function::generated::*,
 };
 
+#[derive(Clone, Debug)]
+
 pub struct Task {
   stack: Vec<StackEntry>,
   heap: Heap,
@@ -14,6 +16,8 @@ pub struct Task {
 }
 
 // TODO: don't like this name
+#[derive(Clone, Debug)]
+
 pub struct Options {
   pub future_id: Option<FutureId>,
 }
@@ -21,7 +25,8 @@ pub struct Options {
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunResult {
   Done(Value),
-  Await(FutureId),
+  // futureId, varBind
+  Await(FutureId, String),
   AsyncCall { fiber: String, func: String, args: Vec<Value>, future_id: FutureId },
 }
 
@@ -58,6 +63,20 @@ impl Task {
     println!("StackState:{}", mark);
     for elem in &self.stack {
       println!("    {:?}", elem);
+    }
+  }
+
+  pub fn put_toppest_value_by_name(
+    &mut self,
+    var_name: String,
+    val: Value,
+  ) {
+    if let Some(StackEntry::Value(_, slot)) =
+      self.stack.iter_mut().rev().find(|se| matches!(se, StackEntry::Value(n, _) if *n == var_name))
+    {
+      *slot = val;
+    } else {
+      panic!("didnt find the value with the right name, something is completely wrong");
     }
   }
 
@@ -131,8 +150,10 @@ impl Task {
             }
           }
         }
-        StepResult::Await(future_id) => {
-          return RunResult::Await(FutureId(future_id));
+        StepResult::Await(future_id, bind_result, next_state) => {
+          // Continue at `next_state` after the future resolves
+          self.stack.push(StackEntry::State(next_state));
+          return RunResult::Await(FutureId(future_id), bind_result);
         }
         StepResult::SendToFiber { fiber, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details

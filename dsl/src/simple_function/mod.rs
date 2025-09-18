@@ -1,4 +1,4 @@
-mod active_tasks;
+mod active_tasks_test;
 mod generated;
 pub mod ir;
 mod task;

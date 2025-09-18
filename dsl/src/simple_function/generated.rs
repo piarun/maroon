@@ -86,7 +86,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  Await(String),
+  // Await a future: (future_id, bind_var, next_state)
+  Await(String, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { fiber: String, func: String, args: Vec<Value>, next: State, future_id: String },
 }
@@ -150,7 +151,9 @@ pub fn global_step(
         future_id: "async_add_future_1".to_string(),
       }
     }
-    State::ApplicationAsyncFooAwait => StepResult::GoTo(State::ApplicationAsyncFooReturn),
+    State::ApplicationAsyncFooAwait => {
+      StepResult::Await("async_add_future_1".to_string(), "sum".to_string(), State::ApplicationAsyncFooReturn)
+    }
     State::ApplicationAsyncFooReturn => {
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(sum))
