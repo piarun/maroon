@@ -26,6 +26,8 @@ pub struct IR {
 
 #[derive(Debug, Clone)]
 pub struct Fiber {
+  // Limit of independent runtime fibers that can be created from this IR fiber definition
+  pub fibers_limit: u64,
   pub heap: HashMap<String, Type>,
   // input queue messages that fiber accepts
   pub in_messages: Vec<MessageSpec>,

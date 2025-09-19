@@ -4,8 +4,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-
-pub struct Task {
+pub struct Fiber {
   stack: Vec<StackEntry>,
   heap: Heap,
   // holds an information for which function this task was created for
@@ -17,8 +16,10 @@ pub struct Task {
 
 // TODO: don't like this name
 #[derive(Clone, Debug)]
-
 pub struct Options {
+  // not None if there is binded task that is awaiting finishing this future_id
+  // TODO: not sure it's a good way to put that kind of information inside the task
+  //    why task should know if it's binded to smth or not?
   pub future_id: Option<FutureId>,
 }
 
@@ -30,7 +31,7 @@ pub enum RunResult {
   AsyncCall { fiber: String, func: String, args: Vec<Value>, future_id: FutureId },
 }
 
-impl std::fmt::Display for Task {
+impl std::fmt::Display for Fiber {
   fn fmt(
     &self,
     f: &mut std::fmt::Formatter,
@@ -39,21 +40,34 @@ impl std::fmt::Display for Task {
   }
 }
 
-impl Task {
-  pub fn new(
-    // TODO: heap_init is a bit hacky right now
-    // because, ideally it should be prepared through get_prepare_fn map, but it's ok for now
-    // when I'll get more usecases for Heap I'll do smth with it
-    heap_init: Heap,
+impl Fiber {
+  // Create an empty fiber with a default heap and no loaded task.
+  pub fn new() -> Fiber {
+    Fiber {
+      stack: Vec::new(),
+      heap: Heap::default(),
+      function_key: String::new(),
+      options: Options { future_id: None },
+    }
+  }
+
+  pub fn new_with_heap(heap: Heap) -> Fiber {
+    Fiber { stack: Vec::new(), heap: heap, function_key: String::new(), options: Options { future_id: None } }
+  }
+
+  // load a task into this fiber, clearing the current stack but preserving the heap
+  // TODO: should I check and if stack is not empty - panic?
+  pub fn load_task(
+    &mut self,
     key: impl Into<String>,
     init_values: Vec<Value>,
     options: Option<Options>,
-  ) -> Task {
-    let function_key: String = key.into();
-    let f = get_prepare_fn(function_key.as_str());
-    let stack = f(init_values);
-    let options = options.unwrap_or(Options { future_id: None });
-    Task { stack, heap: heap_init, function_key, options }
+  ) {
+    self.stack.clear();
+    self.function_key = key.into();
+    let f = get_prepare_fn(self.function_key.as_str());
+    self.stack = f(init_values);
+    self.options = options.unwrap_or(Options { future_id: None });
   }
 
   pub fn print_stack(
@@ -66,13 +80,14 @@ impl Task {
     }
   }
 
-  pub fn put_toppest_value_by_name(
+  // Assigns a value to the first matching named value entry from the back (top) of the stack.
+  pub fn assign_local(
     &mut self,
-    var_name: String,
+    name: String,
     val: Value,
   ) {
     if let Some(StackEntry::Value(_, slot)) =
-      self.stack.iter_mut().rev().find(|se| matches!(se, StackEntry::Value(n, _) if *n == var_name))
+      self.stack.iter_mut().rev().find(|se| matches!(se, StackEntry::Value(n, _) if *n == name))
     {
       *slot = val;
     } else {

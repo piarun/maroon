@@ -1276,6 +1276,7 @@ mod tests {
         (
           "userManager".into(),
           Fiber {
+            fibers_limit: 1,
             heap: HashMap::from([(
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
@@ -1293,7 +1294,7 @@ mod tests {
             )]),
           },
         ),
-        ("global".into(), Fiber { heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() }),
+        ("global".into(), Fiber { fibers_limit: 1, heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() }),
       ]),
     };
 

@@ -8,6 +8,7 @@ pub fn sample_ir() -> IR {
       (
         "global".to_string(),
         Fiber {
+          fibers_limit: 100,
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -291,6 +292,7 @@ out
       (
         "application".to_string(),
         Fiber {
+          fibers_limit: 2,
           heap: HashMap::new(),
           in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
           // (StepId::new("await_in_message"), Step::Await(())),
