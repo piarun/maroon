@@ -49,10 +49,14 @@ struct Runtime {
   fiber_pool: HashMap<FiberType, Vec<Fiber>>,
 
   // queue for in_messages that will be executed in the order when fiber is available
-  // TODO: how to preserve the order?
+  // TODO: this one should have predictable order
   fiber_in_message_queue: HashMap<FiberType, VecDeque<FiberInMessage>>,
 
   fiber_limiter: HashMap<FiberType, u64>,
+
+  // results. key - is global_id from TaskBlueprint
+  // TODO: make it `UniqueU64BlobId` from `common` crate
+  results: HashMap<u64, Value>,
 }
 
 struct FiberBox {
@@ -79,6 +83,7 @@ impl Runtime {
       parked_fibers: HashMap::new(),
       fiber_pool: HashMap::new(),
       fiber_in_message_queue: HashMap::new(),
+      results: HashMap::new(),
     }
   }
 
@@ -106,7 +111,8 @@ impl Runtime {
     loop {
       counter += 1;
       if counter > 100 {
-        panic!("");
+        // TODO: just for tests, and for now, actually it should be an infinite loop
+        return;
       }
 
       while let Some(mut fiber) = self.active_fibers.pop_front() {
@@ -118,6 +124,10 @@ impl Runtime {
             // TODO: when fiber type won't be a string - remove this clone
             self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
 
+            if let Some(global_id) = options.global_id {
+              self.results.insert(global_id, result.clone());
+            }
+
             let Some(future_id) = options.future_id else {
               continue;
             };
@@ -127,14 +137,12 @@ impl Runtime {
 
             task_box.fiber.assign_local(task_box.result_var_bind, result);
             self.active_fibers.push_front(task_box.fiber);
-
-            //  TODO: add smth in order to return the result for gateway through some chains
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {
             println!("ASYNC CALL: {:?}", &future_id);
 
             if let Some(mut available_fiber) = self.get_fiber(&f_type) {
-              available_fiber.load_task(func, args, Some(Options { future_id: Some(future_id) }));
+              available_fiber.load_task(func, args, Some(Options { future_id: Some(future_id), global_id: None }));
               // TODO: in that case when task will be finished with work - asynced available_fiber will be taken for execution
               self.active_fibers.push_front(available_fiber);
             } else {
@@ -142,7 +150,7 @@ impl Runtime {
                 fiber_type: f_type,
                 function_name: func,
                 args,
-                options: Some(Options { future_id: Some(future_id) }),
+                options: Some(Options { future_id: Some(future_id), global_id: None }),
               });
             }
 
@@ -182,7 +190,11 @@ impl Runtime {
 
         while let Some(blueprint) = current_queue.pop_front() {
           if let Some(mut fiber) = self.get_fiber(&blueprint.fiber_type) {
-            fiber.load_task(blueprint.function_key, blueprint.init_values, None);
+            fiber.load_task(
+              blueprint.function_key,
+              blueprint.init_values,
+              Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
+            );
             self.active_fibers.push_back(fiber);
 
             if !current_queue.is_empty() {
@@ -194,7 +206,7 @@ impl Runtime {
               fiber_type: blueprint.fiber_type,
               function_name: blueprint.function_key,
               args: blueprint.init_values,
-              options: None,
+              options: Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
             });
           }
         }
@@ -228,7 +240,10 @@ fn some_test() {
     parked_fibers: HashMap::new(),
     fiber_pool: HashMap::new(),
     fiber_in_message_queue: HashMap::new(),
+    results: HashMap::new(),
   };
 
   rt.run();
+
+  assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
 }

@@ -16,12 +16,17 @@ pub struct Fiber {
 }
 
 // TODO: don't like this name
-#[derive(Clone, Debug)]
+// In reality it's not really options. It's more like a context for executing a particular piece of work
+#[derive(Clone, Debug, Default)]
 pub struct Options {
   // not None if there is binded task that is awaiting finishing this future_id
   // TODO: not sure it's a good way to put that kind of information inside the task
   //    why task should know if it's binded to smth or not?
   pub future_id: Option<FutureId>,
+
+  // global_id from TaskBlueprint
+  // TODO: make it `UniqueU64BlobId` from `common` crate
+  pub global_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,20 +49,14 @@ impl std::fmt::Display for Fiber {
 impl Fiber {
   // Create an empty fiber with a default heap and no loaded task.
   pub fn new(f_type: FiberType) -> Fiber {
-    Fiber {
-      f_type,
-      stack: Vec::new(),
-      heap: Heap::default(),
-      function_key: String::new(),
-      options: Options { future_id: None },
-    }
+    Fiber { f_type, stack: Vec::new(), heap: Heap::default(), function_key: String::new(), options: Options::default() }
   }
 
   pub fn new_with_heap(
     f_type: FiberType,
     heap: Heap,
   ) -> Fiber {
-    Fiber { f_type, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options { future_id: None } }
+    Fiber { f_type, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options::default() }
   }
 
   // load a task into this fiber, clearing the current stack but preserving the heap
@@ -72,7 +71,7 @@ impl Fiber {
     self.function_key = format!("{}.{}", self.f_type, func_name.into());
     let f = get_prepare_fn(self.function_key.as_str());
     self.stack = f(init_values);
-    self.options = options.unwrap_or(Options { future_id: None });
+    self.options = options.unwrap_or_default();
   }
 
   pub fn print_stack(
