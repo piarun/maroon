@@ -1,4 +1,5 @@
 use crate::simple_function::generated::*;
+use crate::simple_function::ir::sample_ir;
 use crate::{
   ir::{FiberType, FutureId, IR},
   simple_function::{generated::Heap, task::*},
@@ -85,6 +86,14 @@ impl Runtime {
       fiber_in_message_queue: HashMap::new(),
       results: HashMap::new(),
     }
+  }
+
+  pub fn next_batch(
+    &mut self,
+    time: LogicalTimeAbsoluteMs,
+    blueprints: VecDeque<TaskBlueprint>,
+  ) {
+    self.active_tasks.push_back((time, blueprints));
   }
 
   // returns None if there is no idle Fibers and the limit has reached
@@ -217,31 +226,25 @@ impl Runtime {
 
 #[test]
 fn some_test() {
-  let mut rt = Runtime {
-    fiber_limiter: HashMap::from([(FiberType::new("global"), 100), (FiberType::new("application"), 2)]),
-    active_fibers: VecDeque::new(),
-    active_tasks: LinkedList::from([(
-      LogicalTimeAbsoluteMs(10),
-      VecDeque::from([
-        TaskBlueprint {
-          global_id: 300,
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)],
-        },
-        TaskBlueprint {
-          global_id: 1,
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(0), Value::U64(8)],
-        },
-      ]),
-    )]),
-    parked_fibers: HashMap::new(),
-    fiber_pool: HashMap::new(),
-    fiber_in_message_queue: HashMap::new(),
-    results: HashMap::new(),
-  };
+  let mut rt = Runtime::new(sample_ir());
+
+  rt.next_batch(
+    LogicalTimeAbsoluteMs(10),
+    VecDeque::from([
+      TaskBlueprint {
+        global_id: 300,
+        fiber_type: FiberType::new("application"),
+        function_key: "async_foo".to_string(),
+        init_values: vec![Value::U64(4), Value::U64(8)],
+      },
+      TaskBlueprint {
+        global_id: 1,
+        fiber_type: FiberType::new("application"),
+        function_key: "async_foo".to_string(),
+        init_values: vec![Value::U64(0), Value::U64(8)],
+      },
+    ]),
+  );
 
   rt.run();
 
