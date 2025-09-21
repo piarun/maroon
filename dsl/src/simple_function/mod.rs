@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod active_tasks_test;
 mod generated;
 pub mod ir;

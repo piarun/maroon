@@ -18,10 +18,34 @@ impl FutureId {
   }
 }
 
+// TODO: add generating types as well? So I can't create any random FiberType
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct FiberType(pub String);
+impl std::fmt::Display for FiberType {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+impl FiberType {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+}
+
+impl std::borrow::Borrow<str> for FiberType {
+  fn borrow(&self) -> &str {
+    self.0.as_str()
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct IR {
   pub types: Vec<Type>,
-  pub fibers: HashMap<String, Fiber>,
+  pub fibers: HashMap<FiberType, Fiber>,
 }
 
 #[derive(Debug, Clone)]

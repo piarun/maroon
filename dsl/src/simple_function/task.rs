@@ -1,5 +1,5 @@
 use crate::{
-  ir::{Func, FutureId},
+  ir::{FiberType, Func, FutureId},
   simple_function::generated::*,
 };
 
@@ -11,6 +11,7 @@ pub struct Fiber {
   // used for preparing the stack before run and for getting the result
   function_key: String,
 
+  pub f_type: FiberType,
   pub options: Options,
 }
 
@@ -28,7 +29,7 @@ pub enum RunResult {
   Done(Value),
   // futureId, varBind
   Await(FutureId, String),
-  AsyncCall { fiber: String, func: String, args: Vec<Value>, future_id: FutureId },
+  AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
 }
 
 impl std::fmt::Display for Fiber {
@@ -42,8 +43,9 @@ impl std::fmt::Display for Fiber {
 
 impl Fiber {
   // Create an empty fiber with a default heap and no loaded task.
-  pub fn new() -> Fiber {
+  pub fn new(f_type: FiberType) -> Fiber {
     Fiber {
+      f_type,
       stack: Vec::new(),
       heap: Heap::default(),
       function_key: String::new(),
@@ -51,20 +53,23 @@ impl Fiber {
     }
   }
 
-  pub fn new_with_heap(heap: Heap) -> Fiber {
-    Fiber { stack: Vec::new(), heap: heap, function_key: String::new(), options: Options { future_id: None } }
+  pub fn new_with_heap(
+    f_type: FiberType,
+    heap: Heap,
+  ) -> Fiber {
+    Fiber { f_type, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options { future_id: None } }
   }
 
   // load a task into this fiber, clearing the current stack but preserving the heap
   // TODO: should I check and if stack is not empty - panic?
   pub fn load_task(
     &mut self,
-    key: impl Into<String>,
+    func_name: impl Into<String>,
     init_values: Vec<Value>,
     options: Option<Options>,
   ) {
     self.stack.clear();
-    self.function_key = key.into();
+    self.function_key = format!("{}.{}", self.f_type, func_name.into());
     let f = get_prepare_fn(self.function_key.as_str());
     self.stack = f(init_values);
     self.options = options.unwrap_or(Options { future_id: None });
@@ -170,10 +175,10 @@ impl Fiber {
           self.stack.push(StackEntry::State(next_state));
           return RunResult::Await(FutureId(future_id), bind_result);
         }
-        StepResult::SendToFiber { fiber, func, args, next, future_id } => {
+        StepResult::SendToFiber { f_type, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details
           self.stack.push(StackEntry::State(next));
-          return RunResult::AsyncCall { fiber, func, args, future_id: FutureId(future_id) };
+          return RunResult::AsyncCall { f_type, func, args, future_id: FutureId(future_id) };
         }
         _ => {}
       }

@@ -89,7 +89,7 @@ pub enum StepResult {
   // Await a future: (future_id, bind_var, next_state)
   Await(String, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { fiber: String, func: String, args: Vec<Value>, next: State, future_id: String },
+  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
@@ -144,7 +144,7 @@ pub fn global_step(
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::SendToFiber {
-        fiber: "global".to_string(),
+        f_type: crate::ir::FiberType::new("global"),
         func: "add".to_string(),
         args: vec![Value::U64(a), Value::U64(b)],
         next: State::ApplicationAsyncFooAwait,

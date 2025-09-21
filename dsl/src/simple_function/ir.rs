@@ -6,7 +6,7 @@ pub fn sample_ir() -> IR {
   IR {
     fibers: HashMap::from([
       (
-        "global".to_string(),
+        FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
@@ -290,7 +290,7 @@ out
         },
       ),
       (
-        "application".to_string(),
+        FiberType::new("application"),
         Fiber {
           fibers_limit: 2,
           heap: HashMap::new(),
