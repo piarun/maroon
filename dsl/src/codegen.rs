@@ -85,15 +85,15 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
 
   // 2) Emit message structs per fiber.in_messages (sorted by fiber, then message name)
-  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
-  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      let msg_ty = variant_name(&[fiber_name, &msg.name, "Msg"]);
+      let msg_ty = variant_name(&[fiber_name.0.as_str(), &msg.0, "Msg"]);
       out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
-      let mut fields_sorted = msg.fields.clone();
+      let mut fields_sorted = msg.1.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
         out.push_str(&format!("  pub {}: {},\n", camel_ident(fname), rust_type(fty)));
@@ -103,9 +103,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
 
   // 3) Emit per-fiber heap structs and a unified Heap enum
-  let mut heap_variants: Vec<(String, String)> = Vec::new();
+  let mut heap_structs: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
-    let heap_struct = variant_name(&[fiber_name, "Heap"]);
+    let heap_struct = variant_name(&[fiber_name.0.as_str(), "Heap"]);
     out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", heap_struct));
     let mut heap_fields: Vec<(&String, &Type)> = fiber.heap.iter().collect();
     heap_fields.sort_by(|a, b| a.0.cmp(b.0));
@@ -113,16 +113,13 @@ pub fn generate_rust_types(ir: &IR) -> String {
       out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(ty)));
     }
     out.push_str("}\n\n");
-    heap_variants.push((pascal_case(fiber_name), heap_struct));
+    heap_structs.push((camel_ident(&fiber_name.0), heap_struct));
   }
-  out.push_str("#[derive(Clone, Debug)]\npub enum Heap {\n");
-  if heap_variants.is_empty() {
-    out.push_str("  Empty,\n");
-  } else {
-    heap_variants.sort_by(|a, b| a.0.cmp(&b.0));
-    for (variant, struct_name) in heap_variants {
-      out.push_str(&format!("  {}({}),\n", variant, struct_name));
-    }
+  // Unified Heap as a struct with all fiber heaps accessible at once
+  out.push_str("#[derive(Clone, Debug, Default, PartialEq)]\npub struct Heap {\n");
+  heap_structs.sort_by(|a, b| a.0.cmp(&b.0));
+  for (field_name, struct_name) in heap_structs {
+    out.push_str(&format!("  pub {}: {},\n", field_name, struct_name));
   }
   out.push_str("}\n\n");
 
@@ -176,7 +173,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
       steps.sort();
       steps.dedup();
       for s in steps {
-        let v = variant_name(&[fiber_name, func_name, &s]);
+        let v = variant_name(&[fiber_name.0.as_str(), func_name, &s]);
         out.push_str(&format!("  {},\n", v));
       }
     }
@@ -199,9 +196,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
       used_types.insert(type_variant_name(&func.out), func.out.clone());
     }
     let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.name.cmp(&b.name));
+    msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
-      for (_, fty) in &msg.fields {
+      for (_, fty) in &msg.1 {
         used_types.insert(type_variant_name(fty), fty.clone());
       }
     }
@@ -240,6 +237,10 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
+  // Await a future: (future_id, bind_var, next_state)
+  Await(String, String, State),
+  // Send a message to a fiber with function and typed args, then continue to `next`.
+  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
 }",
   );
 
@@ -258,19 +259,25 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   let mut out = String::new();
 
   // Iterate fibers and functions deterministically
-  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
-  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+
+  // Registry typedefs
+  out.push_str("\n// Registry: function key -> (prepare_from_values, result_to_value)\n");
+  out.push_str("pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;\n");
+  out.push_str("pub type ResultFn = fn(&[StackEntry]) -> Value;\n\n");
+
+  // Collect match arms for registries as we go
+  let mut prepare_arms: Vec<String> = Vec::new();
+  let mut result_arms: Vec<String> = Vec::new();
 
   for (fiber_name, fiber) in fibers_sorted.iter() {
-    let heap_struct = variant_name(&[fiber_name, "Heap"]);
-    let heap_enum_variant = pascal_case(fiber_name);
-
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
 
     for (func_name, func) in funcs_sorted {
       // Prepare function signature
-      let prepare_fn_name = format!("{}_prepare_{}", camel_ident(fiber_name), camel_ident(func_name));
+      let prepare_fn_name = format!("{}_prepare_{}", camel_ident(&fiber_name.0), camel_ident(func_name));
       let mut params: Vec<String> = Vec::new();
       for p in &func.in_vars {
         let name = p.0;
@@ -317,17 +324,14 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       }
 
       // 4) Push entry state
-      let entry_state = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      let entry_state = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
       out.push_str(&format!("  stack.push(StackEntry::State(State::{}));\n", entry_state));
 
       // 5) Initialize heap with defaults for this fiber
-      out.push_str(&format!(
-        "  let heap = Heap::{}({}::default());\n  (stack, heap)\n}}\n\n",
-        heap_enum_variant, heap_struct
-      ));
+      out.push_str(&format!("  let heap = Heap::default();\n  (stack, heap)\n}}\n\n"));
 
       // Result extraction function
-      let result_fn_name = format!("{}_result_{}", camel_ident(fiber_name), camel_ident(func_name));
+      let result_fn_name = format!("{}_result_{}", camel_ident(&fiber_name.0), camel_ident(func_name));
       let ret_ty = rust_type(&func.out);
       out.push_str(&format!("pub fn {}(stack: &[StackEntry]) -> {} {{\n", result_fn_name, ret_ty));
       out.push_str("  match stack.last() {\n");
@@ -335,8 +339,50 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
       out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
       out.push_str("  }\n}\n\n");
+      // 6) Generate untyped wrappers for registry
+      // Prepare-from-Vec<Value>
+      let wrapper_prepare = format!("fn {}_from_values(args: Vec<Value>) -> Vec<StackEntry> {{\n", prepare_fn_name);
+      out.push_str(&wrapper_prepare);
+      for (idx, p) in func.in_vars.iter().enumerate() {
+        let pname = camel_ident(p.0);
+        let vname = type_variant_name(&p.1);
+        let rty = rust_type(&p.1);
+        out.push_str(&format!(
+          "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid args for {}.{}\") }};\n",
+          pname, rty, vname, idx, fiber_name, func_name
+        ));
+      }
+      let arg_list = func.in_vars.iter().map(|p| camel_ident(p.0)).collect::<Vec<_>>().join(", ");
+      out.push_str(&format!("  let (stack, _heap) = {}({});\n  stack\n}}\n\n", prepare_fn_name, arg_list));
+
+      // Result-to-Value wrapper
+      let out_vname = type_variant_name(&func.out);
+      out.push_str(&format!(
+        "fn {}_value(stack: &[StackEntry]) -> Value {{ Value::{}({}(stack)) }}\n\n",
+        result_fn_name, out_vname, result_fn_name
+      ));
+
+      // 7) Append registry match arms (use IR names as-is)
+      let key_exact = format!("{}.{}", fiber_name, func_name);
+      prepare_arms.push(format!("    \"{}\" => {}_from_values,\n", key_exact, prepare_fn_name));
+      result_arms.push(format!("    \"{}\" => {}_value,\n", key_exact, result_fn_name));
     }
   }
+
+  // Emit registry functions
+  out.push_str("pub fn get_prepare_fn(key: &str) -> PrepareFn {\n  match key {\n");
+  prepare_arms.sort();
+  for arm in prepare_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
+
+  out.push_str("pub fn get_result_fn(key: &str) -> ResultFn {\n  match key {\n");
+  result_arms.sort();
+  for arm in result_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
 
   out
 }
@@ -367,7 +413,10 @@ fn collect_vars_from_expr(
   }
 }
 
-fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
+fn var_type_of<'a>(
+  func: &'a Func,
+  name: &str,
+) -> Option<&'a Type> {
   for p in &func.in_vars {
     if p.0 == name {
       return Some(&p.1);
@@ -381,7 +430,10 @@ fn var_type_of<'a>(func: &'a Func, name: &str) -> Option<&'a Type> {
   None
 }
 
-fn var_is_param(func: &Func, name: &str) -> bool {
+fn var_is_param(
+  func: &Func,
+  name: &str,
+) -> bool {
   func.in_vars.iter().any(|p| p.0 == name)
 }
 
@@ -550,8 +602,8 @@ fn heap_array_elem_type<'a>(
 // The count is computed as:
 // - For any function entry state: number of input params + locals
 fn generate_func_args_count(ir: &IR) -> String {
-  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
-  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
   let mut out = r"
 pub fn func_args_count(e: &State) -> usize {
@@ -564,6 +616,9 @@ pub fn func_args_count(e: &State) -> usize {
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
+      // Always include the function's entry state
+      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
+      out.push_str(&format!("    State::{} => {},\n", entry_variant, n));
 
       // Identify direct-return RustBlock next steps to suppress from func_args_count
       use std::collections::BTreeSet as __BTS2;
@@ -587,7 +642,7 @@ pub fn func_args_count(e: &State) -> usize {
 
       for (step_id, _) in steps_sorted {
         if !suppressed.contains(&step_id.0) {
-          let v = variant_name(&[fiber_name, func_name, &step_id.0]);
+          let v = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
           out.push_str(&format!("    State::{} => {},\n", v, n));
         }
       }
@@ -610,8 +665,8 @@ fn generate_global_step(ir: &IR) -> String {
   out.push_str("  match state {\n");
   out.push_str("    State::Completed => StepResult::Done,\n");
   out.push_str("    State::Idle => panic!(\"shoudnt be here\"),\n");
-  let mut fibers_sorted: Vec<(&String, &Fiber)> = ir.fibers.iter().collect();
-  fibers_sorted.sort_by(|a, b| a.0.cmp(b.0));
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let mut funcs_sorted: Vec<(&String, &Func)> = fiber.funcs.iter().collect();
     funcs_sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -634,7 +689,7 @@ fn generate_global_step(ir: &IR) -> String {
       }
       use std::collections::BTreeSet;
       let mut seen: BTreeSet<String> = BTreeSet::new();
-      let entry_variant = variant_name(&[fiber_name, func_name, &func.entry.0]);
+      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
       if seen.insert(entry_variant.clone()) {
         out.push_str(&format!("    State::{entry_variant} => {{\n"));
 
@@ -707,30 +762,58 @@ fn generate_global_step(ir: &IR) -> String {
           }
           match entry_step {
             Step::Sleep { ms, next } => {
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               let ms_code = render_expr_code(&ms, func);
               out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
             }
             Step::Write { text, next } => {
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               let text_code = render_expr_code(&text, func);
               out.push_str(&format!(
                 "      StepResult::Write(format!(\"{}\", {}), State::{})\n",
                 "{}", text_code, next_v
               ));
             }
-            Step::SendToFiber { next, .. } => {
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            Step::SendToFiber { fiber, message, args, next, future_id } => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              // Build args vector in callee's param order/types
+              if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
+                let mut arg_elems: Vec<String> = Vec::new();
+                for (aname, aexpr) in args.iter() {
+                  if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
+                    let vname = type_variant_name(&param.1);
+                    let expr_code = render_expr_code(aexpr, func);
+                    arg_elems.push(format!("Value::{}({})", vname, expr_code));
+                  }
+                }
+                out.push_str("      StepResult::SendToFiber { f_type: crate::ir::FiberType::new(\"");
+                out.push_str(fiber);
+                out.push_str("\"), func: \"");
+                out.push_str(message);
+                out.push_str("\".to_string(), args: vec![");
+                out.push_str(&arg_elems.join(", "));
+                out.push_str("], next: State::");
+                out.push_str(&next_v);
+                out.push_str(", future_id: \"");
+                out.push_str(&future_id.0);
+                out.push_str("\".to_string() }\n");
+              } else {
+                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              }
             }
             Step::Await(spec) => {
-              let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              // Pause current task until future resolves; push continuation state on stack when resuming.
+              let bind_name = spec.bind.clone().unwrap_or("_".to_string());
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
+              out.push_str(&format!(
+                "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+                spec.future_id.0, bind_name, next_v
+              ));
             }
             Step::Select { arms } => {
               let mut arm_states: Vec<String> = Vec::new();
               for arm in arms {
-                arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
+                arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
               }
               out.push_str("      StepResult::Select(vec![");
               for (i, st) in arm_states.iter().enumerate() {
@@ -742,7 +825,7 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str("])\n");
             }
             Step::Call { target, args, ret_to, bind } => {
-              out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
+              out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
             }
             Step::Return { value } => {
               let code = render_ret_value(value, &func.out, func);
@@ -750,8 +833,8 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
             Step::If { cond, then_, else_ } => {
-              let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
-              let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
+              let then_v = variant_name(&[fiber_name.0.as_str(), func_name, &then_.0]);
+              let else_v = variant_name(&[fiber_name.0.as_str(), func_name, &else_.0]);
               let cond_code = render_expr_code(&cond, func);
               out.push_str(&format!(
                 "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
@@ -759,7 +842,7 @@ fn generate_global_step(ir: &IR) -> String {
               ));
             }
             Step::Let { local, expr, next } => {
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               // Set a local by pushing a value of the underlying type. Runtime will bind it.
               let lty = var_type_of(func, local).expect("unknown local var in Let");
               let vname = type_variant_name(lty);
@@ -774,11 +857,11 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::HeapGetIndex { array, index, bind, next } => {
               // Update existing local `bind` in-place via Return-binding (no new stack vars)
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               let idx_code = render_expr_code(&index, func);
-              let heap_variant = pascal_case(fiber_name);
+              let heap_field_fiber = camel_ident(&fiber_name.0);
               let heap_field = camel_ident(array);
-              let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+              let ety = heap_array_elem_type(ir, fiber_name.0.as_str(), array).expect("heap array type not found");
 
               // Compute offset to the bind variable within the current frame
               let params_len = func.in_vars.len();
@@ -801,9 +884,9 @@ fn generate_global_step(ir: &IR) -> String {
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                   out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
                   out.push_str(&format!(
-                      "        StackEntry::Value(\"a\".to_string(), Value::U64(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                      heap_variant, heap_field, idx_code
-                    ));
+                    "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
+                    heap_field_fiber, heap_field, idx_code
+                  ));
                   out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
                   out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
@@ -814,16 +897,16 @@ fn generate_global_step(ir: &IR) -> String {
                   let vname = type_variant_name(ety);
                   out.push_str("      StepResult::Next(vec![\n");
                   out.push_str(&format!(
-                      "        StackEntry::Value(\"{}\".to_string(), Value::{}(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                      bind, vname, heap_variant, heap_field, idx_code
-                    ));
+                    "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
+                    bind, vname, heap_field_fiber, heap_field, idx_code
+                  ));
                   out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                   out.push_str("      ])\n");
                 }
               }
             }
             Step::RustBlock { binds, next, code: rcode } => {
-              let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               let mut bind_types: Vec<&Type> = Vec::new();
               for b in binds {
                 bind_types.push(var_type_of(func, b).expect("bind var type"));
@@ -848,13 +931,13 @@ fn generate_global_step(ir: &IR) -> String {
                   // Single bind: assign directly into the current frame using offset
                   let ty_name = type_variant_name(bind_types[0]);
                   let bname = binds.get(0).unwrap();
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str("      { let out = {\n");
                   out.push_str(rcode);
                   out.push_str("\n      }; StepResult::Next(vec![\n");
@@ -877,13 +960,13 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str("          StackEntry::FrameAssign(vec![\n");
                 for (i, b) in binds.iter().enumerate() {
                   let ty_name = type_variant_name(bind_types[i]);
-            let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
-              format!("{}", pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
-              format!("{}", func.in_vars.len() + li)
-            } else {
-              "0".to_string()
-            };
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
                   out.push_str(&format!("            ( {}, Value::{}({}) ),\n", pos_expr, ty_name, tuple_names[i]));
                 }
                 out.push_str("          ]),\n");
@@ -904,7 +987,7 @@ fn generate_global_step(ir: &IR) -> String {
         if suppressed.contains(&step_id.0) {
           continue;
         }
-        let state_variant = variant_name(&[fiber_name, func_name, &step_id.0]);
+        let state_variant = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
         if !seen.insert(state_variant.clone()) {
           continue;
         }
@@ -930,12 +1013,12 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
           Step::RustBlock { .. } => {
-              for p in &func.in_vars {
-                referenced.insert(p.0.to_string());
-              }
-              for l in &func.locals {
-                referenced.insert(l.0.to_string());
-              }
+            for p in &func.in_vars {
+              referenced.insert(p.0.to_string());
+            }
+            for l in &func.locals {
+              referenced.insert(l.0.to_string());
+            }
           }
         }
         out.push_str(&format!("    State::{state_variant} => {{\n"));
@@ -960,28 +1043,55 @@ fn generate_global_step(ir: &IR) -> String {
         }
         match step {
           Step::Sleep { ms, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             let ms_code = render_expr_code(&ms, func);
             out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
           }
           Step::Write { text, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             let text_code = render_expr_code(&text, func);
             out
               .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
           }
-          Step::SendToFiber { next, .. } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
-            out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-          }
+            Step::SendToFiber { fiber, message, args, next, future_id } => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
+                let mut arg_elems: Vec<String> = Vec::new();
+                for (aname, aexpr) in args.iter() {
+                  if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
+                    let vname = type_variant_name(&param.1);
+                    let expr_code = render_expr_code(aexpr, func);
+                    arg_elems.push(format!("Value::{}({})", vname, expr_code));
+                  }
+                }
+              out.push_str("      StepResult::SendToFiber { f_type: crate::ir::FiberType::new(\"");
+              out.push_str(fiber);
+              out.push_str("\"), func: \"");
+              out.push_str(message);
+              out.push_str("\".to_string(), args: vec![");
+              out.push_str(&arg_elems.join(", "));
+              out.push_str("], next: State::");
+              out.push_str(&next_v);
+              out.push_str(", future_id: \"");
+              out.push_str(&future_id.0);
+              out.push_str("\".to_string() }\n");
+              } else {
+                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+              }
+            }
           Step::Await(spec) => {
-            let next_v = variant_name(&[fiber_name, func_name, &spec.ret_to.0]);
-            out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
+            // Pause current task until future resolves; push continuation state on stack when resuming.
+            let bind_name = spec.bind.clone().unwrap_or("_".to_string());
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
+            out.push_str(&format!(
+              "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+              spec.future_id.0, bind_name, next_v
+            ));
           }
           Step::Select { arms } => {
             let mut arm_states: Vec<String> = Vec::new();
             for arm in arms {
-              arm_states.push(variant_name(&[fiber_name, func_name, &arm.ret_to.0]));
+              arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
             }
             out.push_str("      StepResult::Select(vec![");
             for (i, st) in arm_states.iter().enumerate() {
@@ -993,7 +1103,7 @@ fn generate_global_step(ir: &IR) -> String {
             out.push_str("])\n");
           }
           Step::Call { target, args, ret_to, bind } => {
-            out.push_str(&render_call_step(ir, fiber_name, func_name, func, target, args, ret_to, bind));
+            out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
           }
           Step::Return { value } => {
             let code = render_ret_value(value, &func.out, func);
@@ -1001,8 +1111,8 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::ReturnVoid => out.push_str("      StepResult::ReturnVoid\n"),
           Step::If { cond, then_, else_, .. } => {
-            let then_v = variant_name(&[fiber_name, func_name, &then_.0]);
-            let else_v = variant_name(&[fiber_name, func_name, &else_.0]);
+            let then_v = variant_name(&[fiber_name.0.as_str(), func_name, &then_.0]);
+            let else_v = variant_name(&[fiber_name.0.as_str(), func_name, &else_.0]);
             let cond_code = render_expr_code(&cond, func);
             out.push_str(&format!(
               "      if {} {{ StepResult::GoTo(State::{}) }} else {{ StepResult::GoTo(State::{}) }}\n",
@@ -1010,7 +1120,7 @@ fn generate_global_step(ir: &IR) -> String {
             ));
           }
           Step::Let { local, expr, next } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             let lty = var_type_of(func, local).expect("unknown local var in Let");
             let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
@@ -1024,11 +1134,11 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::HeapGetIndex { array, index, bind, next } => {
             // Update existing local `bind` in-place via Return-binding (no new stack vars)
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             let idx_code = render_expr_code(&index, func);
-            let heap_variant = pascal_case(fiber_name);
+            let heap_field_fiber = camel_ident(&fiber_name.0);
             let heap_field = camel_ident(array);
-            let ety = heap_array_elem_type(ir, fiber_name, array).expect("heap array type not found");
+            let ety = heap_array_elem_type(ir, fiber_name.0.as_str(), array).expect("heap array type not found");
 
             // Compute offset to the bind variable within the current frame
             let params_len = func.in_vars.len();
@@ -1051,8 +1161,8 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
                 out.push_str(&format!(
-                  "        StackEntry::Value(\"a\".to_string(), Value::U64(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                  heap_variant, heap_field, idx_code
+                  "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
+                  heap_field_fiber, heap_field, idx_code
                 ));
                 out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
                 out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
@@ -1064,8 +1174,8 @@ fn generate_global_step(ir: &IR) -> String {
                 let vname = type_variant_name(ety);
                 out.push_str("      StepResult::Next(vec![\n");
                 out.push_str(&format!(
-                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(match heap {{ Heap::{}(h) => h.{}[({} as usize)].clone(), _ => unreachable!() }})),\n",
-                  bind, vname, heap_variant, heap_field, idx_code
+                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
+                  bind, vname, heap_field_fiber, heap_field, idx_code
                 ));
                 out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
                 out.push_str("      ])\n");
@@ -1073,7 +1183,7 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::RustBlock { binds, next, code: rcode } => {
-            let next_v = variant_name(&[fiber_name, func_name, &next.0]);
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             // Types by bind order
             let mut bind_types: Vec<&Type> = Vec::new();
             for b in binds {
@@ -1164,13 +1274,14 @@ mod tests {
       )],
       fibers: HashMap::from([
         (
-          "userManager".into(),
+          FiberType::new("userManager"),
           Fiber {
+            fibers_limit: 1,
             heap: HashMap::from([(
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
-            in_messages: vec![MessageSpec { name: "GetUser".into(), fields: vec![("key".into(), Type::String)] }],
+            in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
             funcs: HashMap::from([(
               "get".into(),
               Func {
@@ -1183,7 +1294,10 @@ mod tests {
             )]),
           },
         ),
-        ("global".into(), Fiber { heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() }),
+        (
+          FiberType::new("global"),
+          Fiber { fibers_limit: 1, heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() },
+        ),
       ]),
     };
 
@@ -1191,7 +1305,7 @@ mod tests {
     // Spot-check a few important bits are present.
     assert!(code.contains("pub struct User"));
     assert!(code.contains("pub struct UserManagerGetUserMsg"));
-    assert!(code.contains("pub enum Heap"));
+    assert!(code.contains("pub struct Heap"));
     assert!(code.contains("pub enum State"));
     assert!(code.contains("UserManagerGetEntry"));
     assert!(code.contains("pub enum Value"));
