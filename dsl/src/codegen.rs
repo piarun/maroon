@@ -642,6 +642,10 @@ pub fn func_args_count(e: &State) -> usize {
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
       for (step_id, _) in steps_sorted {
+        // Skip entry here since it's already added explicitly above
+        if step_id.0 == func.entry.0 {
+          continue;
+        }
         if !suppressed.contains(&step_id.0) {
           let v = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
           out.push_str(&format!("    State::{} => {},\n", v, n));
