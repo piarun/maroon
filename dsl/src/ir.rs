@@ -121,10 +121,6 @@ pub enum Step {
   ReturnVoid,
   If { cond: Expr, then_: StepId, else_: StepId },
   Let { local: String, expr: Expr, next: StepId },
-  // Read an element from a heap array in the current fiber and bind to a local
-  // Example: from array `users`, index `i`, write into local `u`
-  // Only reads are modeled for now to keep things simple
-  HeapGetIndex { array: String, index: Expr, bind: String, next: StepId },
   // Inline Rust block that can perform any amount of computations.
   //     However we'll be aiming to keep it 'relatively small'.
   //     The block must be pure computational with no side effects.
