@@ -52,7 +52,7 @@ pub struct RunContext {
 pub enum RunResult {
   Done(Value),
   // futureId, varBind
-  Await(FutureId, String),
+  Await(FutureId, Option<String>),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
 }

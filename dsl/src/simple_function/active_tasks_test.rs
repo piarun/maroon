@@ -182,7 +182,7 @@ struct FiberBox {
 
   // information to which variable on stack we should bind the result for the `fiber`
   // is used when fiber is parked and awaits some result
-  result_var_bind: String,
+  result_var_bind: Option<String>,
 }
 
 #[derive(Debug)]
@@ -340,7 +340,9 @@ limiter:
               continue;
             };
 
-            task_box.fiber.assign_local(task_box.result_var_bind, result);
+            if let Some(var) = task_box.result_var_bind {
+              task_box.fiber.assign_local(var, result);
+            }
             self.active_fibers.push_front(task_box.fiber);
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {

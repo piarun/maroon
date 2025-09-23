@@ -96,9 +96,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, bind_var, next_state)
-  // TODO: make bind_var optional
-  Await(crate::ir::FutureLabel, String, State),
+  // Await a future: (future_id, optional bind_var, next_state)
+  Await(crate::ir::FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber {
     f_type: crate::ir::FiberType,
@@ -165,7 +164,7 @@ pub fn global_step(
     }
     State::ApplicationAsyncFooAwait => StepResult::Await(
       crate::ir::FutureLabel::new("async_add_future_1"),
-      "sum".to_string(),
+      Some("sum".to_string()),
       State::ApplicationAsyncFooReturn,
     ),
     State::ApplicationAsyncFooReturn => {
@@ -183,7 +182,7 @@ pub fn global_step(
     }
     State::ApplicationSleepAndPowAwait => StepResult::Await(
       crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
-      "_".to_string(),
+      None,
       State::ApplicationSleepAndPowCalc,
     ),
     State::ApplicationSleepAndPowCalc => {

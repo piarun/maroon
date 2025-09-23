@@ -237,9 +237,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, bind_var, next_state)
-  // TODO: make bind_var optional
-  Await(crate::ir::FutureLabel, String, State),
+  // Await a future: (future_id, optional bind_var, next_state)
+  Await(crate::ir::FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: crate::ir::FutureLabel },
 }",
@@ -796,12 +795,17 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::Await(spec) => {
               // Pause current task until future resolves; push continuation state on stack when resuming.
-              let bind_name = spec.bind.clone().unwrap_or("_".to_string());
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-              out.push_str(&format!(
-                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
-                spec.future_id.0, bind_name, next_v
-              ));
+              match &spec.bind {
+                Some(name) => out.push_str(&format!(
+                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                  spec.future_id.0, name, next_v
+                )),
+                None => out.push_str(&format!(
+                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                  spec.future_id.0, next_v
+                )),
+              }
             }
             Step::Select { arms } => {
               let mut arm_states: Vec<String> = Vec::new();
@@ -1025,12 +1029,17 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::Await(spec) => {
             // Pause current task until future resolves; push continuation state on stack when resuming.
-            let bind_name = spec.bind.clone().unwrap_or("_".to_string());
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-            out.push_str(&format!(
-              "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
-              spec.future_id.0, bind_name, next_v
-            ));
+            match &spec.bind {
+              Some(name) => out.push_str(&format!(
+                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                spec.future_id.0, name, next_v
+              )),
+              None => out.push_str(&format!(
+                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                spec.future_id.0, next_v
+              )),
+            }
           }
           Step::Select { arms } => {
             let mut arm_states: Vec<String> = Vec::new();
