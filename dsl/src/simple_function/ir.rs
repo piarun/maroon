@@ -296,39 +296,77 @@ out
           heap: HashMap::new(),
           in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
           // (StepId::new("await_in_message"), Step::Await(())),
-          funcs: HashMap::from([(
-            "async_foo".to_string(),
-            Func {
-              in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-              out: Type::UInt64,
-              locals: vec![LocalVar("sum", Type::UInt64)],
-              entry: StepId::new("entry"),
-              steps: vec![
-                (
-                  StepId::new("entry"),
-                  Step::SendToFiber {
-                    fiber: "global".to_string(),
-                    message: "add".to_string(),
-                    args: vec![
-                      ("a".to_string(), Expr::Var("a".to_string())),
-                      ("b".to_string(), Expr::Var("b".to_string())),
-                    ],
-                    next: StepId::new("await"),
-                    future_id: FutureId::new("async_add_future_1"),
-                  },
-                ),
-                (
-                  StepId::new("await"),
-                  Step::Await(AwaitSpec {
-                    bind: Some("sum".to_string()),
-                    ret_to: StepId::new("return"),
-                    future_id: FutureId::new("async_add_future_1"),
-                  }),
-                ),
-                (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
-              ],
-            },
-          )]),
+          funcs: HashMap::from([
+            (
+              "async_foo".to_string(),
+              Func {
+                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
+                out: Type::UInt64,
+                locals: vec![LocalVar("sum", Type::UInt64)],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::SendToFiber {
+                      fiber: "global".to_string(),
+                      message: "add".to_string(),
+                      args: vec![
+                        ("a".to_string(), Expr::Var("a".to_string())),
+                        ("b".to_string(), Expr::Var("b".to_string())),
+                      ],
+                      next: StepId::new("await"),
+                      future_id: FutureId::new("async_add_future_1"),
+                    },
+                  ),
+                  (
+                    StepId::new("await"),
+                    Step::Await(AwaitSpec {
+                      bind: Some("sum".to_string()),
+                      ret_to: StepId::new("return"),
+                      future_id: FutureId::new("async_add_future_1"),
+                    }),
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "sleep_and_pow".to_string(),
+              Func {
+                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
+                out: Type::UInt64,
+                locals: vec![LocalVar("pow", Type::UInt64)],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::ScheduleTimer {
+                      ms: LogicalTimeAbsoluteMs(20),
+                      next: StepId::new("await"),
+                      future_id: FutureId::new("sleep_and_pow_entry_future"),
+                    },
+                  ),
+                  (
+                    StepId::new("await"),
+                    Step::Await(AwaitSpec {
+                      bind: None,
+                      ret_to: StepId::new("calc"),
+                      future_id: FutureId::new("sleep_and_pow_entry_future"),
+                    }),
+                  ),
+                  (
+                    StepId::new("calc"),
+                    Step::RustBlock {
+                      binds: vec!["pow".to_string()],
+                      code: "a.pow(b as u32)".to_string(),
+                      next: StepId::new("return".to_string()),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("pow".to_string()) }),
+                ],
+              },
+            ),
+          ]),
         },
       ),
     ]),
