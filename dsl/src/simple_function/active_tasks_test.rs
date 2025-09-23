@@ -1,9 +1,6 @@
 use crate::simple_function::generated::*;
 use crate::simple_function::ir::sample_ir;
-use crate::{
-  ir::{FiberType, FutureId, IR, LogicalTimeAbsoluteMs},
-  simple_function::{generated::Heap, task::*},
-};
+use crate::{ir::{FiberType, IR, LogicalTimeAbsoluteMs}, simple_function::{generated::Heap, task::*}};
 use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
@@ -15,6 +12,23 @@ use std::{
 pub trait Timer: Send + Sync + 'static {
   fn from_start(&self) -> LogicalTimeAbsoluteMs;
   fn monotonic_now_system(&self) -> std::time::SystemTime;
+}
+
+// Runtime-only Future identifier. Unique per-fiber using suffixing policy.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FutureId(pub String);
+
+impl FutureId {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+
+  pub fn from_label(
+    label: crate::ir::FutureLabel,
+    unique_id: u64,
+  ) -> Self {
+    Self(format!("{}_{}", label.0, unique_id))
+  }
 }
 
 pub struct MonotonicTimer {

@@ -1,7 +1,24 @@
-use crate::{
-  ir::{FiberType, Func, FutureId, LogicalTimeAbsoluteMs},
-  simple_function::generated::*,
-};
+use crate::{ir::{FiberType, Func, LogicalTimeAbsoluteMs}, simple_function::generated::*};
+
+// Runtime FutureId lives in tests; provide compatible type for non-test builds,
+// and alias to test module when running under tests.
+#[cfg(test)]
+pub type FutureId = crate::simple_function::active_tasks_test::FutureId;
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FutureId(pub String);
+#[cfg(not(test))]
+impl FutureId {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+  pub fn from_label(
+    label: crate::ir::FutureLabel,
+    unique_id: u64,
+  ) -> Self {
+    Self(format!("{}_{}", label.0, unique_id))
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
