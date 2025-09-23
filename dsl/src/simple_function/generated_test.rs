@@ -4,7 +4,7 @@ use crate::simple_function::task::*;
 
 #[test]
 fn add_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"));
+  let mut some_t = Fiber::new(FiberType::new("global"), 1);
   some_t.load_task("add", vec![Value::U64(4), Value::U64(8)], None);
   let result = some_t.run();
 
@@ -13,7 +13,7 @@ fn add_function() {
 
 #[test]
 fn sub_add_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"));
+  let mut some_t = Fiber::new(FiberType::new("global"), 1);
   some_t.load_task("subAdd", vec![Value::U64(6), Value::U64(5), Value::U64(4)], None);
   let result = some_t.run();
 
@@ -22,7 +22,7 @@ fn sub_add_function() {
 
 #[test]
 fn factorial_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"));
+  let mut some_t = Fiber::new(FiberType::new("global"), 1);
   some_t.load_task("factorial", vec![Value::U64(3)], None);
   let result = some_t.run();
 
@@ -37,7 +37,7 @@ fn b_search_function() {
   let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, application: ApplicationHeap {} };
 
   // initialize heap for this fiber before loading the task
-  let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap);
+  let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap, 1);
 
   some_t.load_task("binary_search", vec![Value::U64(4), Value::U64(0), Value::U64(elements_len - 1)], None);
   let result = some_t.run();

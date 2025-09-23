@@ -1,7 +1,24 @@
-use crate::{
-  ir::{FiberType, Func, FutureId, LogicalTimeAbsoluteMs},
-  simple_function::generated::*,
-};
+use crate::{ir::{FiberType, Func, LogicalTimeAbsoluteMs}, simple_function::generated::*};
+
+// Runtime FutureId lives in tests; provide compatible type for non-test builds,
+// and alias to test module when running under tests.
+#[cfg(test)]
+pub type FutureId = crate::simple_function::active_tasks_test::FutureId;
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FutureId(pub String);
+#[cfg(not(test))]
+impl FutureId {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+  pub fn from_label(
+    label: crate::ir::FutureLabel,
+    unique_id: u64,
+  ) -> Self {
+    Self(format!("{}_{}", label.0, unique_id))
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
@@ -12,6 +29,7 @@ pub struct Fiber {
   function_key: String,
 
   pub f_type: FiberType,
+  pub unique_id: u64,
   pub options: Options,
 }
 
@@ -49,15 +67,26 @@ impl std::fmt::Display for Fiber {
 
 impl Fiber {
   // Create an empty fiber with a default heap and no loaded task.
-  pub fn new(f_type: FiberType) -> Fiber {
-    Fiber { f_type, stack: Vec::new(), heap: Heap::default(), function_key: String::new(), options: Options::default() }
+  pub fn new(
+    f_type: FiberType,
+    unique_id: u64,
+  ) -> Fiber {
+    Fiber {
+      f_type,
+      unique_id,
+      stack: Vec::new(),
+      heap: Heap::default(),
+      function_key: String::new(),
+      options: Options::default(),
+    }
   }
 
   pub fn new_with_heap(
     f_type: FiberType,
     heap: Heap,
+    unique_id: u64,
   ) -> Fiber {
-    Fiber { f_type, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options::default() }
+    Fiber { f_type, unique_id, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options::default() }
   }
 
   // load a task into this fiber, clearing the current stack but preserving the heap
@@ -173,16 +202,24 @@ impl Fiber {
         StepResult::Await(future_id, bind_result, next_state) => {
           // Continue at `next_state` after the future resolves
           self.stack.push(StackEntry::State(next_state));
-          return RunResult::Await(FutureId(future_id), bind_result);
+          return RunResult::Await(FutureId::from_label(future_id, self.unique_id), bind_result);
         }
         StepResult::SendToFiber { f_type, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details
           self.stack.push(StackEntry::State(next));
-          return RunResult::AsyncCall { f_type, func, args, future_id: FutureId(future_id) };
+          return RunResult::AsyncCall {
+            f_type,
+            func,
+            args,
+            future_id: FutureId::from_label(future_id, self.unique_id),
+          };
         }
         StepResult::ScheduleTimer { ms, next, future_id } => {
           self.stack.push(StackEntry::State(next));
-          return RunResult::ScheduleTimer { ms: LogicalTimeAbsoluteMs(ms), future_id: FutureId(future_id) };
+          return RunResult::ScheduleTimer {
+            ms: LogicalTimeAbsoluteMs(ms),
+            future_id: FutureId::from_label(future_id, self.unique_id),
+          };
         }
         _ => {}
       }

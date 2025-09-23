@@ -9,10 +9,14 @@ impl StepId {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FutureId(pub String);
+// Note: Runtime `FutureId` moved into runtime modules.
 
-impl FutureId {
+// IR-only identifier to label futures for awaits/links.
+// This is not used by the runtime which works with concrete `FutureId`s.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FutureLabel(pub String);
+
+impl FutureLabel {
   pub fn new(id: impl Into<String>) -> Self {
     Self(id.into())
   }
@@ -92,13 +96,13 @@ pub struct LocalVar(pub &'static str, pub Type);
 
 #[derive(Debug, Clone)]
 pub enum Step {
-  ScheduleTimer { ms: LogicalTimeAbsoluteMs, next: StepId, future_id: FutureId },
+  ScheduleTimer { ms: LogicalTimeAbsoluteMs, next: StepId, future_id: FutureLabel },
   Write { text: Expr, next: StepId },
   // send a message to a fiber (by name) of a specific kind with arguments, then continue
   // doesn't awaits by default. I think that makes sense?
   // but it can be used with await
   // args: (name on the incoming side, variable)
-  SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureId },
+  SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureLabel },
   Await(AwaitSpec),
   Select { arms: Vec<AwaitSpec> },
   // `ret_to` is the continuation step in the caller
@@ -137,7 +141,7 @@ pub enum Opcode {
 pub struct AwaitSpec {
   pub bind: Option<String>,
   pub ret_to: StepId,
-  pub future_id: FutureId,
+  pub future_id: FutureLabel,
 }
 
 #[derive(Debug, Clone)]

@@ -315,7 +315,7 @@ out
                         ("b".to_string(), Expr::Var("b".to_string())),
                       ],
                       next: StepId::new("await"),
-                      future_id: FutureId::new("async_add_future_1"),
+                      future_id: FutureLabel::new("async_add_future_1"),
                     },
                   ),
                   (
@@ -323,7 +323,7 @@ out
                     Step::Await(AwaitSpec {
                       bind: Some("sum".to_string()),
                       ret_to: StepId::new("return"),
-                      future_id: FutureId::new("async_add_future_1"),
+                      future_id: FutureLabel::new("async_add_future_1"),
                     }),
                   ),
                   (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
@@ -343,7 +343,7 @@ out
                     Step::ScheduleTimer {
                       ms: LogicalTimeAbsoluteMs(20),
                       next: StepId::new("await"),
-                      future_id: FutureId::new("sleep_and_pow_entry_future"),
+                      future_id: FutureLabel::new("sleep_and_pow_entry_future"),
                     },
                   ),
                   (
@@ -351,7 +351,7 @@ out
                     Step::Await(AwaitSpec {
                       bind: None,
                       ret_to: StepId::new("calc"),
-                      future_id: FutureId::new("sleep_and_pow_entry_future"),
+                      future_id: FutureLabel::new("sleep_and_pow_entry_future"),
                     }),
                   ),
                   (

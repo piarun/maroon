@@ -1,9 +1,6 @@
 use crate::simple_function::generated::*;
 use crate::simple_function::ir::sample_ir;
-use crate::{
-  ir::{FiberType, FutureId, IR, LogicalTimeAbsoluteMs},
-  simple_function::{generated::Heap, task::*},
-};
+use crate::{ir::{FiberType, IR, LogicalTimeAbsoluteMs}, simple_function::{generated::Heap, task::*}};
 use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
@@ -15,6 +12,23 @@ use std::{
 pub trait Timer: Send + Sync + 'static {
   fn from_start(&self) -> LogicalTimeAbsoluteMs;
   fn monotonic_now_system(&self) -> std::time::SystemTime;
+}
+
+// Runtime-only Future identifier. Unique per-fiber using suffixing policy.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FutureId(pub String);
+
+impl FutureId {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+
+  pub fn from_label(
+    label: crate::ir::FutureLabel,
+    unique_id: u64,
+  ) -> Self {
+    Self(format!("{}_{}", label.0, unique_id))
+  }
 }
 
 pub struct MonotonicTimer {
@@ -137,6 +151,9 @@ struct Runtime<T: Timer> {
   results: HashMap<u64, Value>,
 
   timer: T,
+
+  // monotonically increasing id for newly created fibers
+  next_fiber_id: u64,
 }
 
 struct FiberBox {
@@ -169,6 +186,7 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: HashMap::new(),
       results: HashMap::new(),
       timer: timer,
+      next_fiber_id: 1,
     }
   }
 
@@ -196,7 +214,9 @@ impl<T: Timer> Runtime<T> {
     }
 
     *limit -= 1;
-    return Some(Fiber::new(f_type.clone()));
+    let id = self.next_fiber_id;
+    self.next_fiber_id += 1;
+    return Some(Fiber::new(f_type.clone(), id));
   }
 
   pub fn run(&mut self) {
@@ -380,4 +400,31 @@ fn sleep_test() {
   rt.run();
 
   assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
+}
+
+#[test]
+fn multiple_await() {
+  let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+
+  rt.next_batch(
+    LogicalTimeAbsoluteMs(10),
+    VecDeque::from([
+      TaskBlueprint {
+        global_id: 9,
+        fiber_type: FiberType::new("application"),
+        function_key: "sleep_and_pow".to_string(),
+        init_values: vec![Value::U64(2), Value::U64(4)],
+      },
+      TaskBlueprint {
+        global_id: 10,
+        fiber_type: FiberType::new("application"),
+        function_key: "sleep_and_pow".to_string(),
+        init_values: vec![Value::U64(2), Value::U64(8)],
+      },
+    ]),
+  );
+
+  rt.run();
+
+  assert_eq!(HashMap::from([(9, Value::U64(16)), (10, Value::U64(256))]), rt.results);
 }
