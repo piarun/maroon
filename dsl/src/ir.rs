@@ -70,6 +70,9 @@ pub struct Func {
   pub steps: Vec<(StepId, Step)>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LogicalTimeAbsoluteMs(pub u64);
+
 #[derive(Debug, Clone)]
 pub struct InVar(pub &'static str, pub Type);
 
