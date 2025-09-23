@@ -228,7 +228,7 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  Sleep(u64, State),
+  ScheduleTimer{ ms: u64, next: State, future_id: String },
   Write(String, State),
   GoTo(State),
   Branch { then_: State, else_: State },
@@ -238,6 +238,7 @@ pub enum StepResult {
   ReturnVoid,
   Todo(String),
   // Await a future: (future_id, bind_var, next_state)
+  // TODO: make bind_var optional
   Await(String, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
@@ -715,7 +716,7 @@ fn generate_global_step(ir: &IR) -> String {
           // Collect referenced vars for this entry step
           let mut referenced: BTreeSet<String> = BTreeSet::new();
           match entry_step {
-            Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+            Step::ScheduleTimer { .. } => {}
             Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
@@ -761,10 +762,12 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           match entry_step {
-            Step::Sleep { ms, next } => {
+            Step::ScheduleTimer { ms, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              let ms_code = render_expr_code(&ms, func);
-              out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
+              out.push_str(&format!(
+                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: \"{}\".to_string() }}\n",
+                ms.0, next_v, future_id.0
+              ));
             }
             Step::Write { text, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -993,7 +996,7 @@ fn generate_global_step(ir: &IR) -> String {
         }
         let mut referenced: BTreeSet<String> = BTreeSet::new();
         match step {
-          Step::Sleep { ms, .. } => collect_vars_from_expr(&ms, &mut referenced),
+          Step::ScheduleTimer { .. } => {}
           Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
@@ -1042,10 +1045,12 @@ fn generate_global_step(ir: &IR) -> String {
           }
         }
         match step {
-          Step::Sleep { ms, next } => {
+          Step::ScheduleTimer { ms, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            let ms_code = render_expr_code(&ms, func);
-            out.push_str(&format!("      StepResult::Sleep({}, State::{})\n", ms_code, next_v));
+            out.push_str(&format!(
+              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: \"{}\".to_string() }}\n",
+              ms.0, next_v, future_id.0
+            ));
           }
           Step::Write { text, next } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1053,17 +1058,17 @@ fn generate_global_step(ir: &IR) -> String {
             out
               .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
           }
-            Step::SendToFiber { fiber, message, args, next, future_id } => {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
-                let mut arg_elems: Vec<String> = Vec::new();
-                for (aname, aexpr) in args.iter() {
-                  if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
-                    let vname = type_variant_name(&param.1);
-                    let expr_code = render_expr_code(aexpr, func);
-                    arg_elems.push(format!("Value::{}({})", vname, expr_code));
-                  }
+          Step::SendToFiber { fiber, message, args, next, future_id } => {
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+            if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
+              let mut arg_elems: Vec<String> = Vec::new();
+              for (aname, aexpr) in args.iter() {
+                if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
+                  let vname = type_variant_name(&param.1);
+                  let expr_code = render_expr_code(aexpr, func);
+                  arg_elems.push(format!("Value::{}({})", vname, expr_code));
                 }
+              }
               out.push_str("      StepResult::SendToFiber { f_type: crate::ir::FiberType::new(\"");
               out.push_str(fiber);
               out.push_str("\"), func: \"");
@@ -1075,10 +1080,10 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(", future_id: \"");
               out.push_str(&future_id.0);
               out.push_str("\".to_string() }\n");
-              } else {
-                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-              }
+            } else {
+              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
             }
+          }
           Step::Await(spec) => {
             // Pause current task until future resolves; push continuation state on stack when resuming.
             let bind_name = spec.bind.clone().unwrap_or("_".to_string());

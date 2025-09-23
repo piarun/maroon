@@ -30,6 +30,9 @@ pub enum State {
   ApplicationAsyncFooAwait,
   ApplicationAsyncFooEntry,
   ApplicationAsyncFooReturn,
+  ApplicationSleepAndPowAwait,
+  ApplicationSleepAndPowCalc,
+  ApplicationSleepAndPowEntry,
   GlobalAddEntry,
   GlobalBinarySearchCalculateDiv,
   GlobalBinarySearchCmpLess,
@@ -77,7 +80,7 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  Sleep(u64, State),
+  ScheduleTimer { ms: u64, next: State, future_id: String },
   Write(String, State),
   GoTo(State),
   Branch { then_: State, else_: State },
@@ -87,6 +90,7 @@ pub enum StepResult {
   ReturnVoid,
   Todo(String),
   // Await a future: (future_id, bind_var, next_state)
+  // TODO: make bind_var optional
   Await(String, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
@@ -97,6 +101,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::ApplicationAsyncFooAwait => 3,
     State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooReturn => 3,
+    State::ApplicationSleepAndPowEntry => 3,
+    State::ApplicationSleepAndPowAwait => 3,
+    State::ApplicationSleepAndPowCalc => 3,
+    State::ApplicationSleepAndPowEntry => 3,
     State::GlobalAddEntry => 3,
     State::GlobalAddEntry => 3,
     State::GlobalBinarySearchEntry => 6,
@@ -157,6 +165,27 @@ pub fn global_step(
     State::ApplicationAsyncFooReturn => {
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(sum))
+    }
+    State::ApplicationSleepAndPowEntry => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::ScheduleTimer {
+        ms: 20u64,
+        next: State::ApplicationSleepAndPowAwait,
+        future_id: "sleep_and_pow_entry_future".to_string(),
+      }
+    }
+    State::ApplicationSleepAndPowAwait => {
+      StepResult::Await("sleep_and_pow_entry_future".to_string(), "_".to_string(), State::ApplicationSleepAndPowCalc)
+    }
+    State::ApplicationSleepAndPowCalc => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let pow: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      {
+        let out = { a.pow(b as u32) };
+        StepResult::Return(Value::U64(out))
+      }
     }
     State::GlobalAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -425,6 +454,41 @@ fn application_result_asyncFoo_value(stack: &[StackEntry]) -> Value {
   Value::U64(application_result_asyncFoo(stack))
 }
 
+pub fn application_prepare_sleepAndPow(
+  a: u64,
+  b: u64,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("pow".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::ApplicationSleepAndPowEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn application_result_sleepAndPow(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn application_prepare_sleepAndPow_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let a: u64 =
+    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for application.sleep_and_pow") };
+  let b: u64 =
+    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for application.sleep_and_pow") };
+  let (stack, _heap) = application_prepare_sleepAndPow(a, b);
+  stack
+}
+
+fn application_result_sleepAndPow_value(stack: &[StackEntry]) -> Value {
+  Value::U64(application_result_sleepAndPow(stack))
+}
+
 pub fn global_prepare_add(
   a: u64,
   b: u64,
@@ -668,6 +732,7 @@ fn global_result_subAdd_value(stack: &[StackEntry]) -> Value {
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
     "application.async_foo" => application_prepare_asyncFoo_from_values,
+    "application.sleep_and_pow" => application_prepare_sleepAndPow_from_values,
     "global.add" => global_prepare_add_from_values,
     "global.binary_search" => global_prepare_binarySearch_from_values,
     "global.div" => global_prepare_div_from_values,
@@ -682,6 +747,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 pub fn get_result_fn(key: &str) -> ResultFn {
   match key {
     "application.async_foo" => application_result_asyncFoo_value,
+    "application.sleep_and_pow" => application_result_sleepAndPow_value,
     "global.add" => global_result_add_value,
     "global.binary_search" => global_result_binarySearch_value,
     "global.div" => global_result_div_value,

@@ -1,17 +1,58 @@
 use crate::simple_function::generated::*;
 use crate::simple_function::ir::sample_ir;
 use crate::{
-  ir::{FiberType, FutureId, IR},
+  ir::{FiberType, FutureId, IR, LogicalTimeAbsoluteMs},
   simple_function::{generated::Heap, task::*},
 };
 use std::hash::Hash;
+use std::thread::sleep;
+use std::time::Duration;
 use std::{
   collections::{BinaryHeap, HashMap, LinkedList, VecDeque},
   env::var,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LogicalTimeAbsoluteMs(u64);
+pub trait Timer: Send + Sync + 'static {
+  fn from_start(&self) -> LogicalTimeAbsoluteMs;
+  fn monotonic_now_system(&self) -> std::time::SystemTime;
+}
+
+pub struct MonotonicTimer {
+  instant: std::time::Instant,
+  system: std::time::SystemTime,
+}
+
+impl MonotonicTimer {
+  pub fn new() -> MonotonicTimer {
+    MonotonicTimer { instant: std::time::Instant::now(), system: std::time::SystemTime::now() }
+  }
+
+  // create a timer that already has `elapsed` time accrued
+  #[cfg(test)]
+  pub fn with_elapsed(elapsed: std::time::Duration) -> Self {
+    let now_instant = std::time::Instant::now();
+    let now_system = std::time::SystemTime::now();
+
+    let instant = now_instant.checked_sub(elapsed).unwrap_or(now_instant);
+    let system = now_system.checked_sub(elapsed).unwrap_or(now_system);
+
+    MonotonicTimer { instant, system }
+  }
+  #[cfg(test)]
+  pub fn with_elapsed_ms(ms: u64) -> Self {
+    MonotonicTimer::with_elapsed(std::time::Duration::from_millis(ms))
+  }
+}
+
+impl Timer for MonotonicTimer {
+  fn from_start(&self) -> LogicalTimeAbsoluteMs {
+    LogicalTimeAbsoluteMs(self.instant.elapsed().as_millis() as u64)
+  }
+
+  fn monotonic_now_system(&self) -> std::time::SystemTime {
+    self.system + self.instant.elapsed()
+  }
+}
 
 #[derive(Debug, Clone)]
 struct TaskBlueprint {
@@ -26,7 +67,41 @@ struct TaskBlueprint {
   init_values: Vec<Value>,
 }
 
-struct Runtime {
+struct ScheduledBlob {
+  when: LogicalTimeAbsoluteMs,
+  what: FutureId,
+}
+
+impl Eq for ScheduledBlob {}
+
+impl Ord for ScheduledBlob {
+  fn cmp(
+    &self,
+    other: &Self,
+  ) -> std::cmp::Ordering {
+    // it will be used in BinaryHeap, so I do this intentionally to not do Reverse() all the time
+    other.when.cmp(&self.when)
+  }
+}
+
+impl PartialEq for ScheduledBlob {
+  fn eq(
+    &self,
+    other: &Self,
+  ) -> bool {
+    self.when == other.when
+  }
+}
+
+impl PartialOrd for ScheduledBlob {
+  fn partial_cmp(
+    &self,
+    other: &Self,
+  ) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+struct Runtime<T: Timer> {
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
   //
@@ -46,6 +121,8 @@ struct Runtime {
   // fibers that have some tasks, but can't be executed because they're awaiting something
   parked_fibers: HashMap<FutureId, FiberBox>,
 
+  scheduled: BinaryHeap<ScheduledBlob>,
+
   // created but idle fibers
   fiber_pool: HashMap<FiberType, Vec<Fiber>>,
 
@@ -58,6 +135,8 @@ struct Runtime {
   // results. key - is global_id from TaskBlueprint
   // TODO: make it `UniqueU64BlobId` from `common` crate
   results: HashMap<u64, Value>,
+
+  timer: T,
 }
 
 struct FiberBox {
@@ -75,16 +154,21 @@ struct FiberInMessage {
   options: Option<Options>,
 }
 
-impl Runtime {
-  pub fn new(ir: IR) -> Runtime {
+impl<T: Timer> Runtime<T> {
+  pub fn new(
+    timer: T,
+    ir: IR,
+  ) -> Runtime<T> {
     Runtime {
       fiber_limiter: ir.fibers.into_iter().map(|fi| (fi.0, fi.1.fibers_limit)).collect(),
       active_fibers: VecDeque::new(),
       active_tasks: LinkedList::new(),
       parked_fibers: HashMap::new(),
+      scheduled: BinaryHeap::new(),
       fiber_pool: HashMap::new(),
       fiber_in_message_queue: HashMap::new(),
       results: HashMap::new(),
+      timer: timer,
     }
   }
 
@@ -122,6 +206,25 @@ impl Runtime {
       if counter > 100 {
         // TODO: just for tests, and for now, actually it should be an infinite loop
         return;
+      }
+
+      let now = self.timer.from_start();
+      while let Some(blob) = self.scheduled.peek() {
+        println!("got from scheduled. Now: {:?} Scheduled: {:?}", now, blob.when);
+        if now < blob.when {
+          break;
+        }
+
+        let blob = self.scheduled.pop().unwrap();
+
+        let Some(task_box) = self.parked_fibers.remove(&blob.what) else {
+          continue;
+        };
+
+        // TODO: make a reverse order of these extracted tasks
+        // because right now I will pick the earliest first
+        // but if there are several tasks that should be executed - the earlist one will be executed the latest
+        self.active_fibers.push_front(task_box.fiber);
       }
 
       while let Some(mut fiber) = self.active_fibers.pop_front() {
@@ -171,6 +274,10 @@ impl Runtime {
             // specify bind parameters here
             self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
           }
+          RunResult::ScheduleTimer { ms, future_id } => {
+            self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
+            self.active_fibers.push_front(fiber);
+          }
         }
       }
 
@@ -181,18 +288,23 @@ impl Runtime {
       //
 
       'process_active_tasks: loop {
-        // TODO: get current logical time
-        let now = LogicalTimeAbsoluteMs(0);
+        let now = self.timer.from_start();
 
         let Some((time_stamp, mut current_queue)) = self.active_tasks.pop_front() else {
-          // TODO: not break but some sleep, if there are no next elements or select or smth
-          println!("nothing in active_tasks");
+          // TODO: a bit smarter sleep, if there are no next elements or select or smth
+          println!("nothing in active_tasks. sleep 5ms");
+          sleep(Duration::from_millis(5));
           break;
         };
 
-        if time_stamp < now {
+        println!("now: {:?}, ts: {:?}", &now, time_stamp);
+
+        if time_stamp > now {
           // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
-          println!("smth in active_tasks, but not now");
+          // but it should be probably not just sleep, but select or smth
+          let sleep_distance = time_stamp.0 - now.0;
+          sleep(Duration::from_millis(sleep_distance));
+          println!("smth in active_tasks, but not now, sleeping {}ms", sleep_distance);
           self.active_tasks.push_front((time_stamp, current_queue));
           break;
         }
@@ -226,7 +338,7 @@ impl Runtime {
 
 #[test]
 fn some_test() {
-  let mut rt = Runtime::new(sample_ir());
+  let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir());
 
   rt.next_batch(
     LogicalTimeAbsoluteMs(10),
@@ -249,4 +361,23 @@ fn some_test() {
   rt.run();
 
   assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
+}
+
+#[test]
+fn sleep_test() {
+  let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+
+  rt.next_batch(
+    LogicalTimeAbsoluteMs(10),
+    VecDeque::from([TaskBlueprint {
+      global_id: 9,
+      fiber_type: FiberType::new("application"),
+      function_key: "sleep_and_pow".to_string(),
+      init_values: vec![Value::U64(2), Value::U64(4)],
+    }]),
+  );
+
+  rt.run();
+
+  assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
 }

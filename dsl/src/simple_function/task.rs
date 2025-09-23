@@ -1,5 +1,5 @@
 use crate::{
-  ir::{FiberType, Func, FutureId},
+  ir::{FiberType, Func, FutureId, LogicalTimeAbsoluteMs},
   simple_function::generated::*,
 };
 
@@ -35,6 +35,7 @@ pub enum RunResult {
   // futureId, varBind
   Await(FutureId, String),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
+  ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
 }
 
 impl std::fmt::Display for Fiber {
@@ -178,6 +179,10 @@ impl Fiber {
           // Continue to `next` and bubble up async call details
           self.stack.push(StackEntry::State(next));
           return RunResult::AsyncCall { f_type, func, args, future_id: FutureId(future_id) };
+        }
+        StepResult::ScheduleTimer { ms, next, future_id } => {
+          self.stack.push(StackEntry::State(next));
+          return RunResult::ScheduleTimer { ms: LogicalTimeAbsoluteMs(ms), future_id: FutureId(future_id) };
         }
         _ => {}
       }

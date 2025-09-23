@@ -70,6 +70,20 @@ pub struct Func {
   pub steps: Vec<(StepId, Step)>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LogicalTimeAbsoluteMs(pub u64);
+
+impl std::ops::Add for LogicalTimeAbsoluteMs {
+  type Output = Self;
+
+  fn add(
+    self,
+    rhs: LogicalTimeAbsoluteMs,
+  ) -> Self {
+    LogicalTimeAbsoluteMs(self.0 + rhs.0)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct InVar(pub &'static str, pub Type);
 
@@ -78,7 +92,7 @@ pub struct LocalVar(pub &'static str, pub Type);
 
 #[derive(Debug, Clone)]
 pub enum Step {
-  Sleep { ms: Expr, next: StepId },
+  ScheduleTimer { ms: LogicalTimeAbsoluteMs, next: StepId, future_id: FutureId },
   Write { text: Expr, next: StepId },
   // send a message to a fiber (by name) of a specific kind with arguments, then continue
   // doesn't awaits by default. I think that makes sense?
