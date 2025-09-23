@@ -80,10 +80,17 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer { ms: u64, next: State, future_id: String },
+  ScheduleTimer {
+    ms: u64,
+    next: State,
+    future_id: crate::ir::FutureLabel,
+  },
   Write(String, State),
   GoTo(State),
-  Branch { then_: State, else_: State },
+  Branch {
+    then_: State,
+    else_: State,
+  },
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
@@ -91,9 +98,15 @@ pub enum StepResult {
   Todo(String),
   // Await a future: (future_id, bind_var, next_state)
   // TODO: make bind_var optional
-  Await(String, String, State),
+  Await(crate::ir::FutureLabel, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
+  SendToFiber {
+    f_type: crate::ir::FiberType,
+    func: String,
+    args: Vec<Value>,
+    next: State,
+    future_id: crate::ir::FutureLabel,
+  },
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
@@ -156,12 +169,14 @@ pub fn global_step(
         func: "add".to_string(),
         args: vec![Value::U64(a), Value::U64(b)],
         next: State::ApplicationAsyncFooAwait,
-        future_id: "async_add_future_1".to_string(),
+        future_id: crate::ir::FutureLabel::new("async_add_future_1"),
       }
     }
-    State::ApplicationAsyncFooAwait => {
-      StepResult::Await("async_add_future_1".to_string(), "sum".to_string(), State::ApplicationAsyncFooReturn)
-    }
+    State::ApplicationAsyncFooAwait => StepResult::Await(
+      crate::ir::FutureLabel::new("async_add_future_1"),
+      "sum".to_string(),
+      State::ApplicationAsyncFooReturn,
+    ),
     State::ApplicationAsyncFooReturn => {
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(sum))
@@ -172,12 +187,14 @@ pub fn global_step(
       StepResult::ScheduleTimer {
         ms: 20u64,
         next: State::ApplicationSleepAndPowAwait,
-        future_id: "sleep_and_pow_entry_future".to_string(),
+        future_id: crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
       }
     }
-    State::ApplicationSleepAndPowAwait => {
-      StepResult::Await("sleep_and_pow_entry_future".to_string(), "_".to_string(), State::ApplicationSleepAndPowCalc)
-    }
+    State::ApplicationSleepAndPowAwait => StepResult::Await(
+      crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
+      "_".to_string(),
+      State::ApplicationSleepAndPowCalc,
+    ),
     State::ApplicationSleepAndPowCalc => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };

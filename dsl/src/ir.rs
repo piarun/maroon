@@ -16,6 +16,14 @@ impl FutureId {
   pub fn new(id: impl Into<String>) -> Self {
     Self(id.into())
   }
+
+  // Construct a runtime FutureId from an IR FutureLabel and a fiber-specific unique id
+  pub fn from_label(
+    label: FutureLabel,
+    unique_id: u64,
+  ) -> Self {
+    Self(format!("{}_{}", label.0, unique_id))
+  }
 }
 
 // IR-only identifier to label futures for awaits/links.

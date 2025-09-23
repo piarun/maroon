@@ -228,7 +228,7 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer{ ms: u64, next: State, future_id: String },
+  ScheduleTimer{ ms: u64, next: State, future_id: crate::ir::FutureLabel },
   Write(String, State),
   GoTo(State),
   Branch { then_: State, else_: State },
@@ -239,9 +239,9 @@ pub enum StepResult {
   Todo(String),
   // Await a future: (future_id, bind_var, next_state)
   // TODO: make bind_var optional
-  Await(String, String, State),
+  Await(crate::ir::FutureLabel, String, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: String },
+  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: crate::ir::FutureLabel },
 }",
   );
 
@@ -765,7 +765,7 @@ fn generate_global_step(ir: &IR) -> String {
             Step::ScheduleTimer { ms, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!(
-                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: \"{}\".to_string() }}\n",
+                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
                 ms.0, next_v, future_id.0
               ));
             }
@@ -797,9 +797,9 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&arg_elems.join(", "));
                 out.push_str("], next: State::");
                 out.push_str(&next_v);
-                out.push_str(", future_id: \"");
+                out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
                 out.push_str(&future_id.0);
-                out.push_str("\".to_string() }\n");
+                out.push_str("\") }\n");
               } else {
                 out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
               }
@@ -809,7 +809,7 @@ fn generate_global_step(ir: &IR) -> String {
               let bind_name = spec.bind.clone().unwrap_or("_".to_string());
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
               out.push_str(&format!(
-                "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
                 spec.future_id.0, bind_name, next_v
               ));
             }
@@ -1048,7 +1048,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::ScheduleTimer { ms, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!(
-              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: \"{}\".to_string() }}\n",
+              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
               ms.0, next_v, future_id.0
             ));
           }
@@ -1077,9 +1077,9 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&arg_elems.join(", "));
               out.push_str("], next: State::");
               out.push_str(&next_v);
-              out.push_str(", future_id: \"");
-              out.push_str(&future_id.0);
-              out.push_str("\".to_string() }\n");
+            out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
+            out.push_str(&future_id.0);
+            out.push_str("\") }\n");
             } else {
               out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
             }
@@ -1089,7 +1089,7 @@ fn generate_global_step(ir: &IR) -> String {
             let bind_name = spec.bind.clone().unwrap_or("_".to_string());
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
             out.push_str(&format!(
-              "      StepResult::Await(\"{}\".to_string(), \"{}\".to_string(), State::{})\n",
+              "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
               spec.future_id.0, bind_name, next_v
             ));
           }
