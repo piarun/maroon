@@ -73,6 +73,17 @@ pub struct Func {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LogicalTimeAbsoluteMs(pub u64);
 
+impl std::ops::Add for LogicalTimeAbsoluteMs {
+  type Output = Self;
+
+  fn add(
+    self,
+    rhs: LogicalTimeAbsoluteMs,
+  ) -> Self {
+    LogicalTimeAbsoluteMs(self.0 + rhs.0)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct InVar(pub &'static str, pub Type);
 

@@ -1,5 +1,5 @@
 use crate::{
-  ir::{FiberType, Func, FutureId},
+  ir::{FiberType, Func, FutureId, LogicalTimeAbsoluteMs},
   simple_function::generated::*,
 };
 
