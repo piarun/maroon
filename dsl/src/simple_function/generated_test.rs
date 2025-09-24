@@ -34,7 +34,7 @@ fn b_search_function() {
   let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
   let elements_len = search_elements.len() as u64;
 
-  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, application: ApplicationHeap {} };
+  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, ..Default::default() };
 
   // initialize heap for this fiber before loading the task
   let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap, 1);
