@@ -1077,9 +1077,9 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&arg_elems.join(", "));
               out.push_str("], next: State::");
               out.push_str(&next_v);
-            out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
-            out.push_str(&future_id.0);
-            out.push_str("\") }\n");
+              out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
+              out.push_str(&future_id.0);
+              out.push_str("\") }\n");
             } else {
               out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
             }

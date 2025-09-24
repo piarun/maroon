@@ -1,4 +1,7 @@
-use crate::{ir::{FiberType, Func, LogicalTimeAbsoluteMs}, simple_function::generated::*};
+use crate::{
+  ir::{FiberType, Func, LogicalTimeAbsoluteMs},
+  simple_function::generated::*,
+};
 
 // Runtime FutureId lives in tests; provide compatible type for non-test builds,
 // and alias to test module when running under tests.
@@ -22,11 +25,11 @@ impl FutureId {
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
-  stack: Vec<StackEntry>,
-  heap: Heap,
+  pub stack: Vec<StackEntry>,
+  pub heap: Heap,
   // holds an information for which function this task was created for
   // used for preparing the stack before run and for getting the result
-  function_key: String,
+  pub function_key: String,
 
   pub f_type: FiberType,
   pub unique_id: u64,
@@ -61,7 +64,7 @@ impl std::fmt::Display for Fiber {
     &self,
     f: &mut std::fmt::Formatter,
   ) -> std::fmt::Result {
-    write!(f, "{}", self.function_key)
+    write!(f, r"{}", self.function_key)
   }
 }
 
@@ -132,7 +135,6 @@ impl Fiber {
   // Runs until finished and gets the resutl or until parked for awaiting async results
   pub fn run(&mut self) -> RunResult {
     loop {
-      self.print_stack("");
       let Some(head) = self.stack.pop() else {
         panic!("no way there will be no elements. Can happen only on empty one")
       };

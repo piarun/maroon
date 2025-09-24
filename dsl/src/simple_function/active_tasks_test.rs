@@ -1,6 +1,9 @@
-use crate::simple_function::generated::*;
 use crate::simple_function::ir::sample_ir;
-use crate::{ir::{FiberType, IR, LogicalTimeAbsoluteMs}, simple_function::{generated::Heap, task::*}};
+use crate::simple_function::{self, generated::*};
+use crate::{
+  ir::{FiberType, IR, LogicalTimeAbsoluteMs},
+  simple_function::{generated::Heap, task::*},
+};
 use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
@@ -17,6 +20,14 @@ pub trait Timer: Send + Sync + 'static {
 // Runtime-only Future identifier. Unique per-fiber using suffixing policy.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FutureId(pub String);
+impl std::fmt::Display for FutureId {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
+    write!(f, "fut{}", self.0)
+  }
+}
 
 impl FutureId {
   pub fn new(id: impl Into<String>) -> Self {
@@ -81,9 +92,18 @@ struct TaskBlueprint {
   init_values: Vec<Value>,
 }
 
+#[derive(Debug)]
 struct ScheduledBlob {
   when: LogicalTimeAbsoluteMs,
   what: FutureId,
+}
+impl std::fmt::Display for ScheduledBlob {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
+    write!(f, "{}@{}", self.when, self.what)
+  }
 }
 
 impl Eq for ScheduledBlob {}
@@ -123,9 +143,10 @@ struct Runtime<T: Timer> {
   // - fiber_in_message_queue
   // - active_tasks
   //
-  // 1. run until there are no active_fibers
-  // 2. take in_message from fiber_in_message_queue, convert it into active_fibers, go to step 1
-  // 3. take taskBlueprint from active_tasks, convert it into active_fibers, go to step 1
+  // 1. run scheduled operations(if there are)
+  // 2. run until there are no active_fibers
+  // 3. take in_message from fiber_in_message_queue, convert it into active_fibers, go to step 1
+  // 4. take taskBlueprint from active_tasks, convert it into active_fibers, go to step 1
 
   // this is the input for the engine, here new tasks from commited epochs will be coming in the commited order
   active_tasks: LinkedList<(LogicalTimeAbsoluteMs, VecDeque<TaskBlueprint>)>,
@@ -141,8 +162,8 @@ struct Runtime<T: Timer> {
   fiber_pool: HashMap<FiberType, Vec<Fiber>>,
 
   // queue for in_messages that will be executed in the order when fiber is available
-  // TODO: this one should have predictable order
-  fiber_in_message_queue: HashMap<FiberType, VecDeque<FiberInMessage>>,
+  // Vec - for predictable order
+  fiber_in_message_queue: Vec<(FiberType, VecDeque<FiberInMessage>)>,
 
   fiber_limiter: HashMap<FiberType, u64>,
 
@@ -164,6 +185,7 @@ struct FiberBox {
   result_var_bind: String,
 }
 
+#[derive(Debug)]
 struct FiberInMessage {
   fiber_type: FiberType,
   function_name: String,
@@ -177,17 +199,60 @@ impl<T: Timer> Runtime<T> {
     ir: IR,
   ) -> Runtime<T> {
     Runtime {
-      fiber_limiter: ir.fibers.into_iter().map(|fi| (fi.0, fi.1.fibers_limit)).collect(),
+      fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
       active_fibers: VecDeque::new(),
       active_tasks: LinkedList::new(),
       parked_fibers: HashMap::new(),
       scheduled: BinaryHeap::new(),
       fiber_pool: HashMap::new(),
-      fiber_in_message_queue: HashMap::new(),
+      fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       results: HashMap::new(),
       timer: timer,
-      next_fiber_id: 1,
+      next_fiber_id: 0,
     }
+  }
+
+  pub fn dump(&self) {
+    println!(
+      r"------STATE---------
+time: {}
+scheduled: 
+{}
+active fibers:
+{}
+in_message queue:
+{}
+fiber_pool:
+{}
+limiter:
+{}
+-----END STATE------",
+      self.timer.from_start(),
+      self.scheduled.iter().map(|s| format!("  t:{} f:{}", s.when, s.what)).collect::<Vec<String>>().join("\n"),
+      self
+        .active_fibers
+        .iter()
+        .map(|s| format!("  {}:{}.{}", s.unique_id, s.f_type, s.function_key))
+        .collect::<Vec<String>>()
+        .join("\n"),
+      self.fiber_in_message_queue.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n"),
+      self.fiber_pool.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n"),
+      self.fiber_limiter.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n")
+    );
+  }
+
+  pub fn push_fiber_in_message(
+    &mut self,
+    _type: &FiberType,
+    msg: FiberInMessage,
+  ) {
+    self
+      .fiber_in_message_queue
+      .iter_mut()
+      .find(|(t, _)| t == _type)
+      .expect("IR initalization was incorrect, all types should be here")
+      .1
+      .push_back(msg);
   }
 
   pub fn next_batch(
@@ -219,9 +284,15 @@ impl<T: Timer> Runtime<T> {
     return Some(Fiber::new(f_type.clone(), id));
   }
 
+  pub fn has_available_fiber(
+    &self,
+    f_type: &FiberType,
+  ) -> bool {
+    !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
+  }
   pub fn run(&mut self) {
     let mut counter = 0;
-    loop {
+    'main_loop: loop {
       counter += 1;
       if counter > 100 {
         // TODO: just for tests, and for now, actually it should be an infinite loop
@@ -229,8 +300,9 @@ impl<T: Timer> Runtime<T> {
       }
 
       let now = self.timer.from_start();
+
+      // take scheduled Fibers and push them to active_fibers if it's time to work on them
       while let Some(blob) = self.scheduled.peek() {
-        println!("got from scheduled. Now: {:?} Scheduled: {:?}", now, blob.when);
         if now < blob.when {
           break;
         }
@@ -247,6 +319,7 @@ impl<T: Timer> Runtime<T> {
         self.active_fibers.push_front(task_box.fiber);
       }
 
+      // work on active fibers(state-machine iterations moves)
       while let Some(mut fiber) = self.active_fibers.pop_front() {
         match fiber.run() {
           RunResult::Done(result) => {
@@ -271,26 +344,25 @@ impl<T: Timer> Runtime<T> {
             self.active_fibers.push_front(task_box.fiber);
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {
-            println!("ASYNC CALL: {:?}", &future_id);
-
             if let Some(mut available_fiber) = self.get_fiber(&f_type) {
               available_fiber.load_task(func, args, Some(Options { future_id: Some(future_id), global_id: None }));
               // TODO: in that case when task will be finished with work - asynced available_fiber will be taken for execution
               self.active_fibers.push_front(available_fiber);
             } else {
-              self.fiber_in_message_queue.entry(f_type.clone()).or_default().push_back(FiberInMessage {
-                fiber_type: f_type,
-                function_name: func,
-                args,
-                options: Some(Options { future_id: Some(future_id), global_id: None }),
-              });
+              self.push_fiber_in_message(
+                &f_type,
+                FiberInMessage {
+                  fiber_type: f_type.clone(),
+                  function_name: func,
+                  args,
+                  options: Some(Options { future_id: Some(future_id), global_id: None }),
+                },
+              );
             }
 
             self.active_fibers.push_front(fiber);
           }
           RunResult::Await(future_id, var_bind) => {
-            println!("AWAIT: {:?}", &future_id);
-
             // specify bind parameters here
             self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
           }
@@ -301,11 +373,25 @@ impl<T: Timer> Runtime<T> {
         }
       }
 
-      // TODO: get tasks from fiber_in_message_queue and convert them into active_fibers
+      // get in_message and put it into available Fiber(if there is one)
+      // here I don't put all of them into work, but pick the first one and immediately start execution
+      let to_push: Option<(FiberType, usize)> =
+        self.fiber_in_message_queue.iter().enumerate().find_map(|(index, (f_type, in_msg_queue))| {
+          if !in_msg_queue.is_empty() && self.has_available_fiber(f_type) {
+            Some((f_type.clone(), index))
+          } else {
+            None
+          }
+        });
 
-      // NEXT_STEP_2:
-      // if all fibers are finished or awaiting, we can pick the next task and start a new fiber
-      //
+      // I'm doing this in two steps because of borrow protection, I can't iter_mut and (mut self).get_fiber() inside, so I'm finding the index first, and the mutating
+      if let Some((f_type, index)) = to_push {
+        let msg = self.fiber_in_message_queue.get_mut(index).expect("checked").1.pop_front().expect("checked");
+        let mut available_fiber = self.get_fiber(&f_type).expect("checked before");
+        available_fiber.load_task(msg.function_name, msg.args, msg.options);
+        self.active_fibers.push_front(available_fiber);
+        continue 'main_loop;
+      };
 
       'process_active_tasks: loop {
         let now = self.timer.from_start();
@@ -316,8 +402,6 @@ impl<T: Timer> Runtime<T> {
           sleep(Duration::from_millis(5));
           break;
         };
-
-        println!("now: {:?}, ts: {:?}", &now, time_stamp);
 
         if time_stamp > now {
           // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
@@ -343,12 +427,16 @@ impl<T: Timer> Runtime<T> {
             }
             break 'process_active_tasks;
           } else {
-            self.fiber_in_message_queue.entry(blueprint.fiber_type.clone()).or_default().push_back(FiberInMessage {
-              fiber_type: blueprint.fiber_type,
-              function_name: blueprint.function_key,
-              args: blueprint.init_values,
-              options: Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
-            });
+            let ftype = blueprint.fiber_type.clone();
+            self.push_fiber_in_message(
+              &ftype,
+              FiberInMessage {
+                fiber_type: ftype.clone(),
+                function_name: blueprint.function_key,
+                args: blueprint.init_values,
+                options: Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
+              },
+            );
           }
         }
       }
@@ -406,6 +494,9 @@ fn sleep_test() {
 fn multiple_await() {
   let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
 
+  // Cases to cover:
+  // - many awaiting fibers of the same function
+  // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
   rt.next_batch(
     LogicalTimeAbsoluteMs(10),
     VecDeque::from([
@@ -421,10 +512,37 @@ fn multiple_await() {
         function_key: "sleep_and_pow".to_string(),
         init_values: vec![Value::U64(2), Value::U64(8)],
       },
+      TaskBlueprint {
+        global_id: 11,
+        fiber_type: FiberType::new("application"),
+        function_key: "sleep_and_pow".to_string(),
+        init_values: vec![Value::U64(2), Value::U64(7)],
+      },
+      TaskBlueprint {
+        global_id: 12,
+        fiber_type: FiberType::new("application"),
+        function_key: "sleep_and_pow".to_string(),
+        init_values: vec![Value::U64(2), Value::U64(7)],
+      },
+      TaskBlueprint {
+        global_id: 13,
+        fiber_type: FiberType::new("application"),
+        function_key: "sleep_and_pow".to_string(),
+        init_values: vec![Value::U64(2), Value::U64(7)],
+      },
     ]),
   );
 
   rt.run();
 
-  assert_eq!(HashMap::from([(9, Value::U64(16)), (10, Value::U64(256))]), rt.results);
+  assert_eq!(
+    HashMap::from([
+      (9, Value::U64(16)),
+      (10, Value::U64(256)),
+      (11, Value::U64(128)),
+      (12, Value::U64(128)),
+      (13, Value::U64(128))
+    ]),
+    rt.results
+  );
 }
