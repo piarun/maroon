@@ -237,9 +237,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, bind_var, next_state)
-  // TODO: make bind_var optional
-  Await(crate::ir::FutureLabel, String, State),
+  // Await a future: (future_id, optional bind_var, next_state)
+  Await(crate::ir::FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: crate::ir::FutureLabel },
 }",
@@ -585,19 +584,6 @@ fn find_func<'a>(
   ir.fibers.get(fiber).and_then(|f| f.funcs.get(func))
 }
 
-fn heap_array_elem_type<'a>(
-  ir: &'a IR,
-  fiber: &str,
-  array: &str,
-) -> Option<&'a Type> {
-  let fib = ir.fibers.get(fiber)?;
-  let t = fib.heap.get(array)?;
-  match t {
-    Type::Array(inner) => Some(inner.as_ref()),
-    _ => None,
-  }
-}
-
 // Generate a function that returns how many Value entries are expected to be
 // located for function. So it shows the stack deep only for XXXEntry steps
 // The count is computed as:
@@ -642,6 +628,10 @@ pub fn func_args_count(e: &State) -> usize {
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
       for (step_id, _) in steps_sorted {
+        // Skip entry here since it's already added explicitly above
+        if step_id.0 == func.entry.0 {
+          continue;
+        }
         if !suppressed.contains(&step_id.0) {
           let v = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
           out.push_str(&format!("    State::{} => {},\n", v, n));
@@ -734,7 +724,6 @@ fn generate_global_step(ir: &IR) -> String {
             Step::ReturnVoid => {}
             Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
             Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
-            Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
             Step::RustBlock { .. } => {
               for p in &func.in_vars {
                 referenced.insert(p.0.to_string());
@@ -806,12 +795,17 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::Await(spec) => {
               // Pause current task until future resolves; push continuation state on stack when resuming.
-              let bind_name = spec.bind.clone().unwrap_or("_".to_string());
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-              out.push_str(&format!(
-                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
-                spec.future_id.0, bind_name, next_v
-              ));
+              match &spec.bind {
+                Some(name) => out.push_str(&format!(
+                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                  spec.future_id.0, name, next_v
+                )),
+                None => out.push_str(&format!(
+                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                  spec.future_id.0, next_v
+                )),
+              }
             }
             Step::Select { arms } => {
               let mut arm_states: Vec<String> = Vec::new();
@@ -857,56 +851,6 @@ fn generate_global_step(ir: &IR) -> String {
               ));
               out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
               out.push_str("      ])\n");
-            }
-            Step::HeapGetIndex { array, index, bind, next } => {
-              // Update existing local `bind` in-place via Return-binding (no new stack vars)
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              let idx_code = render_expr_code(&index, func);
-              let heap_field_fiber = camel_ident(&fiber_name.0);
-              let heap_field = camel_ident(array);
-              let ety = heap_array_elem_type(ir, fiber_name.0.as_str(), array).expect("heap array type not found");
-
-              // Compute offset to the bind variable within the current frame
-              let params_len = func.in_vars.len();
-              let locals_len = func.locals.len();
-              let total_vars = params_len + locals_len;
-              let var_index = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bind.as_str()) {
-                Some(pi)
-              } else if let Some(li) = func.locals.iter().position(|l| l.0 == bind.as_str()) {
-                Some(params_len + li)
-              } else {
-                None
-              };
-              let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
-
-              match ety {
-                Type::UInt64 => {
-                  // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)), with proper callee locals
-                  let add_entry = variant_name(&["global", "add", "entry"]);
-                  out.push_str("      StepResult::Next(vec![\n");
-                  out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                  out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
-                  out.push_str(&format!(
-                    "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
-                    heap_field_fiber, heap_field, idx_code
-                  ));
-                  out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
-                  out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
-                  out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
-                  out.push_str("      ])\n");
-                }
-                _ => {
-                  // Directly stage the read value into the local `bind` (non-u64)
-                  let vname = type_variant_name(ety);
-                  out.push_str("      StepResult::Next(vec![\n");
-                  out.push_str(&format!(
-                    "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
-                    bind, vname, heap_field_fiber, heap_field, idx_code
-                  ));
-                  out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                  out.push_str("      ])\n");
-                }
-              }
             }
             Step::RustBlock { binds, next, code: rcode } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1014,7 +958,6 @@ fn generate_global_step(ir: &IR) -> String {
           Step::ReturnVoid => {}
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
-          Step::HeapGetIndex { index, .. } => collect_vars_from_expr(&index, &mut referenced),
           Step::RustBlock { .. } => {
             for p in &func.in_vars {
               referenced.insert(p.0.to_string());
@@ -1086,12 +1029,17 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::Await(spec) => {
             // Pause current task until future resolves; push continuation state on stack when resuming.
-            let bind_name = spec.bind.clone().unwrap_or("_".to_string());
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-            out.push_str(&format!(
-              "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), \"{}\".to_string(), State::{})\n",
-              spec.future_id.0, bind_name, next_v
-            ));
+            match &spec.bind {
+              Some(name) => out.push_str(&format!(
+                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                spec.future_id.0, name, next_v
+              )),
+              None => out.push_str(&format!(
+                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                spec.future_id.0, next_v
+              )),
+            }
           }
           Step::Select { arms } => {
             let mut arm_states: Vec<String> = Vec::new();
@@ -1136,56 +1084,6 @@ fn generate_global_step(ir: &IR) -> String {
             ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
-          }
-          Step::HeapGetIndex { array, index, bind, next } => {
-            // Update existing local `bind` in-place via Return-binding (no new stack vars)
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            let idx_code = render_expr_code(&index, func);
-            let heap_field_fiber = camel_ident(&fiber_name.0);
-            let heap_field = camel_ident(array);
-            let ety = heap_array_elem_type(ir, fiber_name.0.as_str(), array).expect("heap array type not found");
-
-            // Compute offset to the bind variable within the current frame
-            let params_len = func.in_vars.len();
-            let locals_len = func.locals.len();
-            let total_vars = params_len + locals_len;
-            let var_index = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bind.as_str()) {
-              Some(pi)
-            } else if let Some(li) = func.locals.iter().position(|l| l.0 == bind.as_str()) {
-              Some(params_len + li)
-            } else {
-              None
-            };
-            let bind_offset = if let Some(var_ind) = var_index { (total_vars + 1) - var_ind } else { 0 };
-
-            match ety {
-              Type::UInt64 => {
-                // Use global::add(a, 0) to propagate value via Return + Retrn(Some(offset)) with callee locals
-                let add_entry = variant_name(&["global", "add", "entry"]);
-                out.push_str("      StepResult::Next(vec![\n");
-                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                out.push_str(&format!("        StackEntry::Retrn(Some({})),\n", bind_offset));
-                out.push_str(&format!(
-                  "        StackEntry::Value(\"a\".to_string(), Value::U64(heap.{}.{}[({} as usize)].clone())),\n",
-                  heap_field_fiber, heap_field, idx_code
-                ));
-                out.push_str("        StackEntry::Value(\"b\".to_string(), Value::U64(0u64)),\n");
-                out.push_str("        StackEntry::Value(\"sum\".to_string(), Value::U64(0u64)),\n");
-                out.push_str(&format!("        StackEntry::State(State::{}),\n", add_entry));
-                out.push_str("      ])\n");
-              }
-              _ => {
-                // Fallback to previous behavior for non-u64 (can be extended later)
-                let vname = type_variant_name(ety);
-                out.push_str("      StepResult::Next(vec![\n");
-                out.push_str(&format!(
-                  "        StackEntry::Value(\"{}\".to_string(), Value::{}(heap.{}.{}[({} as usize)].clone())),\n",
-                  bind, vname, heap_field_fiber, heap_field, idx_code
-                ));
-                out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
-                out.push_str("      ])\n");
-              }
-            }
           }
           Step::RustBlock { binds, next, code: rcode } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);

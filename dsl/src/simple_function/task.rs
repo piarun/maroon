@@ -33,13 +33,11 @@ pub struct Fiber {
 
   pub f_type: FiberType,
   pub unique_id: u64,
-  pub options: Options,
+  pub context: RunContext,
 }
 
-// TODO: don't like this name
-// In reality it's not really options. It's more like a context for executing a particular piece of work
 #[derive(Clone, Debug, Default)]
-pub struct Options {
+pub struct RunContext {
   // not None if there is binded task that is awaiting finishing this future_id
   // TODO: not sure it's a good way to put that kind of information inside the task
   //    why task should know if it's binded to smth or not?
@@ -54,7 +52,7 @@ pub struct Options {
 pub enum RunResult {
   Done(Value),
   // futureId, varBind
-  Await(FutureId, String),
+  Await(FutureId, Option<String>),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
 }
@@ -80,7 +78,7 @@ impl Fiber {
       stack: Vec::new(),
       heap: Heap::default(),
       function_key: String::new(),
-      options: Options::default(),
+      context: RunContext::default(),
     }
   }
 
@@ -89,7 +87,14 @@ impl Fiber {
     heap: Heap,
     unique_id: u64,
   ) -> Fiber {
-    Fiber { f_type, unique_id, stack: Vec::new(), heap: heap, function_key: String::new(), options: Options::default() }
+    Fiber {
+      f_type,
+      unique_id,
+      stack: Vec::new(),
+      heap: heap,
+      function_key: String::new(),
+      context: RunContext::default(),
+    }
   }
 
   // load a task into this fiber, clearing the current stack but preserving the heap
@@ -98,13 +103,13 @@ impl Fiber {
     &mut self,
     func_name: impl Into<String>,
     init_values: Vec<Value>,
-    options: Option<Options>,
+    context: Option<RunContext>,
   ) {
     self.stack.clear();
     self.function_key = format!("{}.{}", self.f_type, func_name.into());
     let f = get_prepare_fn(self.function_key.as_str());
     self.stack = f(init_values);
-    self.options = options.unwrap_or_default();
+    self.context = context.unwrap_or_default();
   }
 
   pub fn print_stack(

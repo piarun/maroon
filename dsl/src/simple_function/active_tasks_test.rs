@@ -182,7 +182,7 @@ struct FiberBox {
 
   // information to which variable on stack we should bind the result for the `fiber`
   // is used when fiber is parked and awaits some result
-  result_var_bind: String,
+  result_var_bind: Option<String>,
 }
 
 #[derive(Debug)]
@@ -190,7 +190,7 @@ struct FiberInMessage {
   fiber_type: FiberType,
   function_name: String,
   args: Vec<Value>,
-  options: Option<Options>,
+  context: Option<RunContext>,
 }
 
 impl<T: Timer> Runtime<T> {
@@ -325,7 +325,7 @@ limiter:
           RunResult::Done(result) => {
             println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 
-            let options = fiber.options.clone();
+            let options = fiber.context.clone();
             // TODO: when fiber type won't be a string - remove this clone
             self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
 
@@ -340,12 +340,14 @@ limiter:
               continue;
             };
 
-            task_box.fiber.assign_local(task_box.result_var_bind, result);
+            if let Some(var) = task_box.result_var_bind {
+              task_box.fiber.assign_local(var, result);
+            }
             self.active_fibers.push_front(task_box.fiber);
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {
             if let Some(mut available_fiber) = self.get_fiber(&f_type) {
-              available_fiber.load_task(func, args, Some(Options { future_id: Some(future_id), global_id: None }));
+              available_fiber.load_task(func, args, Some(RunContext { future_id: Some(future_id), global_id: None }));
               // TODO: in that case when task will be finished with work - asynced available_fiber will be taken for execution
               self.active_fibers.push_front(available_fiber);
             } else {
@@ -355,7 +357,7 @@ limiter:
                   fiber_type: f_type.clone(),
                   function_name: func,
                   args,
-                  options: Some(Options { future_id: Some(future_id), global_id: None }),
+                  context: Some(RunContext { future_id: Some(future_id), global_id: None }),
                 },
               );
             }
@@ -388,7 +390,7 @@ limiter:
       if let Some((f_type, index)) = to_push {
         let msg = self.fiber_in_message_queue.get_mut(index).expect("checked").1.pop_front().expect("checked");
         let mut available_fiber = self.get_fiber(&f_type).expect("checked before");
-        available_fiber.load_task(msg.function_name, msg.args, msg.options);
+        available_fiber.load_task(msg.function_name, msg.args, msg.context);
         self.active_fibers.push_front(available_fiber);
         continue 'main_loop;
       };
@@ -418,7 +420,7 @@ limiter:
             fiber.load_task(
               blueprint.function_key,
               blueprint.init_values,
-              Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
+              Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
             );
             self.active_fibers.push_back(fiber);
 
@@ -434,7 +436,7 @@ limiter:
                 fiber_type: ftype.clone(),
                 function_name: blueprint.function_key,
                 args: blueprint.init_values,
-                options: Some(Options { future_id: None, global_id: Some(blueprint.global_id) }),
+                context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
               },
             );
           }

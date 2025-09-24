@@ -96,9 +96,8 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, bind_var, next_state)
-  // TODO: make bind_var optional
-  Await(crate::ir::FutureLabel, String, State),
+  // Await a future: (future_id, optional bind_var, next_state)
+  Await(crate::ir::FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber {
     f_type: crate::ir::FiberType,
@@ -112,18 +111,14 @@ pub fn func_args_count(e: &State) -> usize {
   match e {
     State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooAwait => 3,
-    State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooReturn => 3,
     State::ApplicationSleepAndPowEntry => 3,
     State::ApplicationSleepAndPowAwait => 3,
     State::ApplicationSleepAndPowCalc => 3,
-    State::ApplicationSleepAndPowEntry => 3,
-    State::GlobalAddEntry => 3,
     State::GlobalAddEntry => 3,
     State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchCalculateDiv => 6,
     State::GlobalBinarySearchCmpLess => 6,
-    State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchGoLeft => 6,
     State::GlobalBinarySearchGoLeftCheckOverflow => 6,
     State::GlobalBinarySearchGoRight => 6,
@@ -133,8 +128,6 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalBinarySearchReturnIfEqual => 6,
     State::GlobalBinarySearchReturnResult => 6,
     State::GlobalDivEntry => 3,
-    State::GlobalDivEntry => 3,
-    State::GlobalFactorialEntry => 4,
     State::GlobalFactorialEntry => 4,
     State::GlobalFactorialFactorialCall => 4,
     State::GlobalFactorialMultiply => 4,
@@ -142,10 +135,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalFactorialReturn1 => 4,
     State::GlobalFactorialSubtract => 4,
     State::GlobalMultEntry => 3,
-    State::GlobalMultEntry => 3,
     State::GlobalSubEntry => 3,
-    State::GlobalSubEntry => 3,
-    State::GlobalSubAddEntry => 5,
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
@@ -174,7 +164,7 @@ pub fn global_step(
     }
     State::ApplicationAsyncFooAwait => StepResult::Await(
       crate::ir::FutureLabel::new("async_add_future_1"),
-      "sum".to_string(),
+      Some("sum".to_string()),
       State::ApplicationAsyncFooReturn,
     ),
     State::ApplicationAsyncFooReturn => {
@@ -192,7 +182,7 @@ pub fn global_step(
     }
     State::ApplicationSleepAndPowAwait => StepResult::Await(
       crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
-      "_".to_string(),
+      None,
       State::ApplicationSleepAndPowCalc,
     ),
     State::ApplicationSleepAndPowCalc => {
