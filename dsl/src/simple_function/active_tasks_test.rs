@@ -548,3 +548,62 @@ fn multiple_await() {
     rt.results
   );
 }
+
+#[test]
+fn messenger() {
+  let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+
+  rt.next_batch(
+    LogicalTimeAbsoluteMs(10),
+    VecDeque::from([
+      TaskBlueprint {
+        global_id: 0,
+        fiber_type: FiberType::new("message_store"),
+        function_key: "send".to_string(),
+        init_values: vec![
+          Value::String("alice_id_1".to_string()),
+          Value::Message(Message { text: "hi Alice from charlie".to_string(), sender: "charlie_id_1".to_string() }),
+        ],
+      },
+      TaskBlueprint {
+        global_id: 1005,
+        fiber_type: FiberType::new("message_store"),
+        function_key: "get_all_for_user".to_string(),
+        init_values: vec![Value::String("bob_id_1".to_string())],
+      },
+      TaskBlueprint {
+        global_id: 100,
+        fiber_type: FiberType::new("message_store"),
+        function_key: "get_all_for_user".to_string(),
+        init_values: vec![Value::String("alice_id_1".to_string())],
+      },
+      TaskBlueprint {
+        global_id: 2,
+        fiber_type: FiberType::new("message_store"),
+        function_key: "send".to_string(),
+        init_values: vec![
+          Value::String("alice_id_1".to_string()),
+          Value::Message(Message { text: "hi Alice".to_string(), sender: "bob_id_1".to_string() }),
+        ],
+      },
+    ]),
+  );
+
+  rt.run();
+
+  assert_eq!(
+    HashMap::from([
+      (0, Value::Unit(())),
+      (2, Value::Unit(())),
+      (
+        100,
+        Value::ArrayMessage(vec![Message {
+          text: "hi Alice from charlie".to_string(),
+          sender: "charlie_id_1".to_string()
+        }])
+      ),
+      (1005, Value::ArrayMessage(vec![])),
+    ]),
+    rt.results
+  );
+}
