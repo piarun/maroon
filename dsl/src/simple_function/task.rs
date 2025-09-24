@@ -140,9 +140,14 @@ impl Fiber {
   // Runs until finished and gets the resutl or until parked for awaiting async results
   pub fn run(&mut self) -> RunResult {
     loop {
-      let Some(head) = self.stack.pop() else {
-        panic!("no way there will be no elements. Can happen only on empty one")
-      };
+      let head_opt = self.stack.pop();
+      if head_opt.is_none() {
+        // Empty stack indicates completion for void-returning functions.
+        // Delegate to result mapper which will return Unit(()) for void.
+        let f = get_result_fn(&self.function_key);
+        return RunResult::Done(f(&self.stack));
+      }
+      let head = head_opt.unwrap();
 
       let StackEntry::State(state) = head else {
         // if no next state - return
@@ -183,6 +188,20 @@ impl Fiber {
             };
             self.stack[ret_value_bind_index] = new_entry;
           }
+        }
+        StepResult::ReturnVoid => {
+          // function returns no value
+          // clean up the current frame
+          // (drop args/locals) and pop the return marker without
+          // binding anything into the caller frame
+          self.stack.truncate(start);
+
+          // since we're returning from function we should have a record of return 'address' info
+          let StackEntry::Retrn(_return_instruction) =
+            self.stack.pop().expect("stack is corrupted. No return instruction")
+          else {
+            panic!("there is no return instruction on stack. Stack is corrupted");
+          };
         }
         StepResult::GoTo(state) => {
           self.stack.push(StackEntry::State(state));
