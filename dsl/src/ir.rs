@@ -187,7 +187,11 @@ pub enum Type {
   Void,
   Map(Box<Type>, Box<Type>),
   Array(Box<Type>),
-  Struct(String, Vec<StructField>),
+  // struct with user-provided Rust impl (e.g., custom Ord/PartialEq/Eq or other helper functions). The impl code is emitted as-is
+  Struct(String, Vec<StructField>, String),
+  // ordered priority queues stored in heap. Elements must implement Ord
+  MaxQueue(Box<Type>),
+  MinQueue(Box<Type>),
   Option(Box<Type>),
   // reference to types defined in IR.types
   Custom(String),

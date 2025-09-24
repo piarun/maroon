@@ -5,7 +5,9 @@ fn type_variant_name(t: &Type) -> String {
     Type::UInt64 => "U64".into(),
     Type::String => "String".into(),
     Type::Void => "Unit".into(),
-    Type::Struct(name, _) => pascal_case(name),
+    Type::MaxQueue(inner) => format!("MaxQueue{}", type_variant_name(inner)),
+    Type::MinQueue(inner) => format!("MinQueue{}", type_variant_name(inner)),
+    Type::Struct(name, _, _) => pascal_case(name),
     Type::Custom(name) => pascal_case(name),
     Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
     Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
@@ -18,9 +20,11 @@ fn rust_type(t: &Type) -> String {
     Type::UInt64 => "u64".into(),
     Type::String => "String".into(),
     Type::Void => "()".into(),
+    Type::MaxQueue(inner) => format!("std::collections::BinaryHeap<{}>", rust_type(inner)),
+    Type::MinQueue(inner) => format!("std::collections::BinaryHeap<std::cmp::Reverse<{}>>", rust_type(inner)),
     Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", rust_type(k), rust_type(v)),
     Type::Array(t) => format!("Vec<{}>", rust_type(t)),
-    Type::Struct(name, _) => pascal_case(name),
+    Type::Struct(name, _, _) => pascal_case(name),
     Type::Option(t) => format!("Option<{}>", rust_type(t)),
     Type::Custom(name) => pascal_case(name),
   }
@@ -74,13 +78,51 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("#![allow(non_snake_case)]\n\n");
 
   // 1) Emit custom struct types declared at top-level IR.types
-  for t in &ir.types {
-    if let Type::Struct(name, fields) = t {
-      out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", pascal_case(name)));
-      for f in fields {
-        out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+  // Determine which custom structs need Ord/Eq derives (used inside Min/Max queues)
+  use std::collections::BTreeSet as __BTS_NEED_ORD;
+  let mut need_ord: __BTS_NEED_ORD<String> = __BTS_NEED_ORD::new();
+  for (_fiber_name, fiber) in ir.fibers.iter() {
+    for (_hname, hty) in &fiber.heap {
+      match hty {
+        Type::MinQueue(inner) | Type::MaxQueue(inner) => match inner.as_ref() {
+          Type::Custom(n) | Type::Struct(n, _, _) => {
+            need_ord.insert(pascal_case(n));
+          }
+          _ => {}
+        },
+        _ => {}
       }
-      out.push_str("}\n\n");
+    }
+  }
+  for t in &ir.types {
+    match t {
+      Type::Struct(name, fields, impl_block) => {
+        let ty_name = pascal_case(name);
+        // Decide derives based on whether user provided impls
+        let ib = impl_block.trim();
+        let provides_partial_eq = ib.contains("impl PartialEq") || ib.contains("impl Eq");
+        let provides_ord = ib.contains("impl Ord") || ib.contains("impl PartialOrd");
+        let derive_partial_eq = !provides_partial_eq;
+        let derive_ord = need_ord.contains(&ty_name) && !provides_ord;
+
+        if derive_partial_eq && derive_ord {
+          out.push_str(&format!(
+            "#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]\npub struct {} {{\n",
+            ty_name
+          ));
+        } else if derive_partial_eq {
+          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", ty_name));
+        } else {
+          out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", ty_name));
+        }
+        for f in fields {
+          out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+        }
+        out.push_str("}\n\n");
+        out.push_str(impl_block);
+        out.push_str("\n\n");
+      }
+      _ => {}
     }
   }
 
@@ -106,7 +148,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   let mut heap_structs: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let heap_struct = variant_name(&[fiber_name.0.as_str(), "Heap"]);
-    out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", heap_struct));
+    out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", heap_struct));
     let mut heap_fields: Vec<(&String, &Type)> = fiber.heap.iter().collect();
     heap_fields.sort_by(|a, b| a.0.cmp(b.0));
     for (name, ty) in heap_fields {
@@ -116,7 +158,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     heap_structs.push((camel_ident(&fiber_name.0), heap_struct));
   }
   // Unified Heap as a struct with all fiber heaps accessible at once
-  out.push_str("#[derive(Clone, Debug, Default, PartialEq)]\npub struct Heap {\n");
+  out.push_str("#[derive(Clone, Debug, Default)]\npub struct Heap {\n");
   heap_structs.sort_by(|a, b| a.0.cmp(&b.0));
   for (field_name, struct_name) in heap_structs {
     out.push_str(&format!("  pub {}: {},\n", field_name, struct_name));
@@ -289,13 +331,15 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("pub fn {}({}) -> (Vec<StackEntry>, Heap) {{\n", prepare_fn_name, params.join(", ")));
       out.push_str("  let mut stack: Vec<StackEntry> = Vec::new();\n");
 
-      // 1) Push placeholder for return value and continuation marker
+      // 1) Push continuation marker. For non-void, also push placeholder for return value.
       let ret_vname = type_variant_name(&func.out);
       let ret_default = default_value_expr(&func.out);
-      out.push_str(&format!(
-        "  stack.push(StackEntry::Value(\"ret\".to_string(), Value::{}({})));\n",
-        ret_vname, ret_default
-      ));
+      if !matches!(&func.out, Type::Void) {
+        out.push_str(&format!(
+          "  stack.push(StackEntry::Value(\"ret\".to_string(), Value::{}({})));\n",
+          ret_vname, ret_default
+        ));
+      }
       out.push_str("  stack.push(StackEntry::Retrn(Some(1)));\n");
 
       // 2) Push input params in order
@@ -334,11 +378,16 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       let result_fn_name = format!("{}_result_{}", camel_ident(&fiber_name.0), camel_ident(func_name));
       let ret_ty = rust_type(&func.out);
       out.push_str(&format!("pub fn {}(stack: &[StackEntry]) -> {} {{\n", result_fn_name, ret_ty));
-      out.push_str("  match stack.last() {\n");
-      out.push_str("    Some(StackEntry::Value(_, ");
-      out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
-      out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
-      out.push_str("  }\n}\n\n");
+      if matches!(&func.out, Type::Void) {
+        // Void results are not placed on the stack; just return unit.
+        out.push_str("  let _ = stack;\n  ()\n}\n\n");
+      } else {
+        out.push_str("  match stack.last() {\n");
+        out.push_str("    Some(StackEntry::Value(_, ");
+        out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
+        out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
+        out.push_str("  }\n}\n\n");
+      }
       // 6) Generate untyped wrappers for registry
       // Prepare-from-Vec<Value>
       let wrapper_prepare = format!("fn {}_from_values(args: Vec<Value>) -> Vec<StackEntry> {{\n", prepare_fn_name);
@@ -489,10 +538,14 @@ fn default_value_expr(t: &Type) -> String {
     Type::UInt64 => "0u64".to_string(),
     Type::String => "String::new()".to_string(),
     Type::Void => "()".to_string(),
+    Type::MaxQueue(inner) => format!("std::collections::BinaryHeap::<{}>::new()", rust_type(inner)),
+    Type::MinQueue(inner) => format!("std::collections::BinaryHeap::<std::cmp::Reverse<{}>>::new()", rust_type(inner)),
     Type::Option(_) => "None".to_string(),
     Type::Array(inner) => format!("Vec::<{}>::new()", rust_type(inner)),
     Type::Map(k, v) => format!("std::collections::HashMap::<{}, {}>::new()", rust_type(k), rust_type(v)),
-    Type::Struct(name, _) | Type::Custom(name) => format!("{}::default()", pascal_case(name)),
+    Type::Struct(name, _, _) | Type::Custom(name) => {
+      format!("{}::default()", pascal_case(name))
+    }
   }
 }
 
@@ -1174,6 +1227,7 @@ mod tests {
       types: vec![Type::Struct(
         "User".into(),
         vec![StructField { name: "id".into(), ty: Type::String }, StructField { name: "age".into(), ty: Type::UInt64 }],
+        String::new(),
       )],
       fibers: HashMap::from([
         (
