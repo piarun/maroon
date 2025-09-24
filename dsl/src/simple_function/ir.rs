@@ -369,7 +369,76 @@ out
           ]),
         },
       ),
+      (
+        FiberType::new("message_store"),
+        Fiber {
+          fibers_limit: 1,
+          heap: HashMap::from([
+            // HashMap<receiverID, Message>
+            (
+              "messages".to_string(),
+              Type::Map(Box::new(Type::String), Box::new(Type::Array(Box::new(Type::Custom("Message".to_string()))))),
+            ),
+          ]),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "send".to_string(),
+              Func {
+                in_vars: vec![InVar("receiver", Type::String), InVar("message", Type::Custom("Message".to_string()))],
+                out: Type::Void,
+                locals: vec![],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec![],
+                      code: r#"
+                    let msg_heap = &mut heap.messageStore;
+                    msg_heap.messages.entry(receiver).or_default().push(message);
+                    "#
+                      .to_string(),
+                      next: StepId::new("finish"),
+                    },
+                  ),
+                  (StepId::new("finish"), Step::ReturnVoid),
+                ],
+              },
+            ),
+            (
+              "get_all_for_user".to_string(),
+              Func {
+                in_vars: vec![InVar("receiver", Type::String)],
+                out: Type::Array(Box::new(Type::Custom("Message".to_string()))),
+                locals: vec![LocalVar("result", Type::Array(Box::new(Type::Custom("Message".to_string()))))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+                      heap.messageStore.messages.get(&receiver).cloned().unwrap_or_default()
+                    "#
+                      .to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+          ]),
+        },
+      ),
     ]),
-    types: vec![],
+    types: vec![Type::Struct(
+      "Message".to_string(),
+      vec![
+        StructField { name: "text".to_string(), ty: Type::String },
+        StructField { name: "sender".to_string(), ty: Type::String },
+      ],
+    )],
   }
 }

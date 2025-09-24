@@ -3,6 +3,12 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Message {
+  pub text: String,
+  pub sender: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
@@ -18,9 +24,15 @@ pub struct GlobalHeap {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct MessageStoreHeap {
+  pub messages: std::collections::HashMap<String, Vec<Message>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
+  pub messageStore: MessageStoreHeap,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -57,12 +69,19 @@ pub enum State {
   GlobalSubAddEntry,
   GlobalSubAddFinalize,
   GlobalSubAddSubSum,
+  MessageStoreGetAllForUserEntry,
+  MessageStoreSendEntry,
+  MessageStoreSendFinish,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+  ArrayMessage(Vec<Message>),
+  Message(Message),
   OptionU64(Option<u64>),
+  String(String),
   U64(u64),
+  Unit(()),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -139,6 +158,9 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
+    State::MessageStoreGetAllForUserEntry => 2,
+    State::MessageStoreSendEntry => 2,
+    State::MessageStoreSendFinish => 2,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -419,6 +441,31 @@ pub fn global_step(
         StackEntry::State(State::GlobalSubEntry),
       ])
     }
+    State::MessageStoreGetAllForUserEntry => {
+      let receiver: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let result: Vec<Message> =
+        if let StackEntry::Value(_, Value::ArrayMessage(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      {
+        let out = { heap.messageStore.messages.get(&receiver).cloned().unwrap_or_default() };
+        StepResult::Return(Value::ArrayMessage(out))
+      }
+    }
+    State::MessageStoreSendEntry => {
+      let receiver: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let message: Message =
+        if let StackEntry::Value(_, Value::Message(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      {
+        let out = {
+          let msg_heap = &mut heap.messageStore;
+          msg_heap.messages.entry(receiver).or_default().push(message);
+        };
+        let () = out;
+        StepResult::Next(vec![StackEntry::FrameAssign(vec![]), StackEntry::State(State::MessageStoreSendFinish)])
+      }
+    }
+    State::MessageStoreSendFinish => StepResult::ReturnVoid,
   }
 }
 
@@ -736,6 +783,69 @@ fn global_result_subAdd_value(stack: &[StackEntry]) -> Value {
   Value::U64(global_result_subAdd(stack))
 }
 
+pub fn messageStore_prepare_getAllForUser(receiver: String) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayMessage(Vec::<Message>::new())));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("receiver".to_string(), Value::String(receiver)));
+  stack.push(StackEntry::Value("result".to_string(), Value::ArrayMessage(Vec::<Message>::new())));
+  stack.push(StackEntry::State(State::MessageStoreGetAllForUserEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn messageStore_result_getAllForUser(stack: &[StackEntry]) -> Vec<Message> {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::ArrayMessage(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn messageStore_prepare_getAllForUser_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let receiver: String = if let Value::String(x) = &args[0] {
+    x.clone()
+  } else {
+    unreachable!("invalid args for message_store.get_all_for_user")
+  };
+  let (stack, _heap) = messageStore_prepare_getAllForUser(receiver);
+  stack
+}
+
+fn messageStore_result_getAllForUser_value(stack: &[StackEntry]) -> Value {
+  Value::ArrayMessage(messageStore_result_getAllForUser(stack))
+}
+
+pub fn messageStore_prepare_send(
+  receiver: String,
+  message: Message,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("receiver".to_string(), Value::String(receiver)));
+  stack.push(StackEntry::Value("message".to_string(), Value::Message(message)));
+  stack.push(StackEntry::State(State::MessageStoreSendEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn messageStore_result_send(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn messageStore_prepare_send_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let receiver: String =
+    if let Value::String(x) = &args[0] { x.clone() } else { unreachable!("invalid args for message_store.send") };
+  let message: Message =
+    if let Value::Message(x) = &args[1] { x.clone() } else { unreachable!("invalid args for message_store.send") };
+  let (stack, _heap) = messageStore_prepare_send(receiver, message);
+  stack
+}
+
+fn messageStore_result_send_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(messageStore_result_send(stack))
+}
+
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
     "application.async_foo" => application_prepare_asyncFoo_from_values,
@@ -747,6 +857,8 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "global.mult" => global_prepare_mult_from_values,
     "global.sub" => global_prepare_sub_from_values,
     "global.subAdd" => global_prepare_subAdd_from_values,
+    "message_store.get_all_for_user" => messageStore_prepare_getAllForUser_from_values,
+    "message_store.send" => messageStore_prepare_send_from_values,
     _ => panic!("shouldnt be here"),
   }
 }
@@ -762,6 +874,8 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "global.mult" => global_result_mult_value,
     "global.sub" => global_result_sub_value,
     "global.subAdd" => global_result_subAdd_value,
+    "message_store.get_all_for_user" => messageStore_result_getAllForUser_value,
+    "message_store.send" => messageStore_result_send_value,
     _ => panic!("shouldnt be here"),
   }
 }

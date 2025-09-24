@@ -289,13 +289,15 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       out.push_str(&format!("pub fn {}({}) -> (Vec<StackEntry>, Heap) {{\n", prepare_fn_name, params.join(", ")));
       out.push_str("  let mut stack: Vec<StackEntry> = Vec::new();\n");
 
-      // 1) Push placeholder for return value and continuation marker
+      // 1) Push continuation marker. For non-void, also push placeholder for return value.
       let ret_vname = type_variant_name(&func.out);
       let ret_default = default_value_expr(&func.out);
-      out.push_str(&format!(
-        "  stack.push(StackEntry::Value(\"ret\".to_string(), Value::{}({})));\n",
-        ret_vname, ret_default
-      ));
+      if !matches!(&func.out, Type::Void) {
+        out.push_str(&format!(
+          "  stack.push(StackEntry::Value(\"ret\".to_string(), Value::{}({})));\n",
+          ret_vname, ret_default
+        ));
+      }
       out.push_str("  stack.push(StackEntry::Retrn(Some(1)));\n");
 
       // 2) Push input params in order
@@ -334,11 +336,16 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       let result_fn_name = format!("{}_result_{}", camel_ident(&fiber_name.0), camel_ident(func_name));
       let ret_ty = rust_type(&func.out);
       out.push_str(&format!("pub fn {}(stack: &[StackEntry]) -> {} {{\n", result_fn_name, ret_ty));
-      out.push_str("  match stack.last() {\n");
-      out.push_str("    Some(StackEntry::Value(_, ");
-      out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
-      out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
-      out.push_str("  }\n}\n\n");
+      if matches!(&func.out, Type::Void) {
+        // Void results are not placed on the stack; just return unit.
+        out.push_str("  let _ = stack;\n  ()\n}\n\n");
+      } else {
+        out.push_str("  match stack.last() {\n");
+        out.push_str("    Some(StackEntry::Value(_, ");
+        out.push_str(&format!("Value::{}(v))) => v.clone(),\n", ret_vname));
+        out.push_str("    _ => unreachable!(\"result not found on stack\"),\n");
+        out.push_str("  }\n}\n\n");
+      }
       // 6) Generate untyped wrappers for registry
       // Prepare-from-Vec<Value>
       let wrapper_prepare = format!("fn {}_from_values(args: Vec<Value>) -> Vec<StackEntry> {{\n", prepare_fn_name);

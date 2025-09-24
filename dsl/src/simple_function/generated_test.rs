@@ -34,7 +34,7 @@ fn b_search_function() {
   let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
   let elements_len = search_elements.len() as u64;
 
-  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, application: ApplicationHeap {} };
+  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, ..Default::default() };
 
   // initialize heap for this fiber before loading the task
   let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap, 1);
@@ -46,4 +46,41 @@ fn b_search_function() {
   some_t.load_task("binary_search", vec![Value::U64(10), Value::U64(0), Value::U64(elements_len - 1)], None);
   let result = some_t.run();
   assert_eq!(RunResult::Done(Value::OptionU64(None)), result);
+}
+
+#[test]
+fn message_store() {
+  let mut f = Fiber::new_with_heap(FiberType::new("message_store"), Heap::default(), 0);
+
+  f.load_task("get_all_for_user", vec![Value::String("alice_id_1".to_string())], None);
+  assert_eq!(RunResult::Done(Value::ArrayMessage(vec![])), f.run());
+
+  f.load_task(
+    "send",
+    vec![
+      Value::String("alice_id_1".to_string()),
+      Value::Message(Message { text: "hi Alice".to_string(), sender: "bob_id_1".to_string() }),
+    ],
+    None,
+  );
+  assert_eq!(RunResult::Done(Value::Unit(())), f.run());
+
+  f.load_task(
+    "send",
+    vec![
+      Value::String("alice_id_1".to_string()),
+      Value::Message(Message { text: "hi Alice with love".to_string(), sender: "charlie_id_1".to_string() }),
+    ],
+    None,
+  );
+  assert_eq!(RunResult::Done(Value::Unit(())), f.run());
+
+  f.load_task("get_all_for_user", vec![Value::String("alice_id_1".to_string())], None);
+  assert_eq!(
+    RunResult::Done(Value::ArrayMessage(vec![
+      Message { text: "hi Alice".to_string(), sender: "bob_id_1".to_string() },
+      Message { text: "hi Alice with love".to_string(), sender: "charlie_id_1".to_string() }
+    ])),
+    f.run()
+  );
 }
