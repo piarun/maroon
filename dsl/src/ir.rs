@@ -105,7 +105,6 @@ pub struct LocalVar(pub &'static str, pub Type);
 #[derive(Debug, Clone)]
 pub enum Step {
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, next: StepId, future_id: FutureLabel },
-  Write { text: Expr, next: StepId },
   // send a message to a fiber (by name) of a specific kind with arguments, then continue
   // doesn't awaits by default. I think that makes sense?
   // but it can be used with await
