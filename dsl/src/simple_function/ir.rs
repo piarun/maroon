@@ -369,7 +369,370 @@ out
           ]),
         },
       ),
+      (
+        FiberType::new("order_book"),
+        Fiber {
+          fibers_limit: 1,
+          heap: HashMap::from([
+            ("bids_prices".to_string(), Type::MaxQueue(Box::new(Type::UInt64))),
+            ("asks_prices".to_string(), Type::MinQueue(Box::new(Type::UInt64))),
+            (
+              "bids_by_price".to_string(),
+              Type::Map(Box::new(Type::UInt64), Box::new(Type::Array(Box::new(Type::Custom("Order".to_string()))))),
+            ),
+            (
+              "asks_by_price".to_string(),
+              Type::Map(Box::new(Type::UInt64), Box::new(Type::Array(Box::new(Type::Custom("Order".to_string()))))),
+            ),
+            (
+              "orders_index".to_string(),
+              Type::Map(Box::new(Type::UInt64), Box::new(Type::Custom("OrderIndex".to_string()))),
+            ),
+          ]),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "add_buy".to_string(),
+              Func {
+                in_vars: vec![InVar("id", Type::UInt64), InVar("price", Type::UInt64), InVar("qty", Type::UInt64)],
+                out: Type::Array(Box::new(Type::Custom("Trade".to_string()))),
+                locals: vec![LocalVar("result", Type::Array(Box::new(Type::Custom("Trade".to_string()))))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+let mut remaining = qty;
+let mut trades: Vec<Trade> = Vec::new();
+
+// Clean stale top asks and match while price allows
+loop {
+  // Find current best ask
+  let best_ask = loop {
+    if let Some(top) = ob.asksPrices.peek() {
+      let p = top.0;
+      if let Some(level) = ob.asksByPrice.get(&p) {
+        if !level.is_empty() { break Some(p); }
+      }
+      // stale level
+      ob.asksPrices.pop();
+      continue;
+    } else { break None; }
+  };
+
+  match best_ask {
+    Some(ap) if ap <= price && remaining > 0 => {
+      // Execute against this level FIFO
+      if let Some(level) = ob.asksByPrice.get_mut(&ap) {
+        while remaining > 0 && !level.is_empty() {
+          let maker = &mut level[0];
+          if maker.qty <= remaining {
+            let trade_qty = maker.qty;
+            remaining -= trade_qty;
+            trades.push(Trade { price: ap, qty: trade_qty, takerId: id, makerId: maker.id });
+            level.remove(0);
+          } else {
+            maker.qty -= remaining;
+            trades.push(Trade { price: ap, qty: remaining, takerId: id, makerId: maker.id });
+            remaining = 0;
+          }
+        }
+        if level.is_empty() {
+          ob.asksByPrice.remove(&ap);
+        }
+      }
+      // continue loop to next level or exit if remaining==0
+    }
+    _ => break,
+  }
+}
+
+// If remaining, add to bids book
+if remaining > 0 {
+  ob.bidsByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
+  ob.bidsPrices.push(price);
+  ob.ordersIndex.insert(id, OrderIndex { side: "buy".to_string(), price });
+}
+
+trades
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "add_sell".to_string(),
+              Func {
+                in_vars: vec![InVar("id", Type::UInt64), InVar("price", Type::UInt64), InVar("qty", Type::UInt64)],
+                out: Type::Array(Box::new(Type::Custom("Trade".to_string()))),
+                locals: vec![LocalVar("result", Type::Array(Box::new(Type::Custom("Trade".to_string()))))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+let mut remaining = qty;
+let mut trades: Vec<Trade> = Vec::new();
+
+// Clean stale top bids and match while price allows
+loop {
+  // Find current best bid
+  let best_bid = loop {
+    if let Some(&bp) = ob.bidsPrices.peek() {
+      if let Some(level) = ob.bidsByPrice.get(&bp) {
+        if !level.is_empty() { break Some(bp); }
+      }
+      // stale
+      ob.bidsPrices.pop();
+      continue;
+    } else { break None; }
+  };
+
+  match best_bid {
+    Some(bp) if bp >= price && remaining > 0 => {
+      if let Some(level) = ob.bidsByPrice.get_mut(&bp) {
+        while remaining > 0 && !level.is_empty() {
+          let maker = &mut level[0];
+          if maker.qty <= remaining {
+            let trade_qty = maker.qty;
+            remaining -= trade_qty;
+            trades.push(Trade { price: bp, qty: trade_qty, takerId: id, makerId: maker.id });
+            level.remove(0);
+          } else {
+            maker.qty -= remaining;
+            trades.push(Trade { price: bp, qty: remaining, takerId: id, makerId: maker.id });
+            remaining = 0;
+          }
+        }
+        if level.is_empty() { ob.bidsByPrice.remove(&bp); }
+      }
+    }
+    _ => break,
+  }
+}
+
+if remaining > 0 {
+  ob.asksByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
+  ob.asksPrices.push(std::cmp::Reverse(price));
+  ob.ordersIndex.insert(id, OrderIndex { side: "sell".to_string(), price });
+}
+
+trades
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "cancel".to_string(),
+              Func {
+                in_vars: vec![InVar("id", Type::UInt64)],
+                out: Type::UInt64, // 1 if canceled, 0 otherwise
+                locals: vec![LocalVar("result", Type::UInt64)],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+let mut ok = 0u64;
+if let Some(idx) = ob.ordersIndex.remove(&id) {
+  let price = idx.price;
+  if idx.side == "buy" {
+    if let Some(level) = ob.bidsByPrice.get_mut(&price) {
+      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.bidsByPrice.remove(&price); } }
+    }
+  } else {
+    if let Some(level) = ob.asksByPrice.get_mut(&price) {
+      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.asksByPrice.remove(&price); } }
+    }
+  }
+}
+ok
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "best_bid".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Option(Box::new(Type::UInt64)),
+                locals: vec![LocalVar("result", Type::Option(Box::new(Type::UInt64)))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+loop {
+  if let Some(&bp) = ob.bidsPrices.peek() {
+    if let Some(level) = ob.bidsByPrice.get(&bp) { if !level.is_empty() { break Some(bp); } }
+    ob.bidsPrices.pop();
+  } else { break None; }
+}
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "best_ask".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Option(Box::new(Type::UInt64)),
+                locals: vec![LocalVar("result", Type::Option(Box::new(Type::UInt64)))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+loop {
+  if let Some(top) = ob.asksPrices.peek() {
+    let ap = top.0; // Reverse(u64)
+    if let Some(level) = ob.asksByPrice.get(&ap) { if !level.is_empty() { break Some(ap); } }
+    ob.asksPrices.pop();
+  } else { break None; }
+}
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+            (
+              "top_n_depth".to_string(),
+              Func {
+                in_vars: vec![InVar("n", Type::UInt64)],
+                out: Type::Custom("BookSnapshot".to_string()),
+                locals: vec![LocalVar("result", Type::Custom("BookSnapshot".to_string()))],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec!["result".to_string()],
+                      code: r#"
+let ob = &mut heap.orderBook;
+
+let mut bids_depth: Vec<Level> = Vec::new();
+let mut asks_depth: Vec<Level> = Vec::new();
+
+// Bids: highest first
+{
+  let mut tmp = ob.bidsPrices.clone();
+  let mut seen = std::collections::HashSet::<u64>::new();
+  while (bids_depth.len() as u64) < n {
+    if let Some(bp) = tmp.pop() {
+      if seen.contains(&bp) { continue; }
+      if let Some(level) = ob.bidsByPrice.get(&bp) {
+        if !level.is_empty() {
+          let qty = level.iter().map(|o| o.qty).sum::<u64>();
+          bids_depth.push(Level { price: bp, qty });
+          seen.insert(bp);
+        }
+      }
+    } else { break; }
+  }
+}
+
+// Asks: lowest first
+{
+  let mut tmp = ob.asksPrices.clone();
+  let mut seen = std::collections::HashSet::<u64>::new();
+  while (asks_depth.len() as u64) < n {
+    if let Some(std::cmp::Reverse(ap)) = tmp.pop() {
+      if seen.contains(&ap) { continue; }
+      if let Some(level) = ob.asksByPrice.get(&ap) {
+        if !level.is_empty() {
+          let qty = level.iter().map(|o| o.qty).sum::<u64>();
+          asks_depth.push(Level { price: ap, qty });
+          seen.insert(ap);
+        }
+      }
+    } else { break; }
+  }
+}
+
+BookSnapshot { bids: bids_depth, asks: asks_depth }
+"#.to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                ],
+              },
+            ),
+          ]),
+        },
+      ),
     ]),
-    types: vec![],
+    types: vec![
+      Type::Struct(
+        "Order".to_string(),
+        vec![
+          StructField { name: "id".to_string(), ty: Type::UInt64 },
+          StructField { name: "price".to_string(), ty: Type::UInt64 },
+          StructField { name: "qty".to_string(), ty: Type::UInt64 },
+        ],
+        String::new(),
+      ),
+      Type::Struct(
+        "Trade".to_string(),
+        vec![
+          StructField { name: "price".to_string(), ty: Type::UInt64 },
+          StructField { name: "qty".to_string(), ty: Type::UInt64 },
+          StructField { name: "taker_id".to_string(), ty: Type::UInt64 },
+          StructField { name: "maker_id".to_string(), ty: Type::UInt64 },
+        ],
+        String::new(),
+      ),
+      Type::Struct(
+        "OrderIndex".to_string(),
+        vec![StructField { name: "side".to_string(), ty: Type::String }, StructField { name: "price".to_string(), ty: Type::UInt64 }],
+        String::new(),
+      ),
+      Type::Struct(
+        "Level".to_string(),
+        vec![StructField { name: "price".to_string(), ty: Type::UInt64 }, StructField { name: "qty".to_string(), ty: Type::UInt64 }],
+        String::new(),
+      ),
+      Type::Struct(
+        "BookSnapshot".to_string(),
+        vec![
+          StructField { name: "bids".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
+          StructField { name: "asks".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
+        ],
+        String::new(),
+      ),
+  ],
   }
 }
