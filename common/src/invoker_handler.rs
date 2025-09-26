@@ -3,6 +3,12 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 
+// creates an asynchronous communication channel
+// the idea of this channel is to be able to send a message asynchronously and await the result
+// ```
+// let (invoker, mut handler) = create_invoker_handler_pair::<SomeRequest, SomeResponse>();
+// let response: SomeResponse = invoker.request(SomeRequest{}).await?;
+// ```
 pub fn create_invoker_handler_pair<Req, Res>() -> (InvokerInterface<Req, Res>, HandlerInterface<Req, Res>) {
   let (tx, rx) = mpsc::unbounded_channel::<RequestWrapper<Req, Res>>();
   (InvokerInterface { sender: tx }, HandlerInterface { receiver: rx })
