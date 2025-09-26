@@ -1,6 +1,7 @@
 use crate::fiber::*;
 use crate::generated::*;
 use crate::runtime_timer::Timer;
+use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::thread::sleep;
@@ -10,9 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct TaskBlueprint {
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  // global_id, the same that is coming from gateways, globally unique
-  pub global_id: u64,
+  pub global_id: UniqueU64BlobId,
 
   pub fiber_type: FiberType,
   // function key to provide an information which function should be executed, ex: `add` or `sub`...
@@ -70,9 +69,8 @@ pub struct Runtime<T: Timer> {
   ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
 
   // communication interface. Out
-  // results as a deterministic completion-ordered list of (global_id, value)
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  ex_results: UnboundedSender<(u64, Value)>,
+  // results as a deterministic completion-ordered stream of (global_id, value)
+  ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
 
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
@@ -132,7 +130,7 @@ impl<T: Timer> Runtime<T> {
     timer: T,
     ir: IR,
     ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
-    ex_results: UnboundedSender<(u64, Value)>,
+    ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
   ) -> Runtime<T> {
     Runtime {
       fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
@@ -392,7 +390,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread")]
   async fn some_test() {
     let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
 
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
 
@@ -404,13 +402,13 @@ mod tests {
       LogicalTimeAbsoluteMs(10),
       vec![
         TaskBlueprint {
-          global_id: 300,
+          global_id: UniqueU64BlobId(300),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(4), Value::U64(8)],
         },
         TaskBlueprint {
-          global_id: 1,
+          global_id: UniqueU64BlobId(1),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(0), Value::U64(8)],
@@ -418,13 +416,17 @@ mod tests {
       ],
     ));
 
-    compare_channel_data_with_exp(vec![(300, Value::U64(12)), (1, Value::U64(8))], result_receiver).await;
+    compare_channel_data_with_exp(
+      vec![(UniqueU64BlobId(300), Value::U64(12)), (UniqueU64BlobId(1), Value::U64(8))],
+      result_receiver,
+    )
+    .await;
   }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn sleep_test() {
     let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
 
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
 
@@ -435,20 +437,20 @@ mod tests {
     _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
       vec![TaskBlueprint {
-        global_id: 9,
+        global_id: UniqueU64BlobId(9),
         fiber_type: FiberType::new("application"),
         function_key: "sleep_and_pow".to_string(),
         init_values: vec![Value::U64(2), Value::U64(4)],
       }],
     ));
 
-    compare_channel_data_with_exp(vec![(9, Value::U64(16))], result_receiver).await;
+    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(16))], result_receiver).await;
   }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn multiple_await() {
     let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
 
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
 
@@ -463,37 +465,37 @@ mod tests {
       LogicalTimeAbsoluteMs(10),
       vec![
         TaskBlueprint {
-          global_id: 9,
+          global_id: UniqueU64BlobId(9),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(4)],
         },
         TaskBlueprint {
-          global_id: 10,
+          global_id: UniqueU64BlobId(10),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
-          global_id: 300,
+          global_id: UniqueU64BlobId(300),
           fiber_type: FiberType::new("global"),
           function_key: "add".to_string(),
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
-          global_id: 11,
+          global_id: UniqueU64BlobId(11),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
-          global_id: 12,
+          global_id: UniqueU64BlobId(12),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
-          global_id: 13,
+          global_id: UniqueU64BlobId(13),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
@@ -503,12 +505,12 @@ mod tests {
 
     compare_channel_data_with_exp(
       vec![
-        (300, Value::U64(10)),
-        (9, Value::U64(16)),
-        (10, Value::U64(256)),
-        (11, Value::U64(128)),
-        (12, Value::U64(128)),
-        (13, Value::U64(128)),
+        (UniqueU64BlobId(300), Value::U64(10)),
+        (UniqueU64BlobId(9), Value::U64(16)),
+        (UniqueU64BlobId(10), Value::U64(256)),
+        (UniqueU64BlobId(11), Value::U64(128)),
+        (UniqueU64BlobId(12), Value::U64(128)),
+        (UniqueU64BlobId(13), Value::U64(128)),
       ],
       result_receiver,
     )
