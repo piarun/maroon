@@ -4,7 +4,6 @@ use crate::runtime_timer::Timer;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -341,7 +340,7 @@ limiter:
           // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
           // but it should be probably not just sleep, but select or smth
           let sleep_distance = time_stamp.0 - now.0;
-          sleep(Duration::from_millis(sleep_distance));
+          tokio::time::sleep(Duration::from_millis(sleep_distance)).await;
           println!("smth in active_tasks, but not now, sleeping {}ms", sleep_distance);
           self.active_tasks.push_front((time_stamp, current_queue));
           break;
