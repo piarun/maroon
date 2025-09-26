@@ -1,9 +1,8 @@
+use crate::fiber::*;
 use crate::generated::*;
 use crate::runtime_timer::Timer;
 use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
-use crate::fiber::*;
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
-use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -95,9 +94,9 @@ pub struct Runtime<T: Timer> {
 
   fiber_limiter: HashMap<FiberType, u64>,
 
-  // results. key - is global_id from TaskBlueprint
+  // results as a deterministic completion-ordered list of (global_id, value)
   // TODO: make it `UniqueU64BlobId` from `common` crate
-  results: HashMap<u64, Value>,
+  results: Vec<(u64, Value)>,
 
   timer: T,
 
@@ -134,7 +133,7 @@ impl<T: Timer> Runtime<T> {
       scheduled: BinaryHeap::new(),
       fiber_pool: HashMap::new(),
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
-      results: HashMap::new(),
+      results: Vec::new(),
       timer: timer,
       next_fiber_id: 0,
     }
@@ -230,21 +229,14 @@ limiter:
       let now = self.timer.from_start();
 
       // take scheduled Fibers and push them to active_fibers if it's time to work on them
-      while let Some(blob) = self.scheduled.peek() {
-        if now < blob.when {
-          break;
+      if let Some(blob) = self.scheduled.peek() {
+        if now >= blob.when {
+          let blob = self.scheduled.pop().unwrap();
+
+          if let Some(task_box) = self.parked_fibers.remove(&blob.what) {
+            self.active_fibers.push_front(task_box.fiber);
+          };
         }
-
-        let blob = self.scheduled.pop().unwrap();
-
-        let Some(task_box) = self.parked_fibers.remove(&blob.what) else {
-          continue;
-        };
-
-        // TODO: make a reverse order of these extracted tasks
-        // because right now I will pick the earliest first
-        // but if there are several tasks that should be executed - the earlist one will be executed the latest
-        self.active_fibers.push_front(task_box.fiber);
       }
 
       // work on active fibers(state-machine iterations moves)
@@ -258,7 +250,7 @@ limiter:
             self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
 
             if let Some(global_id) = options.global_id {
-              self.results.insert(global_id, result.clone());
+              self.results.push((global_id, result.clone()));
             }
 
             let Some(future_id) = options.future_id else {
@@ -404,7 +396,7 @@ mod tests {
 
     rt.run();
 
-    assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
+    assert_eq!(vec![(300, Value::U64(12)), (1, Value::U64(8))], rt.results);
   }
 
   #[test]
@@ -423,7 +415,7 @@ mod tests {
 
     rt.run();
 
-    assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
+    assert_eq!(vec![(9, Value::U64(16))], rt.results);
   }
 
   #[test]
@@ -446,6 +438,12 @@ mod tests {
           global_id: 10,
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(8)],
+        },
+        TaskBlueprint {
+          global_id: 300,
+          fiber_type: FiberType::new("global"),
+          function_key: "add".to_string(),
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
@@ -472,13 +470,14 @@ mod tests {
     rt.run();
 
     assert_eq!(
-      HashMap::from([
+      vec![
+        (300, Value::U64(10)),
         (9, Value::U64(16)),
         (10, Value::U64(256)),
         (11, Value::U64(128)),
         (12, Value::U64(128)),
-        (13, Value::U64(128))
-      ]),
+        (13, Value::U64(128)),
+      ],
       rt.results
     );
   }
