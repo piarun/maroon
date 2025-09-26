@@ -271,9 +271,7 @@ pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
   ScheduleTimer{ ms: u64, next: State, future_id: crate::ir::FutureLabel },
-  Write(String, State),
   GoTo(State),
-  Branch { then_: State, else_: State },
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
@@ -760,7 +758,6 @@ fn generate_global_step(ir: &IR) -> String {
           let mut referenced: BTreeSet<String> = BTreeSet::new();
           match entry_step {
             Step::ScheduleTimer { .. } => {}
-            Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -809,14 +806,6 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&format!(
                 "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
                 ms.0, next_v, future_id.0
-              ));
-            }
-            Step::Write { text, next } => {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              let text_code = render_expr_code(&text, func);
-              out.push_str(&format!(
-                "      StepResult::Write(format!(\"{}\", {}), State::{})\n",
-                "{}", text_code, next_v
               ));
             }
             Step::SendToFiber { fiber, message, args, next, future_id } => {
@@ -994,7 +983,6 @@ fn generate_global_step(ir: &IR) -> String {
         let mut referenced: BTreeSet<String> = BTreeSet::new();
         match step {
           Step::ScheduleTimer { .. } => {}
-          Step::Write { text, .. } => collect_vars_from_expr(&text, &mut referenced),
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1047,12 +1035,6 @@ fn generate_global_step(ir: &IR) -> String {
               "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
               ms.0, next_v, future_id.0
             ));
-          }
-          Step::Write { text, next } => {
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            let text_code = render_expr_code(&text, func);
-            out
-              .push_str(&format!("      StepResult::Write(format!(\"{}\", {}), State::{})\n", "{}", text_code, next_v));
           }
           Step::SendToFiber { fiber, message, args, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
