@@ -5,6 +5,8 @@ use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::thread::sleep;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct TaskBlueprint {
@@ -62,7 +64,16 @@ impl PartialOrd for ScheduledBlob {
     Some(self.cmp(other))
   }
 }
+
 pub struct Runtime<T: Timer> {
+  // communication interface. In
+  ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
+
+  // communication interface. Out
+  // results as a deterministic completion-ordered list of (global_id, value)
+  // TODO: make it `UniqueU64BlobId` from `common` crate
+  ex_results: UnboundedSender<(u64, Value)>,
+
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
   //
@@ -94,10 +105,6 @@ pub struct Runtime<T: Timer> {
 
   fiber_limiter: HashMap<FiberType, u64>,
 
-  // results as a deterministic completion-ordered list of (global_id, value)
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  results: Vec<(u64, Value)>,
-
   timer: T,
 
   // monotonically increasing id for newly created fibers
@@ -124,6 +131,8 @@ impl<T: Timer> Runtime<T> {
   pub fn new(
     timer: T,
     ir: IR,
+    ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
+    ex_results: UnboundedSender<(u64, Value)>,
   ) -> Runtime<T> {
     Runtime {
       fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
@@ -133,9 +142,11 @@ impl<T: Timer> Runtime<T> {
       scheduled: BinaryHeap::new(),
       fiber_pool: HashMap::new(),
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
-      results: Vec::new(),
       timer: timer,
       next_fiber_id: 0,
+
+      ex_requests,
+      ex_results,
     }
   }
 
@@ -168,7 +179,7 @@ limiter:
     );
   }
 
-  pub fn push_fiber_in_message(
+  fn push_fiber_in_message(
     &mut self,
     _type: &FiberType,
     msg: FiberInMessage,
@@ -180,14 +191,6 @@ limiter:
       .expect("IR initalization was incorrect, all types should be here")
       .1
       .push_back(msg);
-  }
-
-  pub fn next_batch(
-    &mut self,
-    time: LogicalTimeAbsoluteMs,
-    blueprints: VecDeque<TaskBlueprint>,
-  ) {
-    self.active_tasks.push_back((time, blueprints));
   }
 
   // returns None if there is no idle Fibers and the limit has reached
@@ -217,7 +220,7 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
-  pub fn run(&mut self) {
+  pub async fn run(&mut self) {
     let mut counter = 0;
     'main_loop: loop {
       counter += 1;
@@ -250,7 +253,10 @@ limiter:
             self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
 
             if let Some(global_id) = options.global_id {
-              self.results.push((global_id, result.clone()));
+              // I'm ignoring an error here
+              // because if there is an error - the receiving channel is closed
+              // if it's closed due to shutdown or some error, doesn't matter => current level errors don't really matter
+              _ = self.ex_results.send((global_id, result.clone()));
             }
 
             let Some(future_id) = options.future_id else {
@@ -318,10 +324,18 @@ limiter:
       'process_active_tasks: loop {
         let now = self.timer.from_start();
 
-        let Some((time_stamp, mut current_queue)) = self.active_tasks.pop_front() else {
-          // TODO: a bit smarter sleep, if there are no next elements or select or smth
-          println!("nothing in active_tasks. sleep 5ms");
-          sleep(Duration::from_millis(5));
+        let mut next = self.active_tasks.pop_front();
+        if next.is_none() {
+          if self.ex_requests.is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            break;
+          } else {
+            let (time, requests) = self.ex_requests.recv().await.expect("checked, not empty");
+            next = Some((time, VecDeque::from(requests)));
+          }
+        }
+
+        let Some((time_stamp, mut current_queue)) = next else {
           break;
         };
 
@@ -368,17 +382,27 @@ limiter:
 
 #[cfg(test)]
 mod tests {
+  use std::fmt::Debug;
+
   use crate::{ir_spec::sample_ir, runtime_timer::MonotonicTimer};
+  use tokio::sync::mpsc;
 
   use super::*;
 
-  #[test]
-  fn some_test() {
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn some_test() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
 
-    rt.next_batch(
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
+
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([
+      vec![
         TaskBlueprint {
           global_id: 300,
           fiber_type: FiberType::new("application"),
@@ -391,43 +415,53 @@ mod tests {
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(0), Value::U64(8)],
         },
-      ]),
-    );
+      ],
+    ));
 
-    rt.run();
-
-    assert_eq!(vec![(300, Value::U64(12)), (1, Value::U64(8))], rt.results);
+    compare_channel_data_with_exp(vec![(300, Value::U64(12)), (1, Value::U64(8))], result_receiver).await;
   }
 
-  #[test]
-  fn sleep_test() {
-    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn sleep_test() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
 
-    rt.next_batch(
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
+
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([TaskBlueprint {
+      vec![TaskBlueprint {
         global_id: 9,
         fiber_type: FiberType::new("application"),
         function_key: "sleep_and_pow".to_string(),
         init_values: vec![Value::U64(2), Value::U64(4)],
-      }]),
-    );
+      }],
+    ));
 
-    rt.run();
-
-    assert_eq!(vec![(9, Value::U64(16))], rt.results);
+    compare_channel_data_with_exp(vec![(9, Value::U64(16))], result_receiver).await;
   }
 
-  #[test]
-  fn multiple_await() {
-    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn multiple_await() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(u64, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
 
     // Cases to cover:
     // - many awaiting fibers of the same function
     // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
-    rt.next_batch(
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([
+      vec![
         TaskBlueprint {
           global_id: 9,
           fiber_type: FiberType::new("application"),
@@ -464,12 +498,10 @@ mod tests {
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
-      ]),
-    );
+      ],
+    ));
 
-    rt.run();
-
-    assert_eq!(
+    compare_channel_data_with_exp(
       vec![
         (300, Value::U64(10)),
         (9, Value::U64(16)),
@@ -478,7 +510,20 @@ mod tests {
         (12, Value::U64(128)),
         (13, Value::U64(128)),
       ],
-      rt.results
-    );
+      result_receiver,
+    )
+    .await;
+  }
+
+  async fn compare_channel_data_with_exp<T: PartialEq + Debug>(
+    expected: Vec<T>,
+    mut ch: UnboundedReceiver<T>,
+  ) {
+    for exp in expected.into_iter() {
+      let got = ch.recv().await.expect("result channel closed early");
+      assert_eq!(exp, got);
+    }
+    // Ensure there are no extra messages
+    assert!(ch.try_recv().is_err());
   }
 }

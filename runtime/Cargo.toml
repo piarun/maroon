@@ -4,6 +4,8 @@ edition = "2024"
 
 [dependencies]
 dsl = { path = "../dsl" }
+tokio = { workspace = true }
+
 
 [build-dependencies]
 dsl = { path = "../dsl" }
