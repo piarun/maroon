@@ -1,7 +1,5 @@
-use crate::{
-  ir::{FiberType, Func, LogicalTimeAbsoluteMs},
-  simple_function::generated::*,
-};
+use dsl::ir::{FiberType, Func, LogicalTimeAbsoluteMs};
+use crate::generated::*;
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
@@ -64,7 +62,7 @@ impl FutureId {
   }
 
   pub fn from_label(
-    label: crate::ir::FutureLabel,
+    label: dsl::ir::FutureLabel,
     unique_id: u64,
   ) -> Self {
     Self(format!("{}_{}", label.0, unique_id))

@@ -1,9 +1,7 @@
-use crate::simple_function::generated::*;
-use crate::simple_function::runtime_timer::Timer;
-use crate::{
-  ir::{FiberType, IR, LogicalTimeAbsoluteMs},
-  simple_function::fiber::*,
-};
+use crate::generated::*;
+use crate::runtime_timer::Timer;
+use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
+use crate::fiber::*;
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::hash::Hash;
 use std::thread::sleep;
@@ -378,7 +376,7 @@ limiter:
 
 #[cfg(test)]
 mod tests {
-  use crate::simple_function::{ir::sample_ir, runtime_timer::MonotonicTimer};
+  use crate::{ir_spec::sample_ir, runtime_timer::MonotonicTimer};
 
   use super::*;
 

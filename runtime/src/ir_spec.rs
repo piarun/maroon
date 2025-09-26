@@ -1,4 +1,4 @@
-use crate::ir::*;
+use dsl::ir::*;
 use std::collections::HashMap;
 
 // Shared IR specification used by build.rs (via include!) and by tests.

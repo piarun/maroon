@@ -10,6 +10,7 @@ members = [
   "schema",
   "state_log",
   "dsl",
+  "runtime",
 ]
 resolver = "3"
 

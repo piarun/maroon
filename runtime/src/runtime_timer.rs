@@ -1,4 +1,4 @@
-use crate::ir::LogicalTimeAbsoluteMs;
+use dsl::ir::LogicalTimeAbsoluteMs;
 
 pub trait Timer: Send + Sync + 'static {
   fn from_start(&self) -> LogicalTimeAbsoluteMs;
