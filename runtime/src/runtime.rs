@@ -1,95 +1,23 @@
-use crate::simple_function::ir::sample_ir;
-use crate::simple_function::{self, generated::*};
-use crate::{
-  ir::{FiberType, IR, LogicalTimeAbsoluteMs},
-  simple_function::{generated::Heap, task::*},
-};
+use crate::generated::*;
+use crate::runtime_timer::Timer;
+use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
+use crate::fiber::*;
+use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
-use std::{
-  collections::{BinaryHeap, HashMap, LinkedList, VecDeque},
-  env::var,
-};
-
-pub trait Timer: Send + Sync + 'static {
-  fn from_start(&self) -> LogicalTimeAbsoluteMs;
-  fn monotonic_now_system(&self) -> std::time::SystemTime;
-}
-
-// Runtime-only Future identifier. Unique per-fiber using suffixing policy.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct FutureId(pub String);
-impl std::fmt::Display for FutureId {
-  fn fmt(
-    &self,
-    f: &mut std::fmt::Formatter<'_>,
-  ) -> std::fmt::Result {
-    write!(f, "fut{}", self.0)
-  }
-}
-
-impl FutureId {
-  pub fn new(id: impl Into<String>) -> Self {
-    Self(id.into())
-  }
-
-  pub fn from_label(
-    label: crate::ir::FutureLabel,
-    unique_id: u64,
-  ) -> Self {
-    Self(format!("{}_{}", label.0, unique_id))
-  }
-}
-
-pub struct MonotonicTimer {
-  instant: std::time::Instant,
-  system: std::time::SystemTime,
-}
-
-impl MonotonicTimer {
-  pub fn new() -> MonotonicTimer {
-    MonotonicTimer { instant: std::time::Instant::now(), system: std::time::SystemTime::now() }
-  }
-
-  // create a timer that already has `elapsed` time accrued
-  #[cfg(test)]
-  pub fn with_elapsed(elapsed: std::time::Duration) -> Self {
-    let now_instant = std::time::Instant::now();
-    let now_system = std::time::SystemTime::now();
-
-    let instant = now_instant.checked_sub(elapsed).unwrap_or(now_instant);
-    let system = now_system.checked_sub(elapsed).unwrap_or(now_system);
-
-    MonotonicTimer { instant, system }
-  }
-  #[cfg(test)]
-  pub fn with_elapsed_ms(ms: u64) -> Self {
-    MonotonicTimer::with_elapsed(std::time::Duration::from_millis(ms))
-  }
-}
-
-impl Timer for MonotonicTimer {
-  fn from_start(&self) -> LogicalTimeAbsoluteMs {
-    LogicalTimeAbsoluteMs(self.instant.elapsed().as_millis() as u64)
-  }
-
-  fn monotonic_now_system(&self) -> std::time::SystemTime {
-    self.system + self.instant.elapsed()
-  }
-}
 
 #[derive(Debug, Clone)]
-struct TaskBlueprint {
+pub struct TaskBlueprint {
   // TODO: make it `UniqueU64BlobId` from `common` crate
   // global_id, the same that is coming from gateways, globally unique
-  global_id: u64,
+  pub global_id: u64,
 
-  fiber_type: FiberType,
+  pub fiber_type: FiberType,
   // function key to provide an information which function should be executed, ex: `add` or `sub`...
-  function_key: String,
+  pub function_key: String,
   // input parameters for the function
-  init_values: Vec<Value>,
+  pub init_values: Vec<Value>,
 }
 
 #[derive(Debug)]
@@ -135,7 +63,7 @@ impl PartialOrd for ScheduledBlob {
     Some(self.cmp(other))
   }
 }
-struct Runtime<T: Timer> {
+pub struct Runtime<T: Timer> {
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
   //
@@ -446,214 +374,221 @@ limiter:
   }
 }
 
-#[test]
-fn some_test() {
-  let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir());
+#[cfg(test)]
+mod tests {
+  use crate::{ir_spec::sample_ir, runtime_timer::MonotonicTimer};
 
-  rt.next_batch(
-    LogicalTimeAbsoluteMs(10),
-    VecDeque::from([
-      TaskBlueprint {
-        global_id: 300,
-        fiber_type: FiberType::new("application"),
-        function_key: "async_foo".to_string(),
-        init_values: vec![Value::U64(4), Value::U64(8)],
-      },
-      TaskBlueprint {
-        global_id: 1,
-        fiber_type: FiberType::new("application"),
-        function_key: "async_foo".to_string(),
-        init_values: vec![Value::U64(0), Value::U64(8)],
-      },
-    ]),
-  );
+  use super::*;
 
-  rt.run();
+  #[test]
+  fn some_test() {
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir());
 
-  assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
-}
+    rt.next_batch(
+      LogicalTimeAbsoluteMs(10),
+      VecDeque::from([
+        TaskBlueprint {
+          global_id: 300,
+          fiber_type: FiberType::new("application"),
+          function_key: "async_foo".to_string(),
+          init_values: vec![Value::U64(4), Value::U64(8)],
+        },
+        TaskBlueprint {
+          global_id: 1,
+          fiber_type: FiberType::new("application"),
+          function_key: "async_foo".to_string(),
+          init_values: vec![Value::U64(0), Value::U64(8)],
+        },
+      ]),
+    );
 
-#[test]
-fn sleep_test() {
-  let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+    rt.run();
 
-  rt.next_batch(
-    LogicalTimeAbsoluteMs(10),
-    VecDeque::from([TaskBlueprint {
-      global_id: 9,
-      fiber_type: FiberType::new("application"),
-      function_key: "sleep_and_pow".to_string(),
-      init_values: vec![Value::U64(2), Value::U64(4)],
-    }]),
-  );
+    assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
+  }
 
-  rt.run();
+  #[test]
+  fn sleep_test() {
+    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
 
-  assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
-}
-
-#[test]
-fn multiple_await() {
-  let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
-
-  // Cases to cover:
-  // - many awaiting fibers of the same function
-  // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
-  rt.next_batch(
-    LogicalTimeAbsoluteMs(10),
-    VecDeque::from([
-      TaskBlueprint {
+    rt.next_batch(
+      LogicalTimeAbsoluteMs(10),
+      VecDeque::from([TaskBlueprint {
         global_id: 9,
         fiber_type: FiberType::new("application"),
         function_key: "sleep_and_pow".to_string(),
         init_values: vec![Value::U64(2), Value::U64(4)],
-      },
-      TaskBlueprint {
-        global_id: 10,
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
-        init_values: vec![Value::U64(2), Value::U64(8)],
-      },
-      TaskBlueprint {
-        global_id: 11,
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
-        init_values: vec![Value::U64(2), Value::U64(7)],
-      },
-      TaskBlueprint {
-        global_id: 12,
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
-        init_values: vec![Value::U64(2), Value::U64(7)],
-      },
-      TaskBlueprint {
-        global_id: 13,
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
-        init_values: vec![Value::U64(2), Value::U64(7)],
-      },
-    ]),
-  );
+      }]),
+    );
 
-  rt.run();
+    rt.run();
 
-  assert_eq!(
-    HashMap::from([
-      (9, Value::U64(16)),
-      (10, Value::U64(256)),
-      (11, Value::U64(128)),
-      (12, Value::U64(128)),
-      (13, Value::U64(128))
-    ]),
-    rt.results
-  );
-}
+    assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
+  }
 
-#[test]
-fn order_book_add_no_match_and_best_quotes() {
-  let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 1);
+  #[test]
+  fn multiple_await() {
+    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
 
-  // add BUY 100@10 into empty book -> no trades
-  ob.load_task("add_buy", vec![Value::U64(1), Value::U64(10), Value::U64(100)], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
+    // Cases to cover:
+    // - many awaiting fibers of the same function
+    // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
+    rt.next_batch(
+      LogicalTimeAbsoluteMs(10),
+      VecDeque::from([
+        TaskBlueprint {
+          global_id: 9,
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(4)],
+        },
+        TaskBlueprint {
+          global_id: 10,
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(8)],
+        },
+        TaskBlueprint {
+          global_id: 11,
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(7)],
+        },
+        TaskBlueprint {
+          global_id: 12,
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(7)],
+        },
+        TaskBlueprint {
+          global_id: 13,
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(7)],
+        },
+      ]),
+    );
 
-  // best bid should be 10, best ask None
-  ob.load_task("best_bid", vec![], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::OptionU64(Some(10))), r);
+    rt.run();
 
-  ob.load_task("best_ask", vec![], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
-}
+    assert_eq!(
+      HashMap::from([
+        (9, Value::U64(16)),
+        (10, Value::U64(256)),
+        (11, Value::U64(128)),
+        (12, Value::U64(128)),
+        (13, Value::U64(128))
+      ]),
+      rt.results
+    );
+  }
 
-#[test]
-fn order_book_full_match_single_level() {
-  let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 2);
+  #[test]
+  fn order_book_add_no_match_and_best_quotes() {
+    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 1);
 
-  // SELL 50@12
-  ob.load_task("add_sell", vec![Value::U64(10), Value::U64(12), Value::U64(50)], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
+    // add BUY 100@10 into empty book -> no trades
+    ob.load_task("add_buy", vec![Value::U64(1), Value::U64(10), Value::U64(100)], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
 
-  // BUY 50@12 fully matches
-  ob.load_task("add_buy", vec![Value::U64(11), Value::U64(12), Value::U64(50)], None);
-  let r = ob.run();
-  let expected = vec![Trade { price: 12, qty: 50, takerId: 11, makerId: 10 }];
-  assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+    // best bid should be 10, best ask None
+    ob.load_task("best_bid", vec![], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::OptionU64(Some(10))), r);
 
-  // Book cleared on asks side
-  ob.load_task("best_ask", vec![], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
-}
+    ob.load_task("best_ask", vec![], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
+  }
 
-#[test]
-fn order_book_partial_match_and_depth() {
-  let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 3);
+  #[test]
+  fn order_book_full_match_single_level() {
+    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 2);
 
-  // Seed: SELL 80@12 by maker 100
-  ob.load_task("add_sell", vec![Value::U64(100), Value::U64(12), Value::U64(80)], None);
-  let _ = ob.run();
+    // SELL 50@12
+    ob.load_task("add_sell", vec![Value::U64(10), Value::U64(12), Value::U64(50)], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
 
-  // BUY 50@12 -> trade 50@12, remaining SELL 30@12 stays
-  ob.load_task("add_buy", vec![Value::U64(101), Value::U64(12), Value::U64(50)], None);
-  let r = ob.run();
-  let expected = vec![Trade { price: 12, qty: 50, takerId: 101, makerId: 100 }];
-  assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+    // BUY 50@12 fully matches
+    ob.load_task("add_buy", vec![Value::U64(11), Value::U64(12), Value::U64(50)], None);
+    let r = ob.run();
+    let expected = vec![Trade { price: 12, qty: 50, takerId: 11, makerId: 10 }];
+    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
-  // Best ask remains 12
-  ob.load_task("best_ask", vec![], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::OptionU64(Some(12))), r);
+    // Book cleared on asks side
+    ob.load_task("best_ask", vec![], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
+  }
 
-  // Depth snapshot top 1: asks [12:30], bids []
-  ob.load_task("top_n_depth", vec![Value::U64(1)], None);
-  let r = ob.run();
-  let expected = BookSnapshot { bids: vec![], asks: vec![Level { price: 12, qty: 30 }] };
-  assert_eq!(RunResult::Done(Value::BookSnapshot(expected)), r);
-}
+  #[test]
+  fn order_book_partial_match_and_depth() {
+    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 3);
 
-#[test]
-fn order_book_cross_multiple_levels_and_fifo_cancel() {
-  let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 4);
+    // Seed: SELL 80@12 by maker 100
+    ob.load_task("add_sell", vec![Value::U64(100), Value::U64(12), Value::U64(80)], None);
+    let _ = ob.run();
 
-  // Seed asks: 10@12 (id 201), 20@13 (202), 40@14 (203), plus FIFO on 15
-  ob.load_task("add_sell", vec![Value::U64(201), Value::U64(12), Value::U64(10)], None);
-  let _ = ob.run();
-  ob.load_task("add_sell", vec![Value::U64(202), Value::U64(13), Value::U64(20)], None);
-  let _ = ob.run();
-  ob.load_task("add_sell", vec![Value::U64(203), Value::U64(14), Value::U64(40)], None);
-  let _ = ob.run();
+    // BUY 50@12 -> trade 50@12, remaining SELL 30@12 stays
+    ob.load_task("add_buy", vec![Value::U64(101), Value::U64(12), Value::U64(50)], None);
+    let r = ob.run();
+    let expected = vec![Trade { price: 12, qty: 50, takerId: 101, makerId: 100 }];
+    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
-  // Add two sells at same price (FIFO): A=30@15 (204), then B=20@15 (205)
-  ob.load_task("add_sell", vec![Value::U64(204), Value::U64(15), Value::U64(30)], None);
-  let _ = ob.run();
-  ob.load_task("add_sell", vec![Value::U64(205), Value::U64(15), Value::U64(20)], None);
-  let _ = ob.run();
+    // Best ask remains 12
+    ob.load_task("best_ask", vec![], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::OptionU64(Some(12))), r);
 
-  // Aggressive BUY 50@14: matches 10@12, 20@13, 20@14; leaves 20@14
-  ob.load_task("add_buy", vec![Value::U64(300), Value::U64(14), Value::U64(50)], None);
-  let r = ob.run();
-  let expected = vec![
-    Trade { price: 12, qty: 10, takerId: 300, makerId: 201 },
-    Trade { price: 13, qty: 20, takerId: 300, makerId: 202 },
-    Trade { price: 14, qty: 20, takerId: 300, makerId: 203 },
-  ];
-  assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+    // Depth snapshot top 1: asks [12:30], bids []
+    ob.load_task("top_n_depth", vec![Value::U64(1)], None);
+    let r = ob.run();
+    let expected = BookSnapshot { bids: vec![], asks: vec![Level { price: 12, qty: 30 }] };
+    assert_eq!(RunResult::Done(Value::BookSnapshot(expected)), r);
+  }
 
-  // BUY 40@15 continues: first 20@14 (leftover), then 20 from A=30@15 (FIFO)
-  ob.load_task("add_buy", vec![Value::U64(301), Value::U64(15), Value::U64(40)], None);
-  let r = ob.run();
-  let expected = vec![
-    Trade { price: 14, qty: 20, takerId: 301, makerId: 203 },
-    Trade { price: 15, qty: 20, takerId: 301, makerId: 204 },
-  ];
-  assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+  #[test]
+  fn order_book_cross_multiple_levels_and_fifo_cancel() {
+    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 4);
 
-  // Cancel B (remaining 20@15)
-  ob.load_task("cancel", vec![Value::U64(205)], None);
-  let r = ob.run();
-  assert_eq!(RunResult::Done(Value::U64(1)), r);
+    // Seed asks: 10@12 (id 201), 20@13 (202), 40@14 (203), plus FIFO on 15
+    ob.load_task("add_sell", vec![Value::U64(201), Value::U64(12), Value::U64(10)], None);
+    let _ = ob.run();
+    ob.load_task("add_sell", vec![Value::U64(202), Value::U64(13), Value::U64(20)], None);
+    let _ = ob.run();
+    ob.load_task("add_sell", vec![Value::U64(203), Value::U64(14), Value::U64(40)], None);
+    let _ = ob.run();
+
+    // Add two sells at same price (FIFO): A=30@15 (204), then B=20@15 (205)
+    ob.load_task("add_sell", vec![Value::U64(204), Value::U64(15), Value::U64(30)], None);
+    let _ = ob.run();
+    ob.load_task("add_sell", vec![Value::U64(205), Value::U64(15), Value::U64(20)], None);
+    let _ = ob.run();
+
+    // Aggressive BUY 50@14: matches 10@12, 20@13, 20@14; leaves 20@14
+    ob.load_task("add_buy", vec![Value::U64(300), Value::U64(14), Value::U64(50)], None);
+    let r = ob.run();
+    let expected = vec![
+      Trade { price: 12, qty: 10, takerId: 300, makerId: 201 },
+      Trade { price: 13, qty: 20, takerId: 300, makerId: 202 },
+      Trade { price: 14, qty: 20, takerId: 300, makerId: 203 },
+    ];
+    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+
+    // BUY 40@15 continues: first 20@14 (leftover), then 20 from A=30@15 (FIFO)
+    ob.load_task("add_buy", vec![Value::U64(301), Value::U64(15), Value::U64(40)], None);
+    let r = ob.run();
+    let expected = vec![
+      Trade { price: 14, qty: 20, takerId: 301, makerId: 203 },
+      Trade { price: 15, qty: 20, takerId: 301, makerId: 204 },
+    ];
+    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
+
+    // Cancel B (remaining 20@15)
+    ob.load_task("cancel", vec![Value::U64(205)], None);
+    let r = ob.run();
+    assert_eq!(RunResult::Done(Value::U64(1)), r);
+  }
 }

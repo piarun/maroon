@@ -1,0 +1,9 @@
+[package]
+name = "runtime"
+edition = "2024"
+
+[dependencies]
+dsl = { path = "../dsl" }
+
+[build-dependencies]
+dsl = { path = "../dsl" }

@@ -1,6 +1,6 @@
-use crate::ir::FiberType;
-use crate::simple_function::generated::*;
-use crate::simple_function::task::*;
+use dsl::ir::FiberType;
+use crate::fiber::*;
+use crate::generated::*;
 
 #[test]
 fn add_function() {

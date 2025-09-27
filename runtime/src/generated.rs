@@ -136,12 +136,7 @@ pub enum StepResult {
     next: State,
     future_id: crate::ir::FutureLabel,
   },
-  Write(String, State),
   GoTo(State),
-  Branch {
-    then_: State,
-    else_: State,
-  },
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
