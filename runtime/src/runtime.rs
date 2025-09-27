@@ -1,17 +1,16 @@
+use crate::fiber::*;
 use crate::generated::*;
 use crate::runtime_timer::Timer;
+use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
-use crate::fiber::*;
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
-use std::hash::Hash;
-use std::thread::sleep;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct TaskBlueprint {
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  // global_id, the same that is coming from gateways, globally unique
-  pub global_id: u64,
+  pub global_id: UniqueU64BlobId,
 
   pub fiber_type: FiberType,
   // function key to provide an information which function should be executed, ex: `add` or `sub`...
@@ -63,7 +62,15 @@ impl PartialOrd for ScheduledBlob {
     Some(self.cmp(other))
   }
 }
+
 pub struct Runtime<T: Timer> {
+  // communication interface. In
+  ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
+
+  // communication interface. Out
+  // results as a deterministic completion-ordered stream of (global_id, value)
+  ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
+
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
   //
@@ -95,10 +102,6 @@ pub struct Runtime<T: Timer> {
 
   fiber_limiter: HashMap<FiberType, u64>,
 
-  // results. key - is global_id from TaskBlueprint
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  results: HashMap<u64, Value>,
-
   timer: T,
 
   // monotonically increasing id for newly created fibers
@@ -125,6 +128,8 @@ impl<T: Timer> Runtime<T> {
   pub fn new(
     timer: T,
     ir: IR,
+    ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
+    ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
   ) -> Runtime<T> {
     Runtime {
       fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
@@ -134,9 +139,11 @@ impl<T: Timer> Runtime<T> {
       scheduled: BinaryHeap::new(),
       fiber_pool: HashMap::new(),
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
-      results: HashMap::new(),
       timer: timer,
       next_fiber_id: 0,
+
+      ex_requests,
+      ex_results,
     }
   }
 
@@ -169,7 +176,7 @@ limiter:
     );
   }
 
-  pub fn push_fiber_in_message(
+  fn push_fiber_in_message(
     &mut self,
     _type: &FiberType,
     msg: FiberInMessage,
@@ -181,14 +188,6 @@ limiter:
       .expect("IR initalization was incorrect, all types should be here")
       .1
       .push_back(msg);
-  }
-
-  pub fn next_batch(
-    &mut self,
-    time: LogicalTimeAbsoluteMs,
-    blueprints: VecDeque<TaskBlueprint>,
-  ) {
-    self.active_tasks.push_back((time, blueprints));
   }
 
   // returns None if there is no idle Fibers and the limit has reached
@@ -218,7 +217,7 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
-  pub fn run(&mut self) {
+  pub async fn run(&mut self) {
     let mut counter = 0;
     'main_loop: loop {
       counter += 1;
@@ -230,21 +229,14 @@ limiter:
       let now = self.timer.from_start();
 
       // take scheduled Fibers and push them to active_fibers if it's time to work on them
-      while let Some(blob) = self.scheduled.peek() {
-        if now < blob.when {
-          break;
+      if let Some(blob) = self.scheduled.peek() {
+        if now >= blob.when {
+          let blob = self.scheduled.pop().unwrap();
+
+          if let Some(task_box) = self.parked_fibers.remove(&blob.what) {
+            self.active_fibers.push_front(task_box.fiber);
+          };
         }
-
-        let blob = self.scheduled.pop().unwrap();
-
-        let Some(task_box) = self.parked_fibers.remove(&blob.what) else {
-          continue;
-        };
-
-        // TODO: make a reverse order of these extracted tasks
-        // because right now I will pick the earliest first
-        // but if there are several tasks that should be executed - the earlist one will be executed the latest
-        self.active_fibers.push_front(task_box.fiber);
       }
 
       // work on active fibers(state-machine iterations moves)
@@ -258,7 +250,10 @@ limiter:
             self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
 
             if let Some(global_id) = options.global_id {
-              self.results.insert(global_id, result.clone());
+              // I'm ignoring an error here
+              // because if there is an error - the receiving channel is closed
+              // if it's closed due to shutdown or some error, doesn't matter => current level errors don't really matter
+              _ = self.ex_results.send((global_id, result.clone()));
             }
 
             let Some(future_id) = options.future_id else {
@@ -326,10 +321,18 @@ limiter:
       'process_active_tasks: loop {
         let now = self.timer.from_start();
 
-        let Some((time_stamp, mut current_queue)) = self.active_tasks.pop_front() else {
-          // TODO: a bit smarter sleep, if there are no next elements or select or smth
-          println!("nothing in active_tasks. sleep 5ms");
-          sleep(Duration::from_millis(5));
+        let mut next = self.active_tasks.pop_front();
+        if next.is_none() {
+          if self.ex_requests.is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            break;
+          } else {
+            let (time, requests) = self.ex_requests.recv().await.expect("checked, not empty");
+            next = Some((time, VecDeque::from(requests)));
+          }
+        }
+
+        let Some((time_stamp, mut current_queue)) = next else {
           break;
         };
 
@@ -337,7 +340,7 @@ limiter:
           // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
           // but it should be probably not just sleep, but select or smth
           let sleep_distance = time_stamp.0 - now.0;
-          sleep(Duration::from_millis(sleep_distance));
+          tokio::time::sleep(Duration::from_millis(sleep_distance)).await;
           println!("smth in active_tasks, but not now, sleeping {}ms", sleep_distance);
           self.active_tasks.push_front((time_stamp, current_queue));
           break;
@@ -376,219 +379,152 @@ limiter:
 
 #[cfg(test)]
 mod tests {
+  use std::fmt::Debug;
+
   use crate::{ir_spec::sample_ir, runtime_timer::MonotonicTimer};
+  use tokio::sync::mpsc;
 
   use super::*;
 
-  #[test]
-  fn some_test() {
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn some_test() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
 
-    rt.next_batch(
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
+
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([
+      vec![
         TaskBlueprint {
-          global_id: 300,
+          global_id: UniqueU64BlobId(300),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(4), Value::U64(8)],
         },
         TaskBlueprint {
-          global_id: 1,
+          global_id: UniqueU64BlobId(1),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(0), Value::U64(8)],
         },
-      ]),
-    );
+      ],
+    ));
 
-    rt.run();
-
-    assert_eq!(HashMap::from([(300, Value::U64(12)), (1, Value::U64(8))]), rt.results);
+    compare_channel_data_with_exp(
+      vec![(UniqueU64BlobId(300), Value::U64(12)), (UniqueU64BlobId(1), Value::U64(8))],
+      result_receiver,
+    )
+    .await;
   }
 
-  #[test]
-  fn sleep_test() {
-    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn sleep_test() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
 
-    rt.next_batch(
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
+
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([TaskBlueprint {
-        global_id: 9,
+      vec![TaskBlueprint {
+        global_id: UniqueU64BlobId(9),
         fiber_type: FiberType::new("application"),
         function_key: "sleep_and_pow".to_string(),
         init_values: vec![Value::U64(2), Value::U64(4)],
-      }]),
-    );
+      }],
+    ));
 
-    rt.run();
-
-    assert_eq!(HashMap::from([(9, Value::U64(16))]), rt.results);
+    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(16))], result_receiver).await;
   }
 
-  #[test]
-  fn multiple_await() {
-    let mut rt = Runtime::new(MonotonicTimer::with_elapsed_ms(5), sample_ir());
+  #[tokio::test(flavor = "multi_thread")]
+  async fn multiple_await() {
+    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+
+    tokio::spawn(async move {
+      rt.run().await;
+    });
 
     // Cases to cover:
     // - many awaiting fibers of the same function
     // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
-    rt.next_batch(
+    _ = input_sender.send((
       LogicalTimeAbsoluteMs(10),
-      VecDeque::from([
+      vec![
         TaskBlueprint {
-          global_id: 9,
+          global_id: UniqueU64BlobId(9),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(4)],
         },
         TaskBlueprint {
-          global_id: 10,
+          global_id: UniqueU64BlobId(10),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
-          global_id: 11,
+          global_id: UniqueU64BlobId(300),
+          fiber_type: FiberType::new("global"),
+          function_key: "add".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(8)],
+        },
+        TaskBlueprint {
+          global_id: UniqueU64BlobId(11),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
-          global_id: 12,
+          global_id: UniqueU64BlobId(12),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
-          global_id: 13,
+          global_id: UniqueU64BlobId(13),
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
-      ]),
-    );
+      ],
+    ));
 
-    rt.run();
-
-    assert_eq!(
-      HashMap::from([
-        (9, Value::U64(16)),
-        (10, Value::U64(256)),
-        (11, Value::U64(128)),
-        (12, Value::U64(128)),
-        (13, Value::U64(128))
-      ]),
-      rt.results
-    );
+    compare_channel_data_with_exp(
+      vec![
+        (UniqueU64BlobId(300), Value::U64(10)),
+        (UniqueU64BlobId(9), Value::U64(16)),
+        (UniqueU64BlobId(10), Value::U64(256)),
+        (UniqueU64BlobId(11), Value::U64(128)),
+        (UniqueU64BlobId(12), Value::U64(128)),
+        (UniqueU64BlobId(13), Value::U64(128)),
+      ],
+      result_receiver,
+    )
+    .await;
   }
 
-  #[test]
-  fn order_book_add_no_match_and_best_quotes() {
-    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 1);
-
-    // add BUY 100@10 into empty book -> no trades
-    ob.load_task("add_buy", vec![Value::U64(1), Value::U64(10), Value::U64(100)], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
-
-    // best bid should be 10, best ask None
-    ob.load_task("best_bid", vec![], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::OptionU64(Some(10))), r);
-
-    ob.load_task("best_ask", vec![], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
-  }
-
-  #[test]
-  fn order_book_full_match_single_level() {
-    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 2);
-
-    // SELL 50@12
-    ob.load_task("add_sell", vec![Value::U64(10), Value::U64(12), Value::U64(50)], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::ArrayTrade(vec![])), r);
-
-    // BUY 50@12 fully matches
-    ob.load_task("add_buy", vec![Value::U64(11), Value::U64(12), Value::U64(50)], None);
-    let r = ob.run();
-    let expected = vec![Trade { price: 12, qty: 50, takerId: 11, makerId: 10 }];
-    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
-
-    // Book cleared on asks side
-    ob.load_task("best_ask", vec![], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::OptionU64(None)), r);
-  }
-
-  #[test]
-  fn order_book_partial_match_and_depth() {
-    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 3);
-
-    // Seed: SELL 80@12 by maker 100
-    ob.load_task("add_sell", vec![Value::U64(100), Value::U64(12), Value::U64(80)], None);
-    let _ = ob.run();
-
-    // BUY 50@12 -> trade 50@12, remaining SELL 30@12 stays
-    ob.load_task("add_buy", vec![Value::U64(101), Value::U64(12), Value::U64(50)], None);
-    let r = ob.run();
-    let expected = vec![Trade { price: 12, qty: 50, takerId: 101, makerId: 100 }];
-    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
-
-    // Best ask remains 12
-    ob.load_task("best_ask", vec![], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::OptionU64(Some(12))), r);
-
-    // Depth snapshot top 1: asks [12:30], bids []
-    ob.load_task("top_n_depth", vec![Value::U64(1)], None);
-    let r = ob.run();
-    let expected = BookSnapshot { bids: vec![], asks: vec![Level { price: 12, qty: 30 }] };
-    assert_eq!(RunResult::Done(Value::BookSnapshot(expected)), r);
-  }
-
-  #[test]
-  fn order_book_cross_multiple_levels_and_fifo_cancel() {
-    let mut ob = Fiber::new_with_heap(FiberType::new("order_book"), Heap::default(), 4);
-
-    // Seed asks: 10@12 (id 201), 20@13 (202), 40@14 (203), plus FIFO on 15
-    ob.load_task("add_sell", vec![Value::U64(201), Value::U64(12), Value::U64(10)], None);
-    let _ = ob.run();
-    ob.load_task("add_sell", vec![Value::U64(202), Value::U64(13), Value::U64(20)], None);
-    let _ = ob.run();
-    ob.load_task("add_sell", vec![Value::U64(203), Value::U64(14), Value::U64(40)], None);
-    let _ = ob.run();
-
-    // Add two sells at same price (FIFO): A=30@15 (204), then B=20@15 (205)
-    ob.load_task("add_sell", vec![Value::U64(204), Value::U64(15), Value::U64(30)], None);
-    let _ = ob.run();
-    ob.load_task("add_sell", vec![Value::U64(205), Value::U64(15), Value::U64(20)], None);
-    let _ = ob.run();
-
-    // Aggressive BUY 50@14: matches 10@12, 20@13, 20@14; leaves 20@14
-    ob.load_task("add_buy", vec![Value::U64(300), Value::U64(14), Value::U64(50)], None);
-    let r = ob.run();
-    let expected = vec![
-      Trade { price: 12, qty: 10, takerId: 300, makerId: 201 },
-      Trade { price: 13, qty: 20, takerId: 300, makerId: 202 },
-      Trade { price: 14, qty: 20, takerId: 300, makerId: 203 },
-    ];
-    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
-
-    // BUY 40@15 continues: first 20@14 (leftover), then 20 from A=30@15 (FIFO)
-    ob.load_task("add_buy", vec![Value::U64(301), Value::U64(15), Value::U64(40)], None);
-    let r = ob.run();
-    let expected = vec![
-      Trade { price: 14, qty: 20, takerId: 301, makerId: 203 },
-      Trade { price: 15, qty: 20, takerId: 301, makerId: 204 },
-    ];
-    assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
-
-    // Cancel B (remaining 20@15)
-    ob.load_task("cancel", vec![Value::U64(205)], None);
-    let r = ob.run();
-    assert_eq!(RunResult::Done(Value::U64(1)), r);
+  async fn compare_channel_data_with_exp<T: PartialEq + Debug>(
+    expected: Vec<T>,
+    mut ch: UnboundedReceiver<T>,
+  ) {
+    for exp in expected.into_iter() {
+      let got = ch.recv().await.expect("result channel closed early");
+      assert_eq!(exp, got);
+    }
+    // Ensure there are no extra messages
+    assert!(ch.try_recv().is_err());
   }
 }

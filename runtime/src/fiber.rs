@@ -1,5 +1,6 @@
-use dsl::ir::{FiberType, Func, LogicalTimeAbsoluteMs};
 use crate::generated::*;
+use common::range_key::UniqueU64BlobId;
+use dsl::ir::{FiberType, Func, LogicalTimeAbsoluteMs};
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
@@ -22,8 +23,7 @@ pub struct RunContext {
   pub future_id: Option<FutureId>,
 
   // global_id from TaskBlueprint
-  // TODO: make it `UniqueU64BlobId` from `common` crate
-  pub global_id: Option<u64>,
+  pub global_id: Option<UniqueU64BlobId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
