@@ -1,5 +1,5 @@
-use dsl::ir::*;
 use crate::ir_spec::sample_ir;
+use dsl::ir::*;
 
 #[test]
 fn simple_ir() {
