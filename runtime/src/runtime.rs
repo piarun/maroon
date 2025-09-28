@@ -1,6 +1,6 @@
 use crate::fiber::*;
 use crate::generated::*;
-use crate::runtime_timer::Timer;
+use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
@@ -382,7 +382,8 @@ limiter:
 mod tests {
   use std::fmt::Debug;
 
-  use crate::{ir_spec::sample_ir, runtime_timer::MonotonicTimer};
+  use crate::ir_spec::sample_ir;
+  use common::logical_clock::MonotonicTimer;
   use tokio::sync::mpsc;
 
   use super::*;
