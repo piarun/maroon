@@ -1,12 +1,12 @@
 [package]
-name = "runtime"
 edition = "2024"
+name = "runtime"
 
 [dependencies]
-dsl = { path = "../dsl" }
 common = { path = "../common" }
+dsl = { path = "../dsl" }
 tokio = { workspace = true }
 
-
 [build-dependencies]
+common = { path = "../common" }
 dsl = { path = "../dsl" }

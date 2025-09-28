@@ -1,8 +1,9 @@
 use crate::fiber::*;
 use crate::generated::*;
 use crate::runtime_timer::Timer;
+use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
-use dsl::ir::{FiberType, IR, LogicalTimeAbsoluteMs};
+use dsl::ir::{FiberType, IR};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;

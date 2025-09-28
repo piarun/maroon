@@ -1,6 +1,7 @@
 use crate::generated::*;
+use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
-use dsl::ir::{FiberType, Func, LogicalTimeAbsoluteMs};
+use dsl::ir::{FiberType, Func};
 
 #[derive(Clone, Debug)]
 pub struct Fiber {
