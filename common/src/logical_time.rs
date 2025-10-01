@@ -1,4 +1,6 @@
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LogicalTimeAbsoluteMs(pub u64);
 
 impl LogicalTimeAbsoluteMs {
@@ -8,6 +10,25 @@ impl LogicalTimeAbsoluteMs {
 
   pub fn as_millis(&self) -> u64 {
     self.0
+  }
+
+  /// ```rust
+  /// use common::logical_time::LogicalTimeAbsoluteMs;
+  ///
+  /// assert_eq!(LogicalTimeAbsoluteMs::from_millis(10), LogicalTimeAbsoluteMs::from_millis(10).abs_diff(&LogicalTimeAbsoluteMs::from_millis(20)));
+  /// assert_eq!(LogicalTimeAbsoluteMs::from_millis(10), LogicalTimeAbsoluteMs::from_millis(20).abs_diff(&LogicalTimeAbsoluteMs::from_millis(10)));
+  /// assert_eq!(LogicalTimeAbsoluteMs::from_millis(0), LogicalTimeAbsoluteMs::from_millis(10).abs_diff(&LogicalTimeAbsoluteMs::from_millis(10)));
+  ///
+  /// ```
+  pub fn abs_diff(
+    &self,
+    second: &LogicalTimeAbsoluteMs,
+  ) -> LogicalTimeAbsoluteMs {
+    if self.0 > second.0 {
+      return LogicalTimeAbsoluteMs::from_millis(self.0 - second.0);
+    } else {
+      return LogicalTimeAbsoluteMs::from_millis(second.0 - self.0);
+    }
   }
 }
 

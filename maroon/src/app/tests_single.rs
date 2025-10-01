@@ -4,6 +4,7 @@ use crate::network::*;
 use crate::test_helpers::{new_test_instance, new_test_instance_with_params, reaches_state, test_tx};
 use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::create_invoker_handler_pair;
+use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use libp2p::PeerId;
@@ -203,7 +204,7 @@ async fn app_sends_epochs_to_epoch_coordinator() {
     a2b_epoch,
     Params::default()
       .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
-      .set_epoch_period(Duration::from_millis(200))
+      .set_epoch_period(LogicalTimeAbsoluteMs::from_millis(200))
       .set_advertise_period(Duration::from_millis(100)),
   );
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();

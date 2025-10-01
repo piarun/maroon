@@ -8,9 +8,9 @@ use crate::{
   network::{Inbox, NodeState, Outbox},
 };
 use common::{
-  clock::SystemClock,
   duplex_channel::Endpoint,
   invoker_handler::{HandlerInterface, RequestWrapper},
+  logical_clock::{MonotonicTimer, Timer},
   range_key::{
     self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
     unique_blob_id_from_range_and_offset,
@@ -27,6 +27,7 @@ use log::{debug, error, info};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
+  time::Duration,
   vec,
 };
 use tokio::{
@@ -69,7 +70,9 @@ pub struct App<L: Linearizer> {
   epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
 
   /// keeps logic that calculates if it's time to send a new epoch or not
-  send_decider: EpochDecisionEngine<SystemClock>,
+  send_decider: EpochDecisionEngine<MonotonicTimer>,
+
+  timer: MonotonicTimer,
 }
 
 impl<L: Linearizer> App<L> {
@@ -95,6 +98,7 @@ impl<L: Linearizer> App<L> {
       linearizer: LogLineriazer::new(),
       epoch_coordinator,
       send_decider: new_decider(peer_id, epoch_period),
+      timer: MonotonicTimer::new(),
     })
   }
 
@@ -105,7 +109,7 @@ impl<L: Linearizer> App<L> {
   ) {
     let mut advertise_offset_ticker = interval(self.params.advertise_period);
     advertise_offset_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    let mut commit_epoch_ticker = interval(self.params.epoch_period);
+    let mut commit_epoch_ticker = interval(Duration::from_millis(self.params.epoch_period.as_millis()));
 
     loop {
       tokio::select! {
@@ -271,7 +275,7 @@ impl<L: Linearizer> App<L> {
     let increments = calculate_epoch_increments(&self.consensus_offset, &self.commited_offsets);
 
     let prev_epoch = self.epochs.last().map(|e| e);
-    let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch);
+    let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch, self.timer.from_start());
 
     info!("attempt to commit new_epoch: {}", &new_epoch);
     self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });

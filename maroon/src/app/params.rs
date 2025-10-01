@@ -1,5 +1,7 @@
 use std::{num::NonZeroUsize, time::Duration};
 
+use common::logical_time::LogicalTimeAbsoluteMs;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
   /// how often node will send state info to other nodes
@@ -9,12 +11,10 @@ pub struct Params {
   /// TODO: separate pub struct ConsensusAlgoParams in a separate lib/consensus crate with its own test suite?
   pub consensus_nodes: NonZeroUsize,
 
-  /// TODO: it will be logical time in the future
-  ///
   /// periods between epochs <br>
   /// this parameter only says **when** you should start a new epoch <br>
   /// however due to multiple reasons a new epoch might not start after this period
-  pub epoch_period: std::time::Duration,
+  pub epoch_period: LogicalTimeAbsoluteMs,
 }
 
 impl Params {
@@ -22,7 +22,7 @@ impl Params {
     Params {
       advertise_period: Duration::from_secs(2),
       consensus_nodes: NonZeroUsize::new(2).unwrap(),
-      epoch_period: Duration::from_secs(3),
+      epoch_period: LogicalTimeAbsoluteMs::from_millis(3000),
     }
   }
 
@@ -44,7 +44,7 @@ impl Params {
 
   pub fn set_epoch_period(
     mut self,
-    new_period: Duration,
+    new_period: LogicalTimeAbsoluteMs,
   ) -> Params {
     self.epoch_period = new_period;
     self

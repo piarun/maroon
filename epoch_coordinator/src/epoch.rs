@@ -1,9 +1,8 @@
-use common::range_key::U64BlobIdClosedInterval;
+use common::{logical_time::LogicalTimeAbsoluteMs, range_key::U64BlobIdClosedInterval};
 use derive_more::Display;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Display, Serialize, Deserialize, PartialEq, Eq)]
 #[display("Epoch {{ sn: {:?} increments: {:?}, hash: 0x{:X} }}", sequence_number, increments, hash.iter().fold(0u128, |acc, &x| (acc << 8) | x as u128))]
@@ -16,7 +15,7 @@ pub struct Epoch {
 
   pub creator: PeerId,
 
-  pub creation_time: Duration,
+  pub creation_time: LogicalTimeAbsoluteMs,
 
   hash: [u8; 32],
 }
@@ -26,6 +25,7 @@ impl Epoch {
     creator: PeerId,
     increments: Vec<U64BlobIdClosedInterval>,
     prev_epoch: Option<&Epoch>,
+    time_tick: LogicalTimeAbsoluteMs,
   ) -> Epoch {
     let mut hasher = Sha256::new();
 
@@ -46,12 +46,6 @@ impl Epoch {
 
     let hash = hasher.finalize().into();
 
-    Epoch {
-      creator,
-      sequence_number,
-      increments,
-      hash,
-      creation_time: SystemTime::now().duration_since(UNIX_EPOCH).expect("it's way after unix epoch start"),
-    }
+    Epoch { creator, sequence_number, increments, hash, creation_time: time_tick }
   }
 }
