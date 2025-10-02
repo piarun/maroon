@@ -41,6 +41,7 @@ impl Linearizer for LogLineriazer {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use common::logical_time::LogicalTimeAbsoluteMs;
   use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, unique_blob_id_from_range_and_offset};
   use libp2p::PeerId;
 
@@ -57,6 +58,7 @@ mod tests {
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(1), KeyOffset(0), KeyOffset(3)),
       ],
       None,
+      LogicalTimeAbsoluteMs(100),
     ));
     linearizer.new_epoch(Epoch::next(
       peer_id,
@@ -65,6 +67,7 @@ mod tests {
         U64BlobIdClosedInterval::new_from_range_and_offsets(KeyRange(0), KeyOffset(3), KeyOffset(5)),
       ],
       None,
+      LogicalTimeAbsoluteMs(200),
     ));
 
     assert_eq!(

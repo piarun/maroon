@@ -3,6 +3,7 @@ edition = "2024"
 name = "dsl"
 
 [dependencies]
+common = { path = "../common" }
 pest = "2.8.1"
 pest_derive = "2.8.1"
 rand = "0.8"

@@ -1,4 +1,4 @@
-use dsl::ir::LogicalTimeAbsoluteMs;
+use crate::logical_time::LogicalTimeAbsoluteMs;
 
 pub trait Timer: Send + Sync + 'static {
   fn from_start(&self) -> LogicalTimeAbsoluteMs;
@@ -15,7 +15,7 @@ impl MonotonicTimer {
     MonotonicTimer { instant: std::time::Instant::now(), system: std::time::SystemTime::now() }
   }
 
-  // create a timer that already has `elapsed` time accrued
+  // create a timer that already has `elapsed` time
   #[cfg(test)]
   pub fn with_elapsed(elapsed: std::time::Duration) -> Self {
     let now_instant = std::time::Instant::now();
@@ -26,6 +26,7 @@ impl MonotonicTimer {
 
     MonotonicTimer { instant, system }
   }
+
   #[cfg(test)]
   pub fn with_elapsed_ms(ms: u64) -> Self {
     MonotonicTimer::with_elapsed(std::time::Duration::from_millis(ms))
@@ -41,3 +42,5 @@ impl Timer for MonotonicTimer {
     self.system + self.instant.elapsed()
   }
 }
+
+pub mod test_helpers;

@@ -1,3 +1,4 @@
+use common::logical_time::LogicalTimeAbsoluteMs;
 use dsl::ir::*;
 use std::collections::HashMap;
 

@@ -1003,6 +1003,7 @@ dependencies = [
 name = "dsl"
 version = "0.0.0"
 dependencies = [
+ "common",
  "pest",
  "pest_derive",
  "rand 0.8.5",

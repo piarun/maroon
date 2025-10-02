@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
+use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::U64BlobIdClosedInterval;
 use epoch_coordinator::etcd::{self, MAROON_PREFIX};
 use epoch_coordinator::{
@@ -64,8 +65,9 @@ async fn etcd_epoch_coordinator() {
 
   coordinator.start_on_background();
 
-  let epoch = Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(0, 13)], None);
-  let epoch2 = Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(14, 16)], Some(&epoch));
+  let epoch = Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(0, 13)], None, LogicalTimeAbsoluteMs(100));
+  let epoch2 =
+    Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(14, 16)], Some(&epoch), LogicalTimeAbsoluteMs(200));
 
   _ = sender.send(EpochRequest { epoch: epoch.clone() });
   let updates = receiver.recv().await.expect("can it be None?");
