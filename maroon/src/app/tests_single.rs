@@ -8,6 +8,7 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use libp2p::PeerId;
+use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -24,8 +25,10 @@ use tokio::sync::oneshot;
 async fn app_calculates_consensus_offset() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
+
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   let n1_peer_id = PeerId::random();
@@ -70,8 +73,9 @@ async fn app_calculates_consensus_offset() {
 async fn app_gets_missing_transaction() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -110,8 +114,9 @@ async fn app_gets_missing_transaction() {
 async fn app_gets_missing_transactions_that_smbd_else_requested() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -155,8 +160,9 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
 async fn app_detects_that_its_behind_and_makes_request() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch);
+  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -197,11 +203,13 @@ async fn app_detects_that_its_behind_and_makes_request() {
 async fn app_sends_epochs_to_epoch_coordinator() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
   let (a2b_epoch, mut b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (_state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance_with_params(
     b2a_endpoint,
     handler,
     a2b_epoch,
+    a2b_runtime,
     Params::default()
       .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
       .set_epoch_period(LogicalTimeAbsoluteMs::from_millis(200))

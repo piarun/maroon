@@ -3,7 +3,6 @@ use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox};
 use common::invoker_handler::HandlerInterface;
 use common::invoker_handler::InvokerInterface;
-use common::logical_clock::MonotonicTimer;
 use common::{
   duplex_channel::Endpoint,
   range_key::UniqueU64BlobId,
@@ -12,6 +11,7 @@ use common::{
 #[cfg(test)]
 use epoch_coordinator::interface::A2BEndpoint;
 use libp2p::PeerId;
+use runtime::runtime::A2BEndpoint as RuntimeA2BEndpoint;
 use std::time::Duration;
 
 #[cfg(test)]
@@ -19,18 +19,27 @@ pub fn new_test_instance(
   p2p_interface: Endpoint<Outbox, Inbox>,
   state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
   epoch_coordinator: A2BEndpoint,
+  runtime: RuntimeA2BEndpoint,
 ) -> App<LogLineriazer> {
-  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, Params::default())
-    .expect("failed to create test App instance")
+  App::<LogLineriazer>::new(
+    PeerId::random(),
+    p2p_interface,
+    runtime,
+    state_interface,
+    epoch_coordinator,
+    Params::default(),
+  )
+  .expect("failed to create test App instance")
 }
 
 pub fn new_test_instance_with_params(
   p2p_interface: Endpoint<Outbox, Inbox>,
   state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
   epoch_coordinator: A2BEndpoint,
+  runtime: RuntimeA2BEndpoint,
   params: Params,
 ) -> App<LogLineriazer> {
-  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, state_interface, epoch_coordinator, params)
+  App::<LogLineriazer>::new(PeerId::random(), p2p_interface, runtime, state_interface, epoch_coordinator, params)
     .expect("failed to create test App instance")
 }
 

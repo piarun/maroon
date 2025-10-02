@@ -11,6 +11,7 @@ use common::{
   duplex_channel::Endpoint,
   invoker_handler::{HandlerInterface, RequestWrapper},
   logical_clock::{MonotonicTimer, Timer},
+  logical_time::LogicalTimeAbsoluteMs,
   range_key::{
     self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
     unique_blob_id_from_range_and_offset,
@@ -24,6 +25,8 @@ use epoch_coordinator::{
 };
 use libp2p::PeerId;
 use log::{debug, error, info};
+use runtime::generated::Value;
+use runtime::runtime::TaskBlueprint;
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
@@ -79,6 +82,7 @@ impl<L: Linearizer> App<L> {
   pub fn new(
     peer_id: PeerId,
     p2p_interface: Endpoint<Outbox, Inbox>,
+    runtime_interface: Endpoint<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>,
     state_interface: HandlerInterface<Request, Response>,
     epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
     params: Params,
