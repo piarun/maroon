@@ -13,7 +13,6 @@ use log::{debug, info};
 use runtime::generated::Value;
 use runtime::ir_spec::sample_ir;
 use runtime::runtime::{Runtime, TaskBlueprint};
-use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 pub struct MaroonStack {

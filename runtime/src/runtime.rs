@@ -7,8 +7,6 @@ use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::time::Duration;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct TaskBlueprint {
@@ -375,11 +373,11 @@ limiter:
 
 #[cfg(test)]
 mod tests {
-  use std::fmt::Debug;
-
   use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
+  use std::fmt::Debug;
+  use tokio::sync::mpsc::UnboundedReceiver;
 
   use super::*;
 

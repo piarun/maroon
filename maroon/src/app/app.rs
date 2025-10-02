@@ -25,8 +25,9 @@ use epoch_coordinator::{
 };
 use libp2p::PeerId;
 use log::{debug, error, info};
-use runtime::generated::Value;
 use runtime::runtime::TaskBlueprint;
+use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
+use runtime::{generated::Value, ir::FiberType};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
@@ -45,6 +46,7 @@ pub struct App<L: Linearizer> {
 
   p2p_interface: Endpoint<Outbox, Inbox>,
   state_interface: HandlerInterface<Request, Response>,
+  runtime_interface: Endpoint<RuntimeInput, RuntimeOutput>,
 
   /// offsets for the current node
   self_offsets: HashMap<KeyRange, KeyOffset>,
@@ -93,6 +95,7 @@ impl<L: Linearizer> App<L> {
       peer_id,
       p2p_interface,
       state_interface,
+      runtime_interface,
       offsets: HashMap::new(),
       self_offsets: HashMap::new(),
       consensus_offset: HashMap::new(),
@@ -133,6 +136,9 @@ impl<L: Linearizer> App<L> {
           Some(updates)= self.epoch_coordinator.receiver.recv() => {
             self.handle_epoch_coordinator_updates(updates);
           },
+          Some(res) = self.runtime_interface.receiver.recv() => {
+            debug!("[[:::::]] got result: {:?}", res);
+          },
           _ = &mut shutdown =>{
             info!("TODO: shutdown the app");
             break;
@@ -162,10 +168,14 @@ impl<L: Linearizer> App<L> {
     updates: EpochUpdates,
   ) {
     match updates {
-      EpochUpdates::New(new_epoch) => {
+      EpochUpdates::New(mut new_epoch) => {
         debug!("got epoch updates seq_n: {}", new_epoch.sequence_number);
+        new_epoch.increments.sort();
         self.linearizer.new_epoch(new_epoch.clone());
+
         {
+          // update commited offsets on self state so we know where to start next epoch
+          let new_epoch = new_epoch.clone();
           for interval in &new_epoch.increments {
             let (range, new_offset) = range_offset_from_unique_blob_id(interval.end());
             self.commited_offsets.insert(range, new_offset);
@@ -173,6 +183,28 @@ impl<L: Linearizer> App<L> {
 
           self.send_decider.update_latest_epoch(new_epoch.creator, new_epoch.creation_time);
           self.epochs.push(new_epoch);
+        }
+
+        {
+          // send to runtime
+          let time = new_epoch.creation_time.clone();
+          let mut blueprints = vec![];
+
+          for interval in new_epoch.increments {
+            for i in interval.iter() {
+              // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
+              blueprints.push(TaskBlueprint {
+                global_id: i,
+                fiber_type: FiberType::new("application"),
+                function_key: "async_foo".to_string(),
+                init_values: vec![Value::U64(4), Value::U64(8)],
+              });
+            }
+          }
+
+          if blueprints.len() > 0 {
+            self.runtime_interface.send((time, blueprints));
+          }
         }
       }
     }
