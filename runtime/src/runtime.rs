@@ -1,5 +1,6 @@
 use crate::fiber::*;
 use crate::generated::*;
+use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
@@ -64,13 +65,16 @@ impl PartialOrd for ScheduledBlob {
   }
 }
 
-pub struct Runtime<T: Timer> {
-  // communication interface. In
-  ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
+pub type Input = (LogicalTimeAbsoluteMs, Vec<TaskBlueprint>);
+pub type Output = (UniqueU64BlobId, Value);
+// TODO: Don't like these names, I think it makes sense to have them.
+// It provides a bit more clarity and clearnes, but should think more no naming
+pub type B2AEndpoint = Endpoint<Output, Input>;
+pub type A2BEndpoint = Endpoint<Input, Output>;
 
-  // communication interface. Out
-  // results as a deterministic completion-ordered stream of (global_id, value)
-  ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
+pub struct Runtime<T: Timer> {
+  // communication interface
+  interface: B2AEndpoint,
 
   // Execution priority
   // Executors goes to the next step only if there is no work on previous steps
@@ -129,8 +133,7 @@ impl<T: Timer> Runtime<T> {
   pub fn new(
     timer: T,
     ir: IR,
-    ex_requests: UnboundedReceiver<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
-    ex_results: UnboundedSender<(UniqueU64BlobId, Value)>,
+    interface: Endpoint<(UniqueU64BlobId, Value), (LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
   ) -> Runtime<T> {
     Runtime {
       fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
@@ -143,8 +146,7 @@ impl<T: Timer> Runtime<T> {
       timer: timer,
       next_fiber_id: 0,
 
-      ex_requests,
-      ex_results,
+      interface,
     }
   }
 
@@ -219,14 +221,7 @@ limiter:
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
   pub async fn run(&mut self) {
-    let mut counter = 0;
     'main_loop: loop {
-      counter += 1;
-      if counter > 100 {
-        // TODO: just for tests, and for now, actually it should be an infinite loop
-        return;
-      }
-
       let now = self.timer.from_start();
 
       // take scheduled Fibers and push them to active_fibers if it's time to work on them
@@ -254,7 +249,7 @@ limiter:
               // I'm ignoring an error here
               // because if there is an error - the receiving channel is closed
               // if it's closed due to shutdown or some error, doesn't matter => current level errors don't really matter
-              _ = self.ex_results.send((global_id, result.clone()));
+              self.interface.send((global_id, result.clone()));
             }
 
             let Some(future_id) = options.future_id else {
@@ -324,11 +319,11 @@ limiter:
 
         let mut next = self.active_tasks.pop_front();
         if next.is_none() {
-          if self.ex_requests.is_empty() {
+          if self.interface.receiver.is_empty() {
             tokio::time::sleep(Duration::from_millis(5)).await;
             break;
           } else {
-            let (time, requests) = self.ex_requests.recv().await.expect("checked, not empty");
+            let (time, requests) = self.interface.receiver.recv().await.expect("checked, not empty");
             next = Some((time, VecDeque::from(requests)));
           }
         }
@@ -383,23 +378,23 @@ mod tests {
   use std::fmt::Debug;
 
   use crate::ir_spec::sample_ir;
+  use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
-  use tokio::sync::mpsc;
 
   use super::*;
 
   #[tokio::test(flavor = "multi_thread")]
   async fn some_test() {
-    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
       rt.run().await;
     });
 
-    _ = input_sender.send((
+    _ = a2b_runtime.send((
       LogicalTimeAbsoluteMs(10),
       vec![
         TaskBlueprint {
@@ -419,23 +414,23 @@ mod tests {
 
     compare_channel_data_with_exp(
       vec![(UniqueU64BlobId(300), Value::U64(12)), (UniqueU64BlobId(1), Value::U64(8))],
-      result_receiver,
+      a2b_runtime.receiver,
     )
     .await;
   }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn sleep_test() {
-    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
       rt.run().await;
     });
 
-    _ = input_sender.send((
+    _ = a2b_runtime.send((
       LogicalTimeAbsoluteMs(10),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
@@ -445,15 +440,14 @@ mod tests {
       }],
     ));
 
-    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(16))], result_receiver).await;
+    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(16))], a2b_runtime.receiver).await;
   }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn multiple_await() {
-    let (input_sender, input_receiver) = mpsc::unbounded_channel::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<(UniqueU64BlobId, Value)>();
-
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), input_receiver, result_sender);
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
       rt.run().await;
@@ -462,7 +456,7 @@ mod tests {
     // Cases to cover:
     // - many awaiting fibers of the same function
     // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
-    _ = input_sender.send((
+    _ = a2b_runtime.send((
       LogicalTimeAbsoluteMs(10),
       vec![
         TaskBlueprint {
@@ -513,7 +507,7 @@ mod tests {
         (UniqueU64BlobId(12), Value::U64(128)),
         (UniqueU64BlobId(13), Value::U64(128)),
       ],
-      result_receiver,
+      a2b_runtime.receiver,
     )
     .await;
   }
