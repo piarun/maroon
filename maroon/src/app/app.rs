@@ -11,7 +11,6 @@ use common::{
   duplex_channel::Endpoint,
   invoker_handler::{HandlerInterface, RequestWrapper},
   logical_clock::{MonotonicTimer, Timer},
-  logical_time::LogicalTimeAbsoluteMs,
   range_key::{
     self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
     unique_blob_id_from_range_and_offset,
@@ -69,6 +68,7 @@ pub struct App<L: Linearizer> {
   /// it's what will be stored on etcd & s3
   epochs: Vec<Epoch>,
 
+  // TODO: right now there are many assumptions made with the thought that elements won't disappear here(keep that in mind when it changes)
   transactions: HashMap<UniqueU64BlobId, Transaction>,
 
   linearizer: L,
@@ -84,7 +84,7 @@ impl<L: Linearizer> App<L> {
   pub fn new(
     peer_id: PeerId,
     p2p_interface: Endpoint<Outbox, Inbox>,
-    runtime_interface: Endpoint<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>,
+    runtime_interface: Endpoint<RuntimeInput, RuntimeOutput>,
     state_interface: HandlerInterface<Request, Response>,
     epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
     params: Params,
@@ -118,6 +118,9 @@ impl<L: Linearizer> App<L> {
     advertise_offset_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut commit_epoch_ticker = interval(Duration::from_millis(self.params.epoch_period.as_millis()));
 
+    let mut runtime_result_buf = Vec::<RuntimeOutput>::with_capacity(10);
+    let runtime_result_limit: usize = 10;
+
     loop {
       tokio::select! {
           _ = advertise_offset_ticker.tick() => {
@@ -136,8 +139,16 @@ impl<L: Linearizer> App<L> {
           Some(updates)= self.epoch_coordinator.receiver.recv() => {
             self.handle_epoch_coordinator_updates(updates);
           },
-          Some(res) = self.runtime_interface.receiver.recv() => {
-            debug!("[[:::::]] got result: {:?}", res);
+          got_results_count = self.runtime_interface.receiver.recv_many(&mut runtime_result_buf, runtime_result_limit) => {
+            let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
+            for r in runtime_result_buf.drain(..) {
+              let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");
+              tx.status = common::transaction::TxStatus::Finished;
+
+              for_notification.push(tx.clone());
+            }
+
+            self.p2p_interface.send(Outbox::NotifyGWs(for_notification));
           },
           _ = &mut shutdown =>{
             info!("TODO: shutdown the app");
@@ -192,6 +203,10 @@ impl<L: Linearizer> App<L> {
 
           for interval in new_epoch.increments {
             for i in interval.iter() {
+              let tx= self.transactions.get_mut(&i).expect("TODO: make sure all txs are here, epochs might contain bigger offsets that current node sees right now");
+              // TODO: notify gateway nodes here about status changing?
+              tx.status = common::transaction::TxStatus::Pending;
+
               // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
               blueprints.push(TaskBlueprint {
                 global_id: i,

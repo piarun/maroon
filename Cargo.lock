@@ -711,6 +711,7 @@ dependencies = [
  "libp2p-request-response",
  "log",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
