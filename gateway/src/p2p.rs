@@ -2,6 +2,7 @@ use common::{
   duplex_channel::Endpoint,
   gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response},
   meta_exchange::{self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role},
+  node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic},
 };
 use derive_more::From;
 use futures::StreamExt;
@@ -9,6 +10,10 @@ use libp2p::dns::Transport as DnsTransport;
 use libp2p::{
   Multiaddr, PeerId,
   core::{transport::Transport as _, upgrade},
+  gossipsub::{
+    Behaviour as GossipsubBehaviour, ConfigBuilder as GossipsubConfigBuilder, Event as GossipsubEvent,
+    MessageAuthenticity, ValidationMode,
+  },
   identity,
   noise::{Config as NoiseConfig, Error as NoiseError},
   ping::{Behaviour as PingBehaviour, Config as PingConfig, Event as PingEvent},
@@ -17,7 +22,7 @@ use libp2p::{
   yamux::Config as YamuxConfig,
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
-use log::{debug, info};
+use log::{debug, error, info};
 use schema::mn_events::{CommandBody, Eid, LogEvent, LogEventBody, now_microsec};
 use std::{collections::HashSet, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
@@ -26,6 +31,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[behaviour(out_event = "GatewayEvent")]
 struct GatewayBehaviour {
   ping: PingBehaviour,
+  gossipsub: GossipsubBehaviour,
   request_response: GMBehaviour,
   meta_exchange: MetaExchangeBehaviour,
 }
@@ -33,6 +39,7 @@ struct GatewayBehaviour {
 #[derive(From)]
 pub enum GatewayEvent {
   Ping(PingEvent),
+  Gossipsub(GossipsubEvent),
   RequestResponse(GMEvent),
   MetaExchange(MEEvent),
 }
@@ -65,10 +72,24 @@ impl P2P {
       .multiplex(YamuxConfig::default())
       .boxed();
 
+    let mut gossipsub = GossipsubBehaviour::new(
+      MessageAuthenticity::Signed(kp.clone()),
+      GossipsubConfigBuilder::default()
+        .mesh_outbound_min(1)
+        .mesh_n_low(1)
+        .mesh_n(2)
+        .validation_mode(ValidationMode::Permissive)
+        .build()
+        .map_err(|e| format!("gossipsub config builder: {e}"))?,
+    )
+    .map_err(|e| format!("gossipsub behaviour creation: {e}"))?;
+    gossipsub.subscribe(&node2gw_topic())?;
+
     let behaviour = GatewayBehaviour {
       ping: PingBehaviour::new(
         PingConfig::new().with_interval(Duration::from_secs(5)).with_timeout(Duration::from_secs(10)),
       ),
+      gossipsub,
       request_response: gm_request_response::create_behaviour(ProtocolSupport::Outbound),
       meta_exchange: meta_exchange::create_behaviour(),
     };
@@ -170,6 +191,25 @@ fn handle_swarm_event(
     }
     SwarmEvent::Behaviour(GatewayEvent::Ping(PingEvent { .. })) => {
       // TODO: have an idea to use result.duration for calculating logical time between nodes. let's see
+    }
+    SwarmEvent::Behaviour(GatewayEvent::Gossipsub(gs_e)) => {
+      match gs_e {
+        GossipsubEvent::Message { propagation_source: _, message_id: _, message } => {
+          match serde_json::from_slice::<N2GWGossipMessage>(&message.data) {
+            Ok(p2p_message) => match p2p_message.payload {
+              N2GWGossipPayload::Node2GWTxUpdate(tx_updates) => {
+                // TODO: return it for HTTP response or websocket response, or whatever response there will be
+                info!("UPDATE TXs: {:?}", tx_updates);
+              }
+            },
+            Err(e) => {
+              error!("swarm deserialize: {e}");
+            }
+          }
+        }
+        _ => {}
+      }
+      // TODO: GOSSIP
     }
     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
       maroon_peer_ids.insert(peer_id);

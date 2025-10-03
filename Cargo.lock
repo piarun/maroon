@@ -711,6 +711,7 @@ dependencies = [
  "libp2p-request-response",
  "log",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -2587,6 +2588,7 @@ dependencies = [
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "rand 0.9.1",
+ "runtime",
  "schema",
  "serde",
  "serde_json",
