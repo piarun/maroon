@@ -140,6 +140,10 @@ impl<L: Linearizer> App<L> {
             self.handle_epoch_coordinator_updates(updates);
           },
           got_results_count = self.runtime_interface.receiver.recv_many(&mut runtime_result_buf, runtime_result_limit) => {
+            if got_results_count == 0 {
+              continue;
+            }
+
             let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
             for r in runtime_result_buf.drain(..) {
               let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");

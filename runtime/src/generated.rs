@@ -3,14 +3,14 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Order {
   pub id: u64,
   pub price: u64,
   pub qty: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Trade {
   pub price: u64,
   pub qty: u64,
@@ -18,19 +18,19 @@ pub struct Trade {
   pub makerId: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OrderIndex {
   pub side: String,
   pub price: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Level {
   pub price: u64,
   pub qty: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BookSnapshot {
   pub bids: Vec<Level>,
   pub asks: Vec<Level>,
@@ -108,7 +108,7 @@ pub enum State {
   OrderBookTopNDepthEntry,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),

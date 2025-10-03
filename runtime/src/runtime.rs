@@ -8,7 +8,7 @@ use dsl::ir::{FiberType, IR};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::time::Duration;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
 

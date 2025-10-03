@@ -5,10 +5,14 @@ use crate::test_helpers::{new_test_instance, new_test_instance_with_params, reac
 use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::create_invoker_handler_pair;
 use common::logical_time::LogicalTimeAbsoluteMs;
-use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
+use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
+use common::transaction::{Transaction, TxStatus};
+use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use libp2p::PeerId;
-use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
+use runtime::generated::Value;
+use runtime::ir::FiberType;
+use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -258,4 +262,82 @@ async fn app_sends_epochs_to_epoch_coordinator() {
 
   let guard_collected = increments.lock().await;
   assert!(has_expected_tx, "{:?}", guard_collected);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn app_executes_after_epoch_confirmed() {
+  // tests cycle:
+  // (commited epoch) -> app -> runtime(with confirmed txs) -> (runtime exec result) -> app -> p2p network layer
+  let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
+  let (a2b_epoch, b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (a2b_runtime, mut b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
+  let (_state_invoker, handler) = create_invoker_handler_pair();
+  let mut app = new_test_instance_with_params(
+    b2a_endpoint,
+    handler,
+    a2b_epoch,
+    a2b_runtime,
+    Params::default()
+      .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
+      .set_epoch_period(LogicalTimeAbsoluteMs::from_millis(200))
+      .set_advertise_period(Duration::from_millis(100)),
+  );
+  let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+
+  a2b_endpoint.sender.send(Inbox::NewTransaction(test_tx(0))).unwrap();
+  a2b_endpoint.sender.send(Inbox::NewTransaction(test_tx(1))).unwrap();
+
+  tokio::spawn(async move {
+    app.loop_until_shutdown(shutdown_rx).await;
+  });
+
+  let rnd_peer = PeerId::random();
+  // imitate new epoch came
+  b2a_epoch.send(EpochUpdates::New(Epoch::next(
+    rnd_peer,
+    vec![U64BlobIdClosedInterval::new(0, 1)],
+    None,
+    LogicalTimeAbsoluteMs(0),
+  )));
+
+  // wait until app processes epoch and sends what's needed
+  tokio::time::sleep(Duration::from_millis(500)).await;
+
+  // check that app sent correct TXs to runtime
+  let increment = b2a_runtime.receiver.recv().await;
+  assert_eq!(
+    Some((
+      LogicalTimeAbsoluteMs(0),
+      vec![
+        TaskBlueprint {
+          global_id: UniqueU64BlobId(0),
+          fiber_type: FiberType::new("application"),
+          function_key: "async_foo".to_string(),
+          init_values: vec![Value::U64(4), Value::U64(8)]
+        },
+        TaskBlueprint {
+          global_id: UniqueU64BlobId(1),
+          fiber_type: FiberType::new("application"),
+          function_key: "async_foo".to_string(),
+          init_values: vec![Value::U64(4), Value::U64(8)]
+        }
+      ]
+    )),
+    increment
+  );
+
+  // imitate result from runtime
+  b2a_runtime.send((UniqueU64BlobId(0), Value::U64(12)));
+  b2a_runtime.send((UniqueU64BlobId(1), Value::U64(12)));
+
+  tokio::time::sleep(Duration::from_millis(500)).await;
+  while let Some(Outbox::NotifyGWs(updated_txs)) = a2b_endpoint.receiver.recv().await {
+    assert_eq!(
+      vec![
+        Transaction { id: UniqueU64BlobId(0), status: TxStatus::Finished },
+        Transaction { id: UniqueU64BlobId(1), status: TxStatus::Finished }
+      ],
+      updated_txs,
+    );
+  }
 }
