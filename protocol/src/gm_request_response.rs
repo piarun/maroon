@@ -1,3 +1,4 @@
+use crate::transaction::Transaction;
 use libp2p::swarm::StreamProtocol;
 use libp2p_request_response::{
   self as request_response, Event as RequestResponseEvent, ProtocolSupport,
@@ -5,7 +6,6 @@ use libp2p_request_response::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use crate::transaction::Transaction;
 
 pub type Event = RequestResponseEvent<Request, Response>;
 pub type Behaviour = json::Behaviour<Request, Response>;
@@ -28,4 +28,3 @@ pub enum Response {
   Acknowledged,
   Rejected,
 }
-

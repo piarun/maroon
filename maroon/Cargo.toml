@@ -20,6 +20,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry-stdout = { workspace = true }
 opentelemetry_sdk = { workspace = true }
+protocol = { path = "../protocol" }
 rand = "0.9.1"
 runtime = { path = "../runtime" }
 schema = { path = "../schema" }
@@ -28,4 +29,3 @@ serde_json = { workspace = true }
 state_log = { path = "../state_log" }
 tokio = { workspace = true }
 types = { path = "../types" }
-protocol = { path = "../protocol" }

@@ -115,9 +115,15 @@ pub fn generate_rust_types(ir: &IR) -> String {
           ));
         } else if derive_partial_eq {
           // Derive Eq alongside PartialEq to support Value: Eq
-          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!(
+            "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+            ty_name
+          ));
         } else {
-          out.push_str(&format!("#[derive(Clone, Debug, Default, Serialize, Deserialize)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!(
+            "#[derive(Clone, Debug, Default, Serialize, Deserialize)]\npub struct {} {{\n",
+            ty_name
+          ));
         }
         for f in fields {
           out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));

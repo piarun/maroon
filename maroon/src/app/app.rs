@@ -539,7 +539,7 @@ mod tests {
   use crate::test_helpers::test_tx;
 
   use super::*;
-  use protocol::transaction::{Transaction, TxStatus};
+  use protocol::transaction::Transaction;
 
   #[test]
   fn calculate_consensus_maximum() {
@@ -590,87 +590,66 @@ mod tests {
         label: "empty",
         initial_self_offsets: HashMap::new(),
         initial_transactions: HashMap::new(),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        expected_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
       },
       Case {
         label: "add already existing transaction. no effect",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        expected_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
       },
       Case {
         label: "add next transaction",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
+        transaction: test_tx(1),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
-        expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-        ]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0)), (UniqueU64BlobId(1), test_tx(1))]),
       },
       Case {
         label: "add transaction, fill the gap, empty initial offset",
         initial_self_offsets: HashMap::from([]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(1),
-          Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(1), test_tx(1))]),
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
-        expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-        ]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0)), (UniqueU64BlobId(1), test_tx(1))]),
       },
       Case {
         label: "add transaction, fill the gap, dont go till the end",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
-        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
+        transaction: test_tx(1),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(2))]),
         expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(1), test_tx(1)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
       },
       Case {
         label: "add transaction, fill the gap but not in the beginning",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
-        transaction: Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending },
+        transaction: test_tx(3),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(3), Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(3), test_tx(3)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
       },
     ];

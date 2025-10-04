@@ -5,15 +5,15 @@ version = "0.1.0"
 
 [dependencies]
 common = { path = "../../common" }
-types = { path = "../../types" }
-protocol = { path = "../../protocol" }
-generated = { path = "../../generated" }
 env_logger = { workspace = true }
 futures = { workspace = true }
 gateway = { path = "../../gateway" }
+generated = { path = "../../generated" }
 libp2p = { workspace = true }
 maroon = { path = "../../maroon" }
+protocol = { path = "../../protocol" }
 tokio = { workspace = true }
+types = { path = "../../types" }
 
 [dev-dependencies]
 tokio-test = "0.4"

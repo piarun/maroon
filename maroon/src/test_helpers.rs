@@ -6,11 +6,11 @@ use common::invoker_handler::InvokerInterface;
 use common::{duplex_channel::Endpoint, range_key::UniqueU64BlobId};
 #[cfg(test)]
 use epoch_coordinator::interface::A2BEndpoint;
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
+use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
 use runtime::runtime::A2BEndpoint as RuntimeA2BEndpoint;
 use std::time::Duration;
-use generated::maroon_assembler::Value;
-use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
 
 #[cfg(test)]
 pub fn new_test_instance(

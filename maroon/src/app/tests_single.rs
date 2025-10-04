@@ -10,6 +10,8 @@ use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
+use protocol::transaction::FiberType as ProtoFiberType;
+use protocol::transaction::{Meta, TaskBlueprint as ProtoBlueprint, Transaction, TxStatus};
 use runtime::ir::FiberType;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
@@ -18,7 +20,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::oneshot;
-use protocol::transaction::{Transaction, TxStatus};
 
 ///
 /// In this file we're testing app as a black box by accessing only publicly available interface module
@@ -334,8 +335,24 @@ async fn app_executes_after_epoch_confirmed() {
   while let Some(Outbox::NotifyGWs(updated_txs)) = a2b_endpoint.receiver.recv().await {
     assert_eq!(
       vec![
-        Transaction { id: UniqueU64BlobId(0), status: TxStatus::Finished },
-        Transaction { id: UniqueU64BlobId(1), status: TxStatus::Finished }
+        Transaction {
+          meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished },
+          blueprint: ProtoBlueprint {
+            global_id: UniqueU64BlobId(0),
+            fiber_type: ProtoFiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
+          },
+        },
+        Transaction {
+          meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished },
+          blueprint: ProtoBlueprint {
+            global_id: UniqueU64BlobId(1),
+            fiber_type: ProtoFiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
+          },
+        },
       ],
       updated_txs,
     );

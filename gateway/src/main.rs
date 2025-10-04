@@ -33,8 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         init_values: vec![Value::U64(4), Value::U64(8)],
       },
     };
-    _ = gw.send_request(Request::NewTransaction(tx))
-      .await?;
+    _ = gw.send_request(Request::NewTransaction(tx)).await?;
     tokio::time::sleep(Duration::from_secs(1)).await;
   }
 

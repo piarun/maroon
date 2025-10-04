@@ -1,7 +1,5 @@
 use crate::p2p::P2P;
-use common::{
-  duplex_channel::{Endpoint, create_a_b_duplex_pair},
-};
+use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
 use protocol::gm_request_response::{Request, Response};
 use protocol::meta_exchange::{Response as MEResponse, Role};
 pub struct Gateway {

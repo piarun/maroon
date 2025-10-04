@@ -7,16 +7,16 @@ use common::{
   invoker_handler::InvokerInterface,
   range_key::{KeyOffset, KeyRange, UniqueU64BlobId},
 };
-use protocol::gm_request_response::Request;
-use protocol::meta_exchange::Response;
 use gateway::core::Gateway;
+use generated::maroon_assembler::Value;
 use maroon::{
   app::{App, CurrentOffsets, Params, Request as AppRequest, Response as AppResponse},
   stack,
 };
-use tokio::sync::oneshot;
-use generated::maroon_assembler::Value;
+use protocol::gm_request_response::Request;
+use protocol::meta_exchange::Response;
 use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
+use tokio::sync::oneshot;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn request_missed_txs() {
