@@ -23,7 +23,7 @@ use epoch_coordinator::{
   epoch::Epoch,
   interface::{EpochRequest, EpochUpdates},
 };
-use generated::generated::Value;
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, error, info};
 use runtime::runtime::TaskBlueprint;

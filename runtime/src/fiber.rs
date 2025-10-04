@@ -1,7 +1,7 @@
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
-use generated::generated::*;
+use generated::maroon_assembler::*;
 
 #[derive(Clone, Debug)]
 pub struct Fiber {

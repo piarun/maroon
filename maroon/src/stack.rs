@@ -8,7 +8,7 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use epoch_coordinator::etcd::EtcdEpochCoordinator;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
-use generated::generated::Value;
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, info};
 use runtime::ir_spec::sample_ir;

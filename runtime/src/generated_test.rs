@@ -1,6 +1,6 @@
 use crate::fiber::*;
 use dsl::ir::FiberType;
-use generated::generated::*;
+use generated::maroon_assembler::*;
 
 #[test]
 fn add_function() {

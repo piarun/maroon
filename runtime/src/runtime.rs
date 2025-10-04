@@ -4,7 +4,7 @@ use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::generated::Value;
+use generated::maroon_assembler::Value;
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::time::Duration;
 
