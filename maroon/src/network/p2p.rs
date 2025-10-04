@@ -1,18 +1,6 @@
 use super::interface::{Inbox, Outbox};
 use crate::network::interface::NodeState;
-use common::{
-  duplex_channel::Endpoint,
-  gm_request_response::{
-    self, Behaviour as GMBehaviour, Event as GMEvent, Request as GMRequest, Response as GMResponse,
-  },
-  m2m_request_response::{
-    self, Behaviour as M2MBehaviour, Event as M2MEvent, Request as M2MRequest, Response as M2MResponse,
-  },
-  meta_exchange::{
-    self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Request as MERequest, Response as MEResponse, Role,
-  },
-  node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic_hash},
-};
+use common::duplex_channel::Endpoint;
 use derive_more::From;
 use futures::StreamExt;
 use libp2p::dns::Transport as DnsTransport;
@@ -33,6 +21,16 @@ use libp2p::{
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info, warn};
 use opentelemetry::{KeyValue, global, metrics::Counter};
+use protocol::gm_request_response::{
+  self, Behaviour as GMBehaviour, Event as GMEvent, Request as GMRequest, Response as GMResponse,
+};
+use protocol::m2m_request_response::{
+  self, Behaviour as M2MBehaviour, Event as M2MEvent, Request as M2MRequest, Response as M2MResponse,
+};
+use protocol::meta_exchange::{
+  self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Request as MERequest, Response as MEResponse, Role,
+};
+use protocol::node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic_hash};
 use schema::mn_events::{LogEvent, LogEventBody, now_microsec};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;

@@ -713,6 +713,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "types",
 ]
 
 [[package]]
@@ -1365,14 +1366,26 @@ dependencies = [
  "derive_more",
  "env_logger",
  "futures",
+ "generated",
  "libp2p",
  "libp2p-request-response",
  "log",
+ "protocol",
  "schema",
  "serde",
  "serde_json",
  "state_log",
  "tokio",
+ "types",
+]
+
+[[package]]
+name = "generated"
+version = "0.0.0"
+dependencies = [
+ "dsl",
+ "serde",
+ "types",
 ]
 
 [[package]]
@@ -1985,10 +1998,13 @@ dependencies = [
  "env_logger",
  "futures",
  "gateway",
+ "generated",
  "libp2p",
  "maroon",
+ "protocol",
  "tokio",
  "tokio-test",
+ "types",
 ]
 
 [[package]]
@@ -2577,9 +2593,11 @@ dependencies = [
  "chrono",
  "common",
  "derive_more",
+ "dsl",
  "env_logger",
  "epoch_coordinator",
  "futures",
+ "generated",
  "libp2p",
  "libp2p-request-response",
  "log",
@@ -2587,6 +2605,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
+ "protocol",
  "rand 0.9.1",
  "runtime",
  "schema",
@@ -2594,6 +2613,7 @@ dependencies = [
  "serde_json",
  "state_log",
  "tokio",
+ "types",
 ]
 
 [[package]]
@@ -3357,6 +3377,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "protocol"
+version = "0.1.0"
+dependencies = [
+ "generated",
+ "libp2p",
+ "libp2p-request-response",
+ "serde",
+ "types",
+]
+
+[[package]]
 name = "quick-protobuf"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3739,6 +3770,7 @@ version = "0.0.0"
 dependencies = [
  "common",
  "dsl",
+ "generated",
  "tokio",
 ]
 
@@ -4782,6 +4814,14 @@ name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
+
+[[package]]
+name = "types"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "serde",
+]
 
 [[package]]
 name = "ucd-trie"

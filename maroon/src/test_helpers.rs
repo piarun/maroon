@@ -3,14 +3,12 @@ use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox};
 use common::invoker_handler::HandlerInterface;
 use common::invoker_handler::InvokerInterface;
-use common::{
-  duplex_channel::Endpoint,
-  range_key::UniqueU64BlobId,
-  transaction::{Transaction, TxStatus},
-};
+use common::{duplex_channel::Endpoint, range_key::UniqueU64BlobId};
 #[cfg(test)]
 use epoch_coordinator::interface::A2BEndpoint;
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
+use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
 use runtime::runtime::A2BEndpoint as RuntimeA2BEndpoint;
 use std::time::Duration;
 
@@ -45,7 +43,15 @@ pub fn new_test_instance_with_params(
 
 #[cfg(test)]
 pub fn test_tx(id: u64) -> Transaction {
-  Transaction { id: UniqueU64BlobId(id), status: TxStatus::Pending }
+  let id = UniqueU64BlobId(id);
+  Transaction {
+    meta: Meta { id, status: TxStatus::Pending },
+    blueprint: TaskBlueprint {
+      fiber_type: FiberType::new("application"),
+      function_key: "async_foo".to_string(),
+      init_values: vec![Value::U64(1), Value::U64(1)],
+    },
+  }
 }
 
 #[cfg(test)]

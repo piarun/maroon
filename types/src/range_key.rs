@@ -26,8 +26,8 @@ impl From<u64> for UniqueU64BlobId {
 /// [a,b] = {x ∈ ℕ | a <= x <= b}
 ///
 /// ```rust
-/// use common::range_key::U64BlobIdClosedInterval;
-/// use common::range_key::UniqueU64BlobId;
+/// use types::range_key::U64BlobIdClosedInterval;
+/// use types::range_key::UniqueU64BlobId;
 ///
 /// let interval = U64BlobIdClosedInterval::new(UniqueU64BlobId(0), UniqueU64BlobId(2));
 /// assert_eq!(3, interval.ids_count());
@@ -123,9 +123,9 @@ pub fn range_from_unique_blob_id(global_key: UniqueU64BlobId) -> KeyRange {
 
 /// Converts full id (UniqueU64BlobId) into range and offset.
 /// ```
-/// use common::range_key::unique_blob_id_from_range_and_offset;
-/// use common::range_key::UniqueU64BlobId;
-/// use common::range_key::range_offset_from_unique_blob_id;
+/// use types::range_key::unique_blob_id_from_range_and_offset;
+/// use types::range_key::UniqueU64BlobId;
+/// use types::range_key::range_offset_from_unique_blob_id;
 ///
 /// let id = UniqueU64BlobId(10);
 /// let (range, offset) = range_offset_from_unique_blob_id(id);
@@ -187,12 +187,6 @@ mod tests {
   }
   #[test]
   fn test_correct_sorting() {
-    // TODO: sorting works correct as I want (by checking start of the interval)
-    // but maybe I should introduce some additional sort that also check that intervals don't intersect
-    // that might be important to prevent some runtime mistakes.
-    //
-    // Or, maybe not sorting, but "safe creation of vector of intervals"? NonIntersectIntervals??
-
     let mut intervals = vec![
       U64BlobIdClosedInterval::new(10, 20),
       U64BlobIdClosedInterval::new(1, 5),

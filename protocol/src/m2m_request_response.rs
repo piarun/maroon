@@ -1,4 +1,3 @@
-use crate::range_key::U64BlobIdClosedInterval;
 use crate::transaction::Transaction;
 use libp2p::swarm::StreamProtocol;
 use libp2p_request_response::{
@@ -7,6 +6,7 @@ use libp2p_request_response::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use types::range_key::U64BlobIdClosedInterval;
 
 pub type Event = RequestResponseEvent<Request, Response>;
 pub type Behaviour = json::Behaviour<Request, Response>;
@@ -22,9 +22,6 @@ pub fn create_behaviour() -> json::Behaviour<Request, Response> {
 #[serde(tag = "type", content = "data")]
 pub enum Request {
   /// request missing transactions for given ranges
-  ///
-  /// TODO: there should be limit. If delay is too big - node should get them from s3
-  /// this one is only for small batch of txs
   GetMissingTx(Vec<U64BlobIdClosedInterval>),
 
   /// sends missing transactions

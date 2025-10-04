@@ -1,4 +1,4 @@
-use crate::transaction::Transaction;
+pub use crate::transaction::{Meta, Transaction, TxStatus};
 use libp2p::{
   PeerId,
   gossipsub::{Sha256Topic, TopicHash},

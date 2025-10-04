@@ -1,7 +1,9 @@
-use crate::generated::*;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
-use dsl::ir::{FiberType, Func};
+use dsl::ir::FiberType;
+use generated::maroon_assembler::{
+  Heap, StackEntry, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
+};
 
 #[derive(Clone, Debug)]
 pub struct Fiber {

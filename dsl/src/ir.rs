@@ -23,7 +23,6 @@ impl FutureLabel {
   }
 }
 
-// TODO: add generating types as well? So I can't create any random FiberType
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct FiberType(pub String);
 impl std::fmt::Display for FiberType {

@@ -1,11 +1,8 @@
 pub mod duplex_channel;
-pub mod gm_request_response;
 pub mod invoker_handler;
 pub mod logical_clock;
-pub mod logical_time;
-pub mod m2m_request_response;
-pub mod meta_exchange;
-pub mod node2gw;
-pub mod range_key;
 pub mod retrier;
-pub mod transaction;
+
+// Re-export foundational types from the new `types` crate to avoid churn
+pub use types::logical_time;
+pub use types::range_key;

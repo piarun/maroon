@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name = "generated"
+
+[dependencies]
+dsl = { path = "../dsl" }
+serde = { workspace = true }
+types = { path = "../types" }

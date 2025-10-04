@@ -1,8 +1,6 @@
-use common::{
-  range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval},
-  transaction::Transaction,
-};
+use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
 use libp2p::PeerId;
+use protocol::transaction::Transaction;
 use serde::{Deserialize, Serialize};
 use std::{
   collections::{HashMap, HashSet},
