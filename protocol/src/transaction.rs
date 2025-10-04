@@ -18,7 +18,7 @@ pub struct Meta {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
-  //   pub fiber_type: FiberType,
+  pub fiber_type: FiberType,
 
   // function key to provide an information which function should be executed, ex: `add` or `sub`...
   pub function_key: String,
@@ -34,4 +34,27 @@ pub enum TxStatus {
   // Confirmed,
   Finished,
   // Rejected,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct FiberType(pub String);
+impl std::fmt::Display for FiberType {
+  fn fmt(
+    &self,
+    f: &mut std::fmt::Formatter<'_>,
+  ) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+impl FiberType {
+  pub fn new(id: impl Into<String>) -> Self {
+    Self(id.into())
+  }
+}
+
+impl std::borrow::Borrow<str> for FiberType {
+  fn borrow(&self) -> &str {
+    self.0.as_str()
+  }
 }
