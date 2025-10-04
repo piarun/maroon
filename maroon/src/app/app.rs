@@ -148,7 +148,7 @@ impl<L: Linearizer> App<L> {
             let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
             for r in runtime_result_buf.drain(..) {
               let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");
-              tx.status = TxStatus::Finished;
+              tx.meta.status = TxStatus::Finished;
 
               for_notification.push(tx.clone());
             }
@@ -210,7 +210,7 @@ impl<L: Linearizer> App<L> {
             for i in interval.iter() {
               let tx= self.transactions.get_mut(&i).expect("TODO: make sure all txs are here, epochs might contain bigger offsets that current node sees right now");
               // TODO: notify gateway nodes here about status changing?
-              tx.status = TxStatus::Pending;
+              tx.meta.status = TxStatus::Pending;
 
               // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
               blueprints.push(TaskBlueprint {
@@ -403,8 +403,8 @@ fn update_self_offsets(
   for (range, txs) in range_transactions {
     let mut has_0_tx = false;
     for tx in txs {
-      let (_, offset) = range_key::range_offset_from_unique_blob_id(tx.id);
-      transactions.insert(tx.id, tx);
+      let (_, offset) = range_key::range_offset_from_unique_blob_id(tx.meta.id);
+      transactions.insert(tx.meta.id, tx);
 
       if offset == KeyOffset(0) {
         has_0_tx = true;
@@ -522,7 +522,7 @@ fn consensus_maximum(
 fn txs_to_range_tx_map(txs: Vec<Transaction>) -> HashMap<KeyRange, Vec<Transaction>> {
   let mut range_map: HashMap<KeyRange, Vec<Transaction>> = HashMap::new();
   for tx in txs {
-    let range = range_key::range_from_unique_blob_id(tx.id);
+    let range = range_key::range_from_unique_blob_id(tx.meta.id);
 
     if let Some(bucket) = range_map.get_mut(&range) {
       bucket.push(tx);

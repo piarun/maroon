@@ -1,6 +1,7 @@
 use common::range_key::{KeyOffset, KeyRange, unique_blob_id_from_range_and_offset};
+use generated::maroon_assembler::Value;
 use protocol::gm_request_response::Request;
-use protocol::transaction::{Transaction, TxStatus};
+use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
 use std::time::Duration;
 
 #[tokio::main]
@@ -22,11 +23,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   tokio::time::sleep(Duration::from_secs(2)).await;
 
   for i in 0..100 {
-    _ = gw
-      .send_request(Request::NewTransaction(Transaction {
-        id: unique_blob_id_from_range_and_offset(key_range, KeyOffset(i)),
-        status: TxStatus::Created,
-      }))
+    let id = unique_blob_id_from_range_and_offset(key_range, KeyOffset(i));
+    let tx = Transaction {
+      meta: Meta { id, status: TxStatus::Created },
+      blueprint: TaskBlueprint {
+        global_id: id,
+        fiber_type: FiberType::new("application"),
+        function_key: "async_foo".to_string(),
+        init_values: vec![Value::U64(4), Value::U64(8)],
+      },
+    };
+    _ = gw.send_request(Request::NewTransaction(tx))
       .await?;
     tokio::time::sleep(Duration::from_secs(1)).await;
   }

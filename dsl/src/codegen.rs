@@ -77,6 +77,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("#![allow(unused_variables)]\n");
   out.push_str("#![allow(non_snake_case)]\n\n");
   // External deps used throughout the generated file
+  out.push_str("use serde::{Serialize, Deserialize};\n");
   out.push_str("use crate::ir::{FiberType, FutureLabel};\n\n");
 
   // 1) Emit custom struct types declared at top-level IR.types
@@ -109,14 +110,14 @@ pub fn generate_rust_types(ir: &IR) -> String {
 
         if derive_partial_eq && derive_ord {
           out.push_str(&format!(
-            "#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]\npub struct {} {{\n",
+            "#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]\npub struct {} {{\n",
             ty_name
           ));
         } else if derive_partial_eq {
           // Derive Eq alongside PartialEq to support Value: Eq
-          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq, Eq)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n", ty_name));
         } else {
-          out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!("#[derive(Clone, Debug, Default, Serialize, Deserialize)]\npub struct {} {{\n", ty_name));
         }
         for f in fields {
           out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
@@ -137,7 +138,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
       let msg_ty = variant_name(&[fiber_name.0.as_str(), &msg.0, "Msg"]);
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
+      out.push_str(&format!("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\npub struct {} {{\n", msg_ty));
       let mut fields_sorted = msg.1.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
@@ -249,7 +250,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     }
   }
 
-  out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum Value {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\npub enum Value {\n");
   for (vname, ty) in used_types.iter() {
     out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }

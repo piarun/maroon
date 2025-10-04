@@ -5,3 +5,4 @@ name = "generated"
 [dependencies]
 dsl = { path = "../dsl" }
 types = { path = "../types" }
+serde = { workspace = true }

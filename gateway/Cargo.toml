@@ -19,3 +19,4 @@ state_log = { path = "../state_log" }
 tokio = { workspace = true }
 types = { path = "../types" }
 protocol = { path = "../protocol" }
+generated = { path = "../generated" }

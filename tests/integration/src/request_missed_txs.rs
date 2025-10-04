@@ -15,7 +15,8 @@ use maroon::{
   stack,
 };
 use tokio::sync::oneshot;
-use protocol::transaction::{Transaction, TxStatus};
+use generated::maroon_assembler::Value;
+use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn request_missed_txs() {
@@ -61,8 +62,17 @@ async fn request_missed_txs() {
   tokio::time::sleep(Duration::from_secs(1)).await;
 
   // send requests from gateway
-  _ = gw.send_request(Request::NewTransaction(Transaction { id: UniqueU64BlobId(1), status: TxStatus::Created })).await;
-  _ = gw.send_request(Request::NewTransaction(Transaction { id: UniqueU64BlobId(0), status: TxStatus::Created })).await;
+  let mk = |id| Transaction {
+    meta: Meta { id, status: TxStatus::Created },
+    blueprint: TaskBlueprint {
+      global_id: id,
+      fiber_type: FiberType::new("application"),
+      function_key: "async_foo".to_string(),
+      init_values: vec![Value::U64(4), Value::U64(8)],
+    },
+  };
+  _ = gw.send_request(Request::NewTransaction(mk(UniqueU64BlobId(1)))).await;
+  _ = gw.send_request(Request::NewTransaction(mk(UniqueU64BlobId(0)))).await;
 
   // check results
   let (mut node0_correct, mut node1_correct, mut node2_correct) = (false, false, false);

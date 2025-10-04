@@ -7,6 +7,7 @@ version = "0.1.0"
 common = { path = "../../common" }
 types = { path = "../../types" }
 protocol = { path = "../../protocol" }
+generated = { path = "../../generated" }
 env_logger = { workspace = true }
 futures = { workspace = true }
 gateway = { path = "../../gateway" }

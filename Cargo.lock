@@ -1366,6 +1366,7 @@ dependencies = [
  "derive_more",
  "env_logger",
  "futures",
+ "generated",
  "libp2p",
  "libp2p-request-response",
  "log",
@@ -1383,6 +1384,7 @@ name = "generated"
 version = "0.0.0"
 dependencies = [
  "dsl",
+ "serde",
  "types",
 ]
 
@@ -1996,6 +1998,7 @@ dependencies = [
  "env_logger",
  "futures",
  "gateway",
+ "generated",
  "libp2p",
  "maroon",
  "protocol",

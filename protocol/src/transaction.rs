@@ -5,8 +5,8 @@ use types::range_key::UniqueU64BlobId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Transaction {
-  pub id: UniqueU64BlobId,
-  pub status: TxStatus,
+  pub meta: Meta,
+  pub blueprint: TaskBlueprint,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -15,7 +15,7 @@ pub struct Meta {
   pub status: TxStatus,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
   pub fiber_type: FiberType,
@@ -36,7 +36,7 @@ pub enum TxStatus {
   // Rejected,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize)]
 pub struct FiberType(pub String);
 impl std::fmt::Display for FiberType {
   fn fmt(
