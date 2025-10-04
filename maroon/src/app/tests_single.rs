@@ -6,7 +6,6 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::create_invoker_handler_pair;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
-use common::transaction::{Transaction, TxStatus};
 use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use generated::maroon_assembler::Value;
@@ -19,6 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::oneshot;
+use protocol::transaction::{Transaction, TxStatus};
 
 ///
 /// In this file we're testing app as a black box by accessing only publicly available interface module

@@ -5,6 +5,8 @@ version = "0.1.0"
 
 [dependencies]
 common = { path = "../../common" }
+types = { path = "../../types" }
+protocol = { path = "../../protocol" }
 env_logger = { workspace = true }
 futures = { workspace = true }
 gateway = { path = "../../gateway" }

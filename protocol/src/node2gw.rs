@@ -1,9 +1,9 @@
-use crate::transaction::Transaction;
 use libp2p::{
   PeerId,
   gossipsub::{Sha256Topic, TopicHash},
 };
 use serde::{Deserialize, Serialize};
+pub use crate::transaction::{Meta, Transaction, TxStatus};
 
 pub const NODE2GW_TOPIC_NAME: &str = "node-2-gw-broadcast";
 
@@ -27,3 +27,4 @@ pub struct GossipMessage {
 pub enum GossipPayload {
   Node2GWTxUpdate(Vec<Transaction>),
 }
+

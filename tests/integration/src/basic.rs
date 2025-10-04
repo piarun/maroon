@@ -4,18 +4,18 @@ use std::{collections::HashMap, num::NonZeroUsize, thread::sleep, time::Duration
 
 use common::{
   duplex_channel::Endpoint,
-  gm_request_response::Request,
   invoker_handler::InvokerInterface,
-  meta_exchange::Response,
   range_key::{KeyOffset, KeyRange, UniqueU64BlobId},
-  transaction::{Transaction, TxStatus},
 };
+use protocol::gm_request_response::Request;
+use protocol::meta_exchange::Response;
 use gateway::core::Gateway;
 use maroon::{
   app::{App, CurrentOffsets, Params, Request as AppRequest, Response as AppResponse},
   stack,
 };
 use tokio::sync::oneshot;
+use protocol::transaction::{Transaction, TxStatus};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn basic() {

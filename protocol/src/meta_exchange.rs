@@ -31,3 +31,4 @@ pub enum Role {
   Gateway,
   Node,
 }
+

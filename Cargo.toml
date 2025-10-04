@@ -12,6 +12,8 @@ members = [
   "dsl",
   "runtime",
   "generated",
+  "types",
+  "protocol",
 ]
 resolver = "3"
 

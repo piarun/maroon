@@ -1,8 +1,6 @@
-use common::{
-  gm_request_response::Request,
-  range_key::{KeyOffset, KeyRange, unique_blob_id_from_range_and_offset},
-  transaction::{Transaction, TxStatus},
-};
+use common::range_key::{KeyOffset, KeyRange, unique_blob_id_from_range_and_offset};
+use protocol::gm_request_response::Request;
+use protocol::transaction::{Transaction, TxStatus};
 use std::time::Duration;
 
 #[tokio::main]

@@ -17,3 +17,5 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 state_log = { path = "../state_log" }
 tokio = { workspace = true }
+types = { path = "../types" }
+protocol = { path = "../protocol" }

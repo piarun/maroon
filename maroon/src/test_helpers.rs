@@ -3,16 +3,13 @@ use crate::linearizer::LogLineriazer;
 use crate::network::{Inbox, Outbox};
 use common::invoker_handler::HandlerInterface;
 use common::invoker_handler::InvokerInterface;
-use common::{
-  duplex_channel::Endpoint,
-  range_key::UniqueU64BlobId,
-  transaction::{Transaction, TxStatus},
-};
+use common::{duplex_channel::Endpoint, range_key::UniqueU64BlobId};
 #[cfg(test)]
 use epoch_coordinator::interface::A2BEndpoint;
 use libp2p::PeerId;
 use runtime::runtime::A2BEndpoint as RuntimeA2BEndpoint;
 use std::time::Duration;
+use protocol::transaction::{Transaction, TxStatus};
 
 #[cfg(test)]
 pub fn new_test_instance(

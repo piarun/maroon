@@ -1,9 +1,9 @@
 use common::{
   duplex_channel::Endpoint,
-  gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response},
-  meta_exchange::{self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role},
-  node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic},
 };
+use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response};
+use protocol::meta_exchange::{self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role};
+use protocol::node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic};
 use derive_more::From;
 use futures::StreamExt;
 use libp2p::dns::Transport as DnsTransport;

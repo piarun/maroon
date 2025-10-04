@@ -15,7 +15,6 @@ use common::{
     self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
     unique_blob_id_from_range_and_offset,
   },
-  transaction::Transaction,
 };
 use dsl::ir::FiberType;
 use epoch_coordinator::{
@@ -26,6 +25,7 @@ use epoch_coordinator::{
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, error, info};
+use protocol::transaction::{Transaction, TxStatus};
 use runtime::runtime::TaskBlueprint;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
 use std::{
@@ -148,7 +148,7 @@ impl<L: Linearizer> App<L> {
             let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
             for r in runtime_result_buf.drain(..) {
               let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");
-              tx.status = common::transaction::TxStatus::Finished;
+              tx.status = TxStatus::Finished;
 
               for_notification.push(tx.clone());
             }
@@ -210,7 +210,7 @@ impl<L: Linearizer> App<L> {
             for i in interval.iter() {
               let tx= self.transactions.get_mut(&i).expect("TODO: make sure all txs are here, epochs might contain bigger offsets that current node sees right now");
               // TODO: notify gateway nodes here about status changing?
-              tx.status = common::transaction::TxStatus::Pending;
+              tx.status = TxStatus::Pending;
 
               // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
               blueprints.push(TaskBlueprint {
@@ -539,7 +539,7 @@ mod tests {
   use crate::test_helpers::test_tx;
 
   use super::*;
-  use common::transaction::{Transaction, TxStatus};
+  use protocol::transaction::{Transaction, TxStatus};
 
   #[test]
   fn calculate_consensus_maximum() {
