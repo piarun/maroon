@@ -17,7 +17,6 @@ pub struct Meta {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskBlueprint {
-  pub global_id: UniqueU64BlobId,
   pub fiber_type: FiberType,
 
   // function key to provide an information which function should be executed, ex: `add` or `sub`...

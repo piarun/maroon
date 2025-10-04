@@ -70,7 +70,6 @@ async fn basic() {
   let mk = |id| Transaction {
     meta: Meta { id, status: TxStatus::Created },
     blueprint: TaskBlueprint {
-      global_id: id,
       fiber_type: FiberType::new("application"),
       function_key: "async_foo".to_string(),
       init_values: vec![Value::U64(4), Value::U64(8)],

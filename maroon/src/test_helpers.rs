@@ -47,7 +47,6 @@ pub fn test_tx(id: u64) -> Transaction {
   Transaction {
     meta: Meta { id, status: TxStatus::Pending },
     blueprint: TaskBlueprint {
-      global_id: id,
       fiber_type: FiberType::new("application"),
       function_key: "async_foo".to_string(),
       init_values: vec![Value::U64(1), Value::U64(1)],

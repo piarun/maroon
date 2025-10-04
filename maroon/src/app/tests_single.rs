@@ -292,6 +292,8 @@ async fn app_executes_after_epoch_confirmed() {
     app.loop_until_shutdown(shutdown_rx).await;
   });
 
+  tokio::time::sleep(Duration::from_millis(500)).await;
+
   let rnd_peer = PeerId::random();
   // imitate new epoch came
   b2a_epoch.send(EpochUpdates::New(Epoch::next(
@@ -314,13 +316,13 @@ async fn app_executes_after_epoch_confirmed() {
           global_id: UniqueU64BlobId(0),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)]
+          init_values: vec![Value::U64(1), Value::U64(1)]
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)]
+          init_values: vec![Value::U64(1), Value::U64(1)]
         }
       ]
     )),
@@ -338,7 +340,6 @@ async fn app_executes_after_epoch_confirmed() {
         Transaction {
           meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished },
           blueprint: ProtoBlueprint {
-            global_id: UniqueU64BlobId(0),
             fiber_type: ProtoFiberType::new("application"),
             function_key: "async_foo".to_string(),
             init_values: vec![Value::U64(4), Value::U64(8)],
@@ -347,7 +348,6 @@ async fn app_executes_after_epoch_confirmed() {
         Transaction {
           meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished },
           blueprint: ProtoBlueprint {
-            global_id: UniqueU64BlobId(1),
             fiber_type: ProtoFiberType::new("application"),
             function_key: "async_foo".to_string(),
             init_values: vec![Value::U64(4), Value::U64(8)],

@@ -27,10 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tx = Transaction {
       meta: Meta { id, status: TxStatus::Created },
       blueprint: TaskBlueprint {
-        global_id: id,
         fiber_type: FiberType::new("application"),
         function_key: "async_foo".to_string(),
-        init_values: vec![Value::U64(4), Value::U64(8)],
+        init_values: vec![Value::U64(i), Value::U64(i)],
       },
     };
     _ = gw.send_request(Request::NewTransaction(tx)).await?;

@@ -212,12 +212,11 @@ impl<L: Linearizer> App<L> {
               // TODO: notify gateway nodes here about status changing?
               tx.meta.status = TxStatus::Pending;
 
-              // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
               blueprints.push(TaskBlueprint {
-                global_id: i,
-                fiber_type: FiberType::new("application"),
-                function_key: "async_foo".to_string(),
-                init_values: vec![Value::U64(4), Value::U64(8)],
+                global_id: tx.meta.id,
+                fiber_type: FiberType::new(tx.blueprint.fiber_type.0.clone()),
+                function_key: tx.blueprint.function_key.clone(),
+                init_values: tx.blueprint.init_values.clone(),
               });
             }
           }
