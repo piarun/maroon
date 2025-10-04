@@ -1,11 +1,9 @@
 mod fiber;
-pub mod generated;
 pub mod ir_spec;
 // Re-export IR types so generated code can refer to `crate::ir::...`.
 pub use dsl::ir;
-pub mod runtime;
-
 #[cfg(test)]
 mod generated_test;
 #[cfg(test)]
 mod ir_test;
+pub mod runtime;

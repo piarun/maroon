@@ -9,6 +9,12 @@ pub struct Transaction {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Meta {
+  pub id: UniqueU64BlobId,
+  pub status: TxStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 pub enum TxStatus {
   Created,

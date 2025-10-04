@@ -1376,6 +1376,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "generated"
+version = "0.0.0"
+dependencies = [
+ "dsl",
+]
+
+[[package]]
 name = "generator"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2577,9 +2584,11 @@ dependencies = [
  "chrono",
  "common",
  "derive_more",
+ "dsl",
  "env_logger",
  "epoch_coordinator",
  "futures",
+ "generated",
  "libp2p",
  "libp2p-request-response",
  "log",
@@ -3739,6 +3748,7 @@ version = "0.0.0"
 dependencies = [
  "common",
  "dsl",
+ "generated",
  "tokio",
 ]
 

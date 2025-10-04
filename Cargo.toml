@@ -11,6 +11,7 @@ members = [
   "state_log",
   "dsl",
   "runtime",
+  "generated",
 ]
 resolver = "3"
 

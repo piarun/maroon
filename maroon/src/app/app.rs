@@ -17,16 +17,17 @@ use common::{
   },
   transaction::Transaction,
 };
+use dsl::ir::FiberType;
 use epoch_coordinator::{
   self,
   epoch::Epoch,
   interface::{EpochRequest, EpochUpdates},
 };
+use generated::generated::Value;
 use libp2p::PeerId;
 use log::{debug, error, info};
 use runtime::runtime::TaskBlueprint;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
-use runtime::{generated::Value, ir::FiberType};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,

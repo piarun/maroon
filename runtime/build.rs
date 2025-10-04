@@ -17,14 +17,14 @@ fn main() {
   println!("cargo:rerun-if-changed=../dsl/src/ir.rs");
   println!("cargo:rerun-if-changed=../dsl/src/codegen.rs");
   println!("cargo:rerun-if-changed=src/ir_spec.rs");
-  println!("cargo:rerun-if-changed=src/generated.rs");
+  println!("cargo:rerun-if-changed=../generated/src/generated.rs");
 
   // Build IR and generate code.
   let code = _dsl_crate::codegen::generate_rust_types(&simple_f_ir_spec::sample_ir());
 
   // Write into the crate source tree for later compilation.
   let mut out_file = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("set by Cargo"));
-  out_file.push("src/generated.rs");
+  out_file.push("../generated/src/generated.rs");
   if let Some(parent) = out_file.parent() {
     let _ = fs::create_dir_all(parent);
   }

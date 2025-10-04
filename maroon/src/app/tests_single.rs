@@ -9,8 +9,8 @@ use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64B
 use common::transaction::{Transaction, TxStatus};
 use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
+use generated::generated::Value;
 use libp2p::PeerId;
-use runtime::generated::Value;
 use runtime::ir::FiberType;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
