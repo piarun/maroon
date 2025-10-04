@@ -1,6 +1,6 @@
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval};
 use libp2p::PeerId;
-use protocol::transaction::Transaction;
+use protocol::{node2gw::TxUpdate, transaction::Transaction};
 use serde::{Deserialize, Serialize};
 use std::{
   collections::{HashMap, HashSet},
@@ -18,7 +18,7 @@ pub enum Outbox {
 
   // send updates on transactions. any update: status change, got results, etc...
   // my idea right now is that node will send this update once, if gateway was down during this period - it needs to request the status itself
-  NotifyGWs(Vec<Transaction>),
+  NotifyGWs(Vec<TxUpdate>),
 }
 
 /// Input for the layer that lives on top of p2p layer. Output for p2p Layer
