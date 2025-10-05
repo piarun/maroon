@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "protocol"
+version = "0.1.0"
+
+[dependencies]
+generated = { path = "../generated" }
+libp2p = { workspace = true }
+libp2p-request-response = { workspace = true }
+serde = { workspace = true }
+types = { path = "../types" }

@@ -1,6 +1,6 @@
-use crate::fiber::*;
-use crate::generated::*;
+use crate::fiber::{Fiber, RunResult};
 use dsl::ir::FiberType;
+use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, Trade, Value};
 
 #[test]
 fn add_function() {

@@ -5,6 +5,7 @@ name = "runtime"
 [dependencies]
 common = { path = "../common" }
 dsl = { path = "../dsl" }
+generated = { path = "../generated" }
 tokio = { workspace = true }
 
 [build-dependencies]

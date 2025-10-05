@@ -15,18 +15,19 @@ use common::{
     self, KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId, range_offset_from_unique_blob_id,
     unique_blob_id_from_range_and_offset,
   },
-  transaction::Transaction,
 };
+use dsl::ir::FiberType;
 use epoch_coordinator::{
   self,
   epoch::Epoch,
   interface::{EpochRequest, EpochUpdates},
 };
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, error, info};
+use protocol::transaction::{Transaction, TxStatus};
 use runtime::runtime::TaskBlueprint;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
-use runtime::{generated::Value, ir::FiberType};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
@@ -147,7 +148,7 @@ impl<L: Linearizer> App<L> {
             let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
             for r in runtime_result_buf.drain(..) {
               let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");
-              tx.status = common::transaction::TxStatus::Finished;
+              tx.meta.status = TxStatus::Finished;
 
               for_notification.push(tx.clone());
             }
@@ -209,14 +210,13 @@ impl<L: Linearizer> App<L> {
             for i in interval.iter() {
               let tx= self.transactions.get_mut(&i).expect("TODO: make sure all txs are here, epochs might contain bigger offsets that current node sees right now");
               // TODO: notify gateway nodes here about status changing?
-              tx.status = common::transaction::TxStatus::Pending;
+              tx.meta.status = TxStatus::Pending;
 
-              // TODO: temporary, just in order to run smth, actually all these params should come from Transactions from Gateway
               blueprints.push(TaskBlueprint {
-                global_id: i,
-                fiber_type: FiberType::new("application"),
-                function_key: "async_foo".to_string(),
-                init_values: vec![Value::U64(4), Value::U64(8)],
+                global_id: tx.meta.id,
+                fiber_type: FiberType::new(tx.blueprint.fiber_type.0.clone()),
+                function_key: tx.blueprint.function_key.clone(),
+                init_values: tx.blueprint.init_values.clone(),
               });
             }
           }
@@ -402,8 +402,8 @@ fn update_self_offsets(
   for (range, txs) in range_transactions {
     let mut has_0_tx = false;
     for tx in txs {
-      let (_, offset) = range_key::range_offset_from_unique_blob_id(tx.id);
-      transactions.insert(tx.id, tx);
+      let (_, offset) = range_key::range_offset_from_unique_blob_id(tx.meta.id);
+      transactions.insert(tx.meta.id, tx);
 
       if offset == KeyOffset(0) {
         has_0_tx = true;
@@ -521,7 +521,7 @@ fn consensus_maximum(
 fn txs_to_range_tx_map(txs: Vec<Transaction>) -> HashMap<KeyRange, Vec<Transaction>> {
   let mut range_map: HashMap<KeyRange, Vec<Transaction>> = HashMap::new();
   for tx in txs {
-    let range = range_key::range_from_unique_blob_id(tx.id);
+    let range = range_key::range_from_unique_blob_id(tx.meta.id);
 
     if let Some(bucket) = range_map.get_mut(&range) {
       bucket.push(tx);
@@ -538,7 +538,7 @@ mod tests {
   use crate::test_helpers::test_tx;
 
   use super::*;
-  use common::transaction::{Transaction, TxStatus};
+  use protocol::transaction::Transaction;
 
   #[test]
   fn calculate_consensus_maximum() {
@@ -589,87 +589,66 @@ mod tests {
         label: "empty",
         initial_self_offsets: HashMap::new(),
         initial_transactions: HashMap::new(),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        expected_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
       },
       Case {
         label: "add already existing transaction. no effect",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        expected_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
       },
       Case {
         label: "add next transaction",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(0),
-          Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0))]),
+        transaction: test_tx(1),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
-        expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-        ]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0)), (UniqueU64BlobId(1), test_tx(1))]),
       },
       Case {
         label: "add transaction, fill the gap, empty initial offset",
         initial_self_offsets: HashMap::from([]),
-        initial_transactions: HashMap::from([(
-          UniqueU64BlobId(1),
-          Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
-        )]),
-        transaction: Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending },
+        initial_transactions: HashMap::from([(UniqueU64BlobId(1), test_tx(1))]),
+        transaction: test_tx(0),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(1))]),
-        expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-        ]),
+        expected_transactions: HashMap::from([(UniqueU64BlobId(0), test_tx(0)), (UniqueU64BlobId(1), test_tx(1))]),
       },
       Case {
         label: "add transaction, fill the gap, dont go till the end",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
-        transaction: Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending },
+        transaction: test_tx(1),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(2))]),
         expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(1), Transaction { id: UniqueU64BlobId(1), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(1), test_tx(1)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
       },
       Case {
         label: "add transaction, fill the gap but not in the beginning",
         initial_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         initial_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
-        transaction: Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending },
+        transaction: test_tx(3),
         expected_self_offsets: HashMap::from([(KeyRange(0), KeyOffset(0))]),
         expected_transactions: HashMap::from([
-          (UniqueU64BlobId(0), Transaction { id: UniqueU64BlobId(0), status: TxStatus::Pending }),
-          (UniqueU64BlobId(3), Transaction { id: UniqueU64BlobId(3), status: TxStatus::Pending }),
-          (UniqueU64BlobId(2), Transaction { id: UniqueU64BlobId(2), status: TxStatus::Pending }),
-          (UniqueU64BlobId(4), Transaction { id: UniqueU64BlobId(4), status: TxStatus::Pending }),
+          (UniqueU64BlobId(0), test_tx(0)),
+          (UniqueU64BlobId(3), test_tx(3)),
+          (UniqueU64BlobId(2), test_tx(2)),
+          (UniqueU64BlobId(4), test_tx(4)),
         ]),
       },
     ];

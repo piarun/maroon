@@ -8,9 +8,11 @@ version = "0.1.0"
 chrono = "0.4.41"
 common = { path = "../common" }
 derive_more = { version = "2.0.1", features = ["from", "display"] }
+dsl = { path = "../dsl" }
 env_logger = { workspace = true }
 epoch_coordinator = { path = "../epoch_coordinator" }
 futures = { workspace = true }
+generated = { path = "../generated" }
 libp2p = { workspace = true }
 libp2p-request-response = { workspace = true }
 log = { workspace = true }
@@ -18,6 +20,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry-stdout = { workspace = true }
 opentelemetry_sdk = { workspace = true }
+protocol = { path = "../protocol" }
 rand = "0.9.1"
 runtime = { path = "../runtime" }
 schema = { path = "../schema" }
@@ -25,3 +28,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 state_log = { path = "../state_log" }
 tokio = { workspace = true }
+types = { path = "../types" }

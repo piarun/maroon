@@ -76,6 +76,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("#![allow(dead_code)]\n");
   out.push_str("#![allow(unused_variables)]\n");
   out.push_str("#![allow(non_snake_case)]\n\n");
+  // External deps used throughout the generated file
+  out.push_str("use serde::{Serialize, Deserialize};\n");
+  out.push_str("use crate::ir::{FiberType, FutureLabel};\n\n");
 
   // 1) Emit custom struct types declared at top-level IR.types
   // Determine which custom structs need Ord/Eq derives (used inside Min/Max queues)
@@ -107,14 +110,20 @@ pub fn generate_rust_types(ir: &IR) -> String {
 
         if derive_partial_eq && derive_ord {
           out.push_str(&format!(
-            "#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]\npub struct {} {{\n",
+            "#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]\npub struct {} {{\n",
             ty_name
           ));
         } else if derive_partial_eq {
           // Derive Eq alongside PartialEq to support Value: Eq
-          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq, Eq)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!(
+            "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+            ty_name
+          ));
         } else {
-          out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", ty_name));
+          out.push_str(&format!(
+            "#[derive(Clone, Debug, Default, Serialize, Deserialize)]\npub struct {} {{\n",
+            ty_name
+          ));
         }
         for f in fields {
           out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
@@ -135,7 +144,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     msgs.sort_by(|a, b| a.0.cmp(&b.0));
     for msg in &msgs {
       let msg_ty = variant_name(&[fiber_name.0.as_str(), &msg.0, "Msg"]);
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq)]\npub struct {} {{\n", msg_ty));
+      out.push_str(&format!("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\npub struct {} {{\n", msg_ty));
       let mut fields_sorted = msg.1.clone();
       fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
       for (fname, fty) in &fields_sorted {
@@ -247,7 +256,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     }
   }
 
-  out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum Value {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\npub enum Value {\n");
   for (vname, ty) in used_types.iter() {
     out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }
@@ -271,7 +280,7 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer{ ms: u64, next: State, future_id: crate::ir::FutureLabel },
+  ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
@@ -279,9 +288,9 @@ pub enum StepResult {
   ReturnVoid,
   Todo(String),
   // Await a future: (future_id, optional bind_var, next_state)
-  Await(crate::ir::FutureLabel, Option<String>, State),
+  Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: crate::ir::FiberType, func: String, args: Vec<Value>, next: State, future_id: crate::ir::FutureLabel },
+  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
 }",
   );
 
@@ -805,7 +814,7 @@ fn generate_global_step(ir: &IR) -> String {
             Step::ScheduleTimer { ms, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!(
-                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
+                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
                 ms.0, next_v, future_id.0
               ));
             }
@@ -821,7 +830,7 @@ fn generate_global_step(ir: &IR) -> String {
                     arg_elems.push(format!("Value::{}({})", vname, expr_code));
                   }
                 }
-                out.push_str("      StepResult::SendToFiber { f_type: crate::ir::FiberType::new(\"");
+                out.push_str("      StepResult::SendToFiber { f_type: FiberType::new(\"");
                 out.push_str(fiber);
                 out.push_str("\"), func: \"");
                 out.push_str(message);
@@ -829,7 +838,7 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&arg_elems.join(", "));
                 out.push_str("], next: State::");
                 out.push_str(&next_v);
-                out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
+                out.push_str(", future_id: FutureLabel::new(\"");
                 out.push_str(&future_id.0);
                 out.push_str("\") }\n");
               } else {
@@ -841,11 +850,11 @@ fn generate_global_step(ir: &IR) -> String {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
               match &spec.bind {
                 Some(name) => out.push_str(&format!(
-                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                  "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
                   spec.future_id.0, name, next_v
                 )),
                 None => out.push_str(&format!(
-                  "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                  "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
                   spec.future_id.0, next_v
                 )),
               }
@@ -1033,7 +1042,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::ScheduleTimer { ms, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!(
-              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: crate::ir::FutureLabel::new(\"{}\") }}\n",
+              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
               ms.0, next_v, future_id.0
             ));
           }
@@ -1048,7 +1057,7 @@ fn generate_global_step(ir: &IR) -> String {
                   arg_elems.push(format!("Value::{}({})", vname, expr_code));
                 }
               }
-              out.push_str("      StepResult::SendToFiber { f_type: crate::ir::FiberType::new(\"");
+              out.push_str("      StepResult::SendToFiber { f_type: FiberType::new(\"");
               out.push_str(fiber);
               out.push_str("\"), func: \"");
               out.push_str(message);
@@ -1056,7 +1065,7 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&arg_elems.join(", "));
               out.push_str("], next: State::");
               out.push_str(&next_v);
-              out.push_str(", future_id: crate::ir::FutureLabel::new(\"");
+              out.push_str(", future_id: FutureLabel::new(\"");
               out.push_str(&future_id.0);
               out.push_str("\") }\n");
             } else {
@@ -1068,11 +1077,11 @@ fn generate_global_step(ir: &IR) -> String {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
             match &spec.bind {
               Some(name) => out.push_str(&format!(
-                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
                 spec.future_id.0, name, next_v
               )),
               None => out.push_str(&format!(
-                "      StepResult::Await(crate::ir::FutureLabel::new(\"{}\"), None, State::{})\n",
+                "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
                 spec.future_id.0, next_v
               )),
             }

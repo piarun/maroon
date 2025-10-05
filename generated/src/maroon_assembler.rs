@@ -3,14 +3,17 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+use crate::ir::{FiberType, FutureLabel};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Order {
   pub id: u64,
   pub price: u64,
   pub qty: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trade {
   pub price: u64,
   pub qty: u64,
@@ -18,25 +21,25 @@ pub struct Trade {
   pub makerId: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrderIndex {
   pub side: String,
   pub price: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Level {
   pub price: u64,
   pub qty: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BookSnapshot {
   pub bids: Vec<Level>,
   pub asks: Vec<Level>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
   pub b: u64,
@@ -108,7 +111,7 @@ pub enum State {
   OrderBookTopNDepthEntry,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
@@ -131,11 +134,7 @@ pub enum StackEntry {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer {
-    ms: u64,
-    next: State,
-    future_id: crate::ir::FutureLabel,
-  },
+  ScheduleTimer { ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<State>),
   // Return can carry an optional value to be consumed by the runtime.
@@ -143,15 +142,9 @@ pub enum StepResult {
   ReturnVoid,
   Todo(String),
   // Await a future: (future_id, optional bind_var, next_state)
-  Await(crate::ir::FutureLabel, Option<String>, State),
+  Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber {
-    f_type: crate::ir::FiberType,
-    func: String,
-    args: Vec<Value>,
-    next: State,
-    future_id: crate::ir::FutureLabel,
-  },
+  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
@@ -207,15 +200,15 @@ pub fn global_step(
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       StepResult::SendToFiber {
-        f_type: crate::ir::FiberType::new("global"),
+        f_type: FiberType::new("global"),
         func: "add".to_string(),
         args: vec![Value::U64(a), Value::U64(b)],
         next: State::ApplicationAsyncFooAwait,
-        future_id: crate::ir::FutureLabel::new("async_add_future_1"),
+        future_id: FutureLabel::new("async_add_future_1"),
       }
     }
     State::ApplicationAsyncFooAwait => StepResult::Await(
-      crate::ir::FutureLabel::new("async_add_future_1"),
+      FutureLabel::new("async_add_future_1"),
       Some("sum".to_string()),
       State::ApplicationAsyncFooReturn,
     ),
@@ -229,14 +222,12 @@ pub fn global_step(
       StepResult::ScheduleTimer {
         ms: 20u64,
         next: State::ApplicationSleepAndPowAwait,
-        future_id: crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
+        future_id: FutureLabel::new("sleep_and_pow_entry_future"),
       }
     }
-    State::ApplicationSleepAndPowAwait => StepResult::Await(
-      crate::ir::FutureLabel::new("sleep_and_pow_entry_future"),
-      None,
-      State::ApplicationSleepAndPowCalc,
-    ),
+    State::ApplicationSleepAndPowAwait => {
+      StepResult::Await(FutureLabel::new("sleep_and_pow_entry_future"), None, State::ApplicationSleepAndPowCalc)
+    }
     State::ApplicationSleepAndPowCalc => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };

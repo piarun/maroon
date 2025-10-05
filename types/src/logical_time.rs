@@ -13,7 +13,7 @@ impl LogicalTimeAbsoluteMs {
   }
 
   /// ```rust
-  /// use common::logical_time::LogicalTimeAbsoluteMs;
+  /// use types::logical_time::LogicalTimeAbsoluteMs;
   ///
   /// assert_eq!(LogicalTimeAbsoluteMs::from_millis(10), LogicalTimeAbsoluteMs::from_millis(10).abs_diff(&LogicalTimeAbsoluteMs::from_millis(20)));
   /// assert_eq!(LogicalTimeAbsoluteMs::from_millis(10), LogicalTimeAbsoluteMs::from_millis(20).abs_diff(&LogicalTimeAbsoluteMs::from_millis(10)));

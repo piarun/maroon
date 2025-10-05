@@ -6,11 +6,12 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use common::invoker_handler::create_invoker_handler_pair;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
-use common::transaction::{Transaction, TxStatus};
 use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
+use generated::maroon_assembler::Value;
 use libp2p::PeerId;
-use runtime::generated::Value;
+use protocol::transaction::FiberType as ProtoFiberType;
+use protocol::transaction::{Meta, TaskBlueprint as ProtoBlueprint, Transaction, TxStatus};
 use runtime::ir::FiberType;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
@@ -291,6 +292,8 @@ async fn app_executes_after_epoch_confirmed() {
     app.loop_until_shutdown(shutdown_rx).await;
   });
 
+  tokio::time::sleep(Duration::from_millis(500)).await;
+
   let rnd_peer = PeerId::random();
   // imitate new epoch came
   b2a_epoch.send(EpochUpdates::New(Epoch::next(
@@ -313,13 +316,13 @@ async fn app_executes_after_epoch_confirmed() {
           global_id: UniqueU64BlobId(0),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)]
+          init_values: vec![Value::U64(1), Value::U64(1)]
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
           fiber_type: FiberType::new("application"),
           function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)]
+          init_values: vec![Value::U64(1), Value::U64(1)]
         }
       ]
     )),
@@ -334,8 +337,22 @@ async fn app_executes_after_epoch_confirmed() {
   while let Some(Outbox::NotifyGWs(updated_txs)) = a2b_endpoint.receiver.recv().await {
     assert_eq!(
       vec![
-        Transaction { id: UniqueU64BlobId(0), status: TxStatus::Finished },
-        Transaction { id: UniqueU64BlobId(1), status: TxStatus::Finished }
+        Transaction {
+          meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished },
+          blueprint: ProtoBlueprint {
+            fiber_type: ProtoFiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
+          },
+        },
+        Transaction {
+          meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished },
+          blueprint: ProtoBlueprint {
+            fiber_type: ProtoFiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
+          },
+        },
       ],
       updated_txs,
     );

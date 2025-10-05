@@ -1,9 +1,4 @@
-use common::{
-  duplex_channel::Endpoint,
-  gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response},
-  meta_exchange::{self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role},
-  node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic},
-};
+use common::duplex_channel::Endpoint;
 use derive_more::From;
 use futures::StreamExt;
 use libp2p::dns::Transport as DnsTransport;
@@ -23,6 +18,11 @@ use libp2p::{
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info};
+use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response};
+use protocol::meta_exchange::{
+  self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role,
+};
+use protocol::node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic};
 use schema::mn_events::{CommandBody, Eid, LogEvent, LogEventBody, now_microsec};
 use std::{collections::HashSet, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
