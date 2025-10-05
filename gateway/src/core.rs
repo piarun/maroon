@@ -88,7 +88,7 @@ impl Gateway {
     }
 
     let id = self.interval_left;
-    self.interval_left += UniqueU64BlobId(self.interval_left.0 + 1);
+    self.interval_left += UniqueU64BlobId(1);
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
     {
