@@ -27,7 +27,7 @@ async fn summarize_handler(
           function_key: "async_foo".to_string(),
           init_values: vec![Value::U64(a), Value::U64(b)],
         },
-        socket,
+        Some(socket),
       )
       .await;
   })

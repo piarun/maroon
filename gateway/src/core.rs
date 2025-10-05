@@ -1,8 +1,7 @@
 use crate::p2p::P2P;
 use axum::extract::ws::{Message, WebSocket};
-use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
+use common::duplex_channel::create_a_b_duplex_pair;
 use futures::SinkExt;
-use log::info;
 use protocol::gm_request_response::{Request, Response};
 use protocol::node2gw::{Meta, Transaction, TxStatus};
 use protocol::transaction::TaskBlueprint;
@@ -81,7 +80,7 @@ impl Gateway {
   pub async fn send_request(
     &mut self,
     blueprint: TaskBlueprint,
-    mut response_socket: WebSocket,
+    response_socket: Option<WebSocket>,
   ) {
     if self.interval_left >= self.interval_right {
       todo!("request new key range");
@@ -90,27 +89,33 @@ impl Gateway {
     let id = self.interval_left;
     self.interval_left += UniqueU64BlobId(1);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
-    {
-      let mut map = self.ws_registry.lock().await;
-      map.insert(id, tx);
-    }
-
-    tokio::spawn(async move {
-      while let Some(msg) = rx.recv().await {
-        if response_socket.send(msg).await.is_err() {
-          break;
-        }
+    if let Some(mut response_socket) = response_socket {
+      let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+      {
+        let mut map = self.ws_registry.lock().await;
+        map.insert(id, tx);
       }
-      _ = response_socket.close().await;
-    });
 
-    let _ = self
-      .p2p_sender
-      .send(Request::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+      tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+          if response_socket.send(msg).await.is_err() {
+            break;
+          }
+        }
+        _ = response_socket.close().await;
+      });
 
-    if let Some(sender) = self.ws_registry.lock().await.get(&id).cloned() {
-      let _ = sender.send(Message::Text(format!("request created. id: {}", id).into()));
-    }
+      let _ = self
+        .p2p_sender
+        .send(Request::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+
+      if let Some(sender) = self.ws_registry.lock().await.get(&id).cloned() {
+        let _ = sender.send(Message::Text(format!("request created. id: {}", id).into()));
+      }
+    } else {
+      let _ = self
+        .p2p_sender
+        .send(Request::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+    };
   }
 }

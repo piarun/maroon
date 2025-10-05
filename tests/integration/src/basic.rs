@@ -48,11 +48,14 @@ async fn basic() {
   )
   .unwrap();
 
-  let mut gw = Gateway::new(vec![
-    "/ip4/127.0.0.1/tcp/3000".to_string(),
-    "/ip4/127.0.0.1/tcp/3001".to_string(),
-    "/ip4/127.0.0.1/tcp/3002".to_string(),
-  ])
+  let mut gw = Gateway::new(
+    KeyRange(0),
+    vec![
+      "/ip4/127.0.0.1/tcp/3000".to_string(),
+      "/ip4/127.0.0.1/tcp/3001".to_string(),
+      "/ip4/127.0.0.1/tcp/3002".to_string(),
+    ],
+  )
   .unwrap();
 
   // run nodes and gateway
@@ -66,17 +69,8 @@ async fn basic() {
   // wait until they are connected
   tokio::time::sleep(Duration::from_secs(1)).await;
 
-  // send requests from gateway
-  let mk = |id| Transaction {
-    meta: Meta { id, status: TxStatus::Created },
-    blueprint: TaskBlueprint {
-      fiber_type: FiberType::new("application"),
-      function_key: "async_foo".to_string(),
-      init_values: vec![Value::U64(4), Value::U64(8)],
-    },
-  };
-  _ = gw.send_request(Request::NewTransaction(mk(UniqueU64BlobId(1)))).await;
-  _ = gw.send_request(Request::NewTransaction(mk(UniqueU64BlobId(0)))).await;
+  gw.send_request(test_add_blueprint(2, 4), None).await;
+  gw.send_request(test_add_blueprint(2, 4), None).await;
 
   // check results
   let (mut node0_correct, mut node1_correct, mut node2_correct) = (false, false, false);
@@ -108,4 +102,16 @@ async fn basic() {
   assert!(node0_correct);
   assert!(node1_correct);
   assert!(node2_correct);
+}
+
+#[cfg(test)]
+fn test_add_blueprint(
+  a: u64,
+  b: u64,
+) -> TaskBlueprint {
+  TaskBlueprint {
+    fiber_type: FiberType::new("global"),
+    function_key: "add".to_string(),
+    init_values: vec![Value::U64(a), Value::U64(b)],
+  }
 }
