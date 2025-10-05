@@ -1362,6 +1362,7 @@ dependencies = [
 name = "gateway"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.4",
  "common",
  "derive_more",
  "env_logger",

@@ -200,6 +200,7 @@ fn handle_swarm_event(
               N2GWGossipPayload::Node2GWTxUpdate(tx_updates) => {
                 // TODO: return it for HTTP response or websocket response, or whatever response there will be
                 info!("UPDATE TXs: {:?}", tx_updates);
+                sender.send(Response::Node2GWTxUpdate(tx_updates)).unwrap();
               }
             },
             Err(e) => {
