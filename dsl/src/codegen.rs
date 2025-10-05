@@ -111,7 +111,8 @@ pub fn generate_rust_types(ir: &IR) -> String {
             ty_name
           ));
         } else if derive_partial_eq {
-          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq)]\npub struct {} {{\n", ty_name));
+          // Derive Eq alongside PartialEq to support Value: Eq
+          out.push_str(&format!("#[derive(Clone, Debug, Default, PartialEq, Eq)]\npub struct {} {{\n", ty_name));
         } else {
           out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", ty_name));
         }
@@ -246,7 +247,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
     }
   }
 
-  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum Value {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum Value {\n");
   for (vname, ty) in used_types.iter() {
     out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }

@@ -11,6 +11,7 @@ use common::{
   meta_exchange::{
     self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Request as MERequest, Response as MEResponse, Role,
   },
+  node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2GWGossipPayload, node2gw_topic_hash},
 };
 use derive_more::From;
 use futures::StreamExt;
@@ -71,6 +72,9 @@ pub struct P2P {
   swarm: Swarm<MaroonBehaviour>,
   node_p2p_topic: TopicHash,
 
+  // topic for broadcasting node messages to gateways
+  node_2_gw_topic: TopicHash,
+
   interface_endpoint: Endpoint<Inbox, Outbox>,
 }
 
@@ -124,7 +128,15 @@ impl P2P {
       SwarmConfig::with_tokio_executor().with_idle_connection_timeout(Duration::from_secs(60)),
     );
 
-    Ok(P2P { node_urls, self_url, peer_id, swarm, node_p2p_topic: node_p2p_topic.hash().clone(), interface_endpoint })
+    Ok(P2P {
+      node_urls,
+      self_url,
+      peer_id,
+      swarm,
+      node_p2p_topic: node_p2p_topic.hash().clone(),
+      node_2_gw_topic: node2gw_topic_hash(),
+      interface_endpoint,
+    })
   }
 
   /// starts listening and performs all the bindings but doesn't react yeat
@@ -166,6 +178,8 @@ impl P2P {
                   outbox,
                   self.peer_id,
                   self.node_p2p_topic.clone(),
+                  self.node_2_gw_topic.clone(),
+                  &alive_gateway_ids,
               );
           },
           event = swarm.select_next_some() => {
@@ -188,6 +202,8 @@ fn handle_receiver_outbox(
   outbox_message: Outbox,
   peer_id: PeerId,
   node_p2p_topic: TopicHash,
+  node_2_gw_topic: TopicHash,
+  alive_gateway_ids: &HashSet<PeerId>,
 ) {
   match outbox_message {
     Outbox::State(state) => {
@@ -207,6 +223,20 @@ fn handle_receiver_outbox(
     }
     Outbox::RequestedTxsForPeer((peer_id, missing_txs)) => {
       swarm.behaviour_mut().m2m_req_res.send_request(&peer_id, M2MRequest::MissingTx(missing_txs));
+    }
+    Outbox::NotifyGWs(tx_updates) => {
+      if alive_gateway_ids.len() == 0 {
+        return;
+      }
+      let message = N2GWGossipMessage { peer_id: peer_id, payload: N2GWGossipPayload::Node2GWTxUpdate(tx_updates) };
+
+      let bytes = guard_ok!(serde_json::to_vec(&message), e, {
+        error!("serialize message error: {e}");
+        return;
+      });
+      if let Err(e) = swarm.behaviour_mut().gossipsub.publish(node_2_gw_topic, bytes) {
+        warn!("gossip node2gw broadcast error: {}", e);
+      }
     }
   }
 }

@@ -13,7 +13,7 @@ pub struct Transaction {
 pub enum TxStatus {
   Created,
   Pending,
-  Confirmed,
+  // Confirmed,
   Finished,
-  Rejected,
+  // Rejected,
 }

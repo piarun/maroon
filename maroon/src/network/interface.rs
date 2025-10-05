@@ -17,6 +17,10 @@ pub enum Outbox {
 
   RequestMissingTxs((PeerId, Vec<U64BlobIdClosedInterval>)),
   RequestedTxsForPeer((PeerId, Vec<Transaction>)),
+
+  // send updates on transactions. any update: status change, got results, etc...
+  // my idea right now is that node will send this update once, if gateway was down during this period - it needs to request the status itself
+  NotifyGWs(Vec<Transaction>),
 }
 
 /// Input for the layer that lives on top of p2p layer. Output for p2p Layer

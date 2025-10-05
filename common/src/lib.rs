@@ -5,6 +5,7 @@ pub mod logical_clock;
 pub mod logical_time;
 pub mod m2m_request_response;
 pub mod meta_exchange;
+pub mod node2gw;
 pub mod range_key;
 pub mod retrier;
 pub mod transaction;

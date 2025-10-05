@@ -5,6 +5,7 @@ pub trait Timer: Send + Sync + 'static {
   fn monotonic_now_system(&self) -> std::time::SystemTime;
 }
 
+#[derive(Clone, Copy)]
 pub struct MonotonicTimer {
   instant: std::time::Instant,
   system: std::time::SystemTime,
