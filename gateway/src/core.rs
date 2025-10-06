@@ -1,8 +1,8 @@
+use crate::network_interface::{Inbox, Outbox};
 use crate::p2p::P2P;
 use axum::extract::ws::{Message, WebSocket};
 use common::duplex_channel::create_a_b_duplex_pair;
 use futures::SinkExt;
-use protocol::gm_request_response::{Request, Response};
 use protocol::node2gw::{Meta, Transaction, TxStatus};
 use protocol::transaction::TaskBlueprint;
 use std::{collections::HashMap, sync::Arc};
@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use types::range_key::{KeyRange, UniqueU64BlobId, full_interval_for_range};
 pub struct Gateway {
-  p2p_sender: UnboundedSender<Request>,
-  p2p_receiver: Option<UnboundedReceiver<Response>>,
+  p2p_sender: UnboundedSender<Outbox>,
+  p2p_receiver: Option<UnboundedReceiver<Inbox>>,
   p2p: Option<P2P>,
 
   interval_left: UniqueU64BlobId,
@@ -26,7 +26,7 @@ impl Gateway {
     range: KeyRange,
     node_urls: Vec<String>,
   ) -> Result<Gateway, Box<dyn std::error::Error>> {
-    let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Request, Response>();
+    let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Outbox, Inbox>();
 
     let mut p2p = P2P::new(node_urls, b2a_endpoint)?;
     // TODO: prepare works in background and you can't start sending requests immediately when you created Gateway
@@ -58,7 +58,7 @@ impl Gateway {
     tokio::spawn(async move {
       while let Some(msg) = receiver.recv().await {
         match msg {
-          Response::Node2GWTxUpdate(tx_updates) => {
+          Inbox::TxUpdates(tx_updates) => {
             for update in tx_updates {
               // try to forward update to a registered websocket for this tx_id
               let maybe_tx = {
@@ -71,7 +71,6 @@ impl Gateway {
               }
             }
           }
-          _ => {}
         }
       }
     });
@@ -107,7 +106,7 @@ impl Gateway {
 
       let _ = self
         .p2p_sender
-        .send(Request::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+        .send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
 
       if let Some(sender) = self.ws_registry.lock().await.get(&id).cloned() {
         let _ = sender.send(Message::Text(format!("request created. id: {}", id).into()));
@@ -115,7 +114,7 @@ impl Gateway {
     } else {
       let _ = self
         .p2p_sender
-        .send(Request::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+        .send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
     };
   }
 }

@@ -5,6 +5,7 @@ rust-version = "1.86.0"
 version = "0.1.0"
 
 [dependencies]
+axum = { version = "0.8.3", features = ["ws"] }
 common = { path = "../common" }
 derive_more = { version = "2.0.1", features = ["from"] }
 env_logger = { workspace = true }
@@ -20,4 +21,3 @@ serde_json = { workspace = true }
 state_log = { path = "../state_log" }
 tokio = { workspace = true }
 types = { path = "../types" }
-axum = { version = "0.8.3", features = ["ws"] }

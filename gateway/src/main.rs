@@ -60,7 +60,6 @@ async fn main() {
 
   let server = serve(listener, gw);
 
-  // Graceful shutdown on Ctrl+C
   let shutdown = async move {
     let _ = tokio::signal::ctrl_c().await;
   };
