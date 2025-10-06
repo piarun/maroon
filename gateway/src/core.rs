@@ -2,23 +2,31 @@ use crate::network_interface::{Inbox, Outbox};
 use crate::p2p::P2P;
 use axum::extract::ws::{Message, WebSocket};
 use common::duplex_channel::create_a_b_duplex_pair;
-use futures::SinkExt;
+use log::error;
 use protocol::node2gw::{Meta, Transaction, TxStatus};
 use protocol::transaction::TaskBlueprint;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use std::collections::HashMap;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use types::range_key::{KeyRange, UniqueU64BlobId, full_interval_for_range};
+
+// if the last param is None - the request will still go and will be executed
+// it's just result is not interesting for the requester
+struct NewRequest {
+  id: UniqueU64BlobId,
+  blueprint: TaskBlueprint,
+  response_socket: Option<WebSocket>,
+}
+
 pub struct Gateway {
-  p2p_sender: UnboundedSender<Outbox>,
+  p2p_sender: Option<UnboundedSender<Outbox>>,
   p2p_receiver: Option<UnboundedReceiver<Inbox>>,
   p2p: Option<P2P>,
 
+  new_request_sender: UnboundedSender<NewRequest>,
+  new_request_receiver: Option<UnboundedReceiver<NewRequest>>,
+
   interval_left: UniqueU64BlobId,
   interval_right: UniqueU64BlobId,
-
-  // tx_id -> channel to the websocket writer
-  ws_registry: Arc<Mutex<HashMap<UniqueU64BlobId, UnboundedSender<Message>>>>,
 }
 
 impl Gateway {
@@ -27,6 +35,7 @@ impl Gateway {
     node_urls: Vec<String>,
   ) -> Result<Gateway, Box<dyn std::error::Error>> {
     let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Outbox, Inbox>();
+    let (new_request_sender, new_request_receiver) = mpsc::unbounded_channel::<NewRequest>();
 
     let mut p2p = P2P::new(node_urls, b2a_endpoint)?;
     // TODO: prepare works in background and you can't start sending requests immediately when you created Gateway
@@ -36,40 +45,37 @@ impl Gateway {
     let interval = full_interval_for_range(range);
 
     Ok(Gateway {
-      p2p_sender: a2b_endpoint.sender,
+      p2p_sender: Some(a2b_endpoint.sender),
       p2p_receiver: Some(a2b_endpoint.receiver),
       p2p: Some(p2p),
+      new_request_sender,
+      new_request_receiver: Some(new_request_receiver),
       interval_left: interval.start(),
       interval_right: interval.end(),
-      ws_registry: Arc::new(Mutex::new(HashMap::new())),
     })
   }
 
   pub async fn start_in_background(&mut self) {
     let p2p = self.p2p.take().expect("can be called only once");
 
-    let mut receiver = self.p2p_receiver.take().expect("cant take twice");
+    let mut p2p_receiver = self.p2p_receiver.take().expect("cant take twice");
+    let p2p_sender = self.p2p_sender.take().expect("cant take twice");
+    let mut new_request_receiver = self.new_request_receiver.take().expect("cant take twice");
 
     tokio::spawn(async move {
       p2p.start_event_loop().await;
     });
 
-    let ws_registry = self.ws_registry.clone();
+    let mut ws_registry = HashMap::<UniqueU64BlobId, WebSocket>::new();
     tokio::spawn(async move {
-      while let Some(msg) = receiver.recv().await {
-        match msg {
-          Inbox::TxUpdates(tx_updates) => {
-            for update in tx_updates {
-              // try to forward update to a registered websocket for this tx_id
-              let maybe_tx = {
-                let mut map = ws_registry.lock().await;
-                map.remove_entry(&update.meta.id).map(|e| e.1)
-              };
-              if let Some(tx) = maybe_tx {
-                let payload = serde_json::to_string(&update).unwrap_or_else(|_| format!("{:?}", update));
-                let _ = tx.send(Message::Text(payload.into()));
-              }
-            }
+      // let p2p_sender = p2p_sender;
+      loop {
+        tokio::select! {
+          Some(inbox) = p2p_receiver.recv() => {
+            handle_inbox(inbox, &mut ws_registry).await;
+          }
+          Some(req) = new_request_receiver.recv() => {
+            handle_send_new_request(&p2p_sender, req, &mut ws_registry);
           }
         }
       }
@@ -88,33 +94,42 @@ impl Gateway {
     let id = self.interval_left;
     self.interval_left += UniqueU64BlobId(1);
 
-    if let Some(mut response_socket) = response_socket {
-      let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
-      {
-        let mut map = self.ws_registry.lock().await;
-        map.insert(id, tx);
-      }
+    if let Err(e) = self.new_request_sender.send(NewRequest { id, blueprint, response_socket }) {
+      error!("gateway new request: {e}");
+    }
+  }
+}
 
-      tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-          if response_socket.send(msg).await.is_err() {
-            break;
+fn handle_send_new_request(
+  sender: &UnboundedSender<Outbox>,
+  request: NewRequest,
+  ws_registry: &mut HashMap<UniqueU64BlobId, WebSocket>,
+) {
+  let NewRequest { id, blueprint, response_socket } = request;
+  let _ = sender.send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
+  if let Some(sock) = response_socket {
+    ws_registry.insert(id, sock);
+  }
+}
+
+async fn handle_inbox(
+  inbox: Inbox,
+  ws_registry: &mut HashMap<UniqueU64BlobId, WebSocket>,
+) {
+  match inbox {
+    Inbox::TxUpdates(tx_updates) => {
+      for update in tx_updates {
+        let socket = ws_registry.get_mut(&update.meta.id);
+        if let Some(socket) = socket {
+          let payload = serde_json::to_string(&update).unwrap_or_else(|_| format!("{:?}", update));
+          if let Err(e) = socket.send(Message::Text(payload.into())).await {
+            error!("send ws response: {e}");
+          };
+          if update.meta.status == TxStatus::Finished {
+            ws_registry.remove(&update.meta.id);
           }
         }
-        _ = response_socket.close().await;
-      });
-
-      let _ = self
-        .p2p_sender
-        .send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
-
-      if let Some(sender) = self.ws_registry.lock().await.get(&id).cloned() {
-        let _ = sender.send(Message::Text(format!("request created. id: {}", id).into()));
       }
-    } else {
-      let _ = self
-        .p2p_sender
-        .send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
-    };
+    }
   }
 }
