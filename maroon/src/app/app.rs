@@ -22,10 +22,12 @@ use epoch_coordinator::{
   epoch::Epoch,
   interface::{EpochRequest, EpochUpdates},
 };
-use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, error, info};
-use protocol::transaction::{Transaction, TxStatus};
+use protocol::{
+  node2gw::TxUpdate,
+  transaction::{Transaction, TxStatus},
+};
 use runtime::runtime::TaskBlueprint;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
 use std::{
@@ -145,12 +147,13 @@ impl<L: Linearizer> App<L> {
               continue;
             }
 
-            let mut for_notification = Vec::<Transaction>::with_capacity(got_results_count);
+            let mut for_notification = Vec::<TxUpdate>::with_capacity(got_results_count);
             for r in runtime_result_buf.drain(..) {
               let tx = self.transactions.get_mut(&r.0).expect("not possible to get result without existing transaction");
               tx.meta.status = TxStatus::Finished;
 
-              for_notification.push(tx.clone());
+              // TODO: save results on node itself
+              for_notification.push(TxUpdate { meta: tx.meta.clone(), result: Some(r.1) });
             }
 
             self.p2p_interface.send(Outbox::NotifyGWs(for_notification));

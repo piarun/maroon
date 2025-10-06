@@ -18,7 +18,7 @@ use libp2p::{
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info};
-use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Request, Response};
+use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Response};
 use protocol::meta_exchange::{
   self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role,
 };
@@ -26,6 +26,8 @@ use protocol::node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2G
 use schema::mn_events::{CommandBody, Eid, LogEvent, LogEventBody, now_microsec};
 use std::{collections::HashSet, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::network_interface::{Inbox, Outbox};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "GatewayEvent")]
@@ -49,7 +51,7 @@ pub struct P2P {
 
   swarm: Swarm<GatewayBehaviour>,
 
-  interface_endpoint: Endpoint<Response, Request>,
+  interface_endpoint: Endpoint<Inbox, Outbox>,
 
   // Gateway peer_id
   id: PeerId,
@@ -58,7 +60,7 @@ pub struct P2P {
 impl P2P {
   pub fn new(
     node_urls: Vec<String>,
-    interface_endpoint: Endpoint<Response, Request>,
+    interface_endpoint: Endpoint<Inbox, Outbox>,
   ) -> Result<P2P, Box<dyn std::error::Error>> {
     let kp = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(kp.public());
@@ -129,7 +131,11 @@ impl P2P {
           Some(request) = receiver.recv() => {
               for peer_id in &maroon_peer_ids {
                   debug!("Sending request {request:?} to {peer_id}");
-                  let _request_id = swarm.behaviour_mut().request_response.send_request(peer_id, request.clone());
+                  // Map Outbox -> gm_request_response::Request
+                  let gm_req = match request.clone() {
+                    Outbox::NewTransaction(tx) => gm_request_response::Request::NewTransaction(tx),
+                  };
+                  let _request_id = swarm.behaviour_mut().request_response.send_request(peer_id, gm_req);
                   state_log::log(LogEvent {
                     timestamp_micros: now_microsec(),
                     emitter: self.id,
@@ -157,7 +163,7 @@ impl P2P {
 fn handle_swarm_event(
   swarm: &mut Swarm<GatewayBehaviour>,
   event: SwarmEvent<GatewayEvent>,
-  sender: &UnboundedSender<Response>,
+  sender: &UnboundedSender<Inbox>,
   maroon_peer_ids: &mut HashSet<PeerId>,
 ) {
   match event {
@@ -167,7 +173,13 @@ fn handle_swarm_event(
         GMEvent::Message { message, .. } => match message {
           RequestResponseMessage::Response { request_id, response } => {
             debug!("Response: {:?}, {:?}", request_id, response);
-            sender.send(response).unwrap();
+
+            match response {
+              Response::Node2GWTxUpdate(tx_updates) => {
+                _ = sender.send(Inbox::TxUpdates(tx_updates));
+              }
+              _ => {}
+            }
           }
           _ => {}
         },
@@ -198,8 +210,7 @@ fn handle_swarm_event(
           match serde_json::from_slice::<N2GWGossipMessage>(&message.data) {
             Ok(p2p_message) => match p2p_message.payload {
               N2GWGossipPayload::Node2GWTxUpdate(tx_updates) => {
-                // TODO: return it for HTTP response or websocket response, or whatever response there will be
-                info!("UPDATE TXs: {:?}", tx_updates);
+                _ = sender.send(Inbox::TxUpdates(tx_updates));
               }
             },
             Err(e) => {

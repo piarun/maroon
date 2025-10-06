@@ -1,11 +1,40 @@
-use common::range_key::{KeyOffset, KeyRange, unique_blob_id_from_range_and_offset};
+use axum::{
+  Router,
+  extract::{Path, State, ws::WebSocketUpgrade},
+  response::IntoResponse,
+  routing::get,
+  serve,
+};
+use gateway::core::Gateway;
 use generated::maroon_assembler::Value;
-use protocol::gm_request_response::Request;
-use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
-use std::time::Duration;
+use protocol::transaction::{FiberType, TaskBlueprint};
+use std::{net::SocketAddr, sync::Arc};
+use tokio::net::TcpListener;
+use types::range_key::KeyRange;
+
+async fn summarize_handler(
+  State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
+  Path((a, b)): Path<(u64, u64)>,
+  ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| async move {
+    let mut gateway = gw.lock().await;
+
+    gateway
+      .send_request(
+        TaskBlueprint {
+          fiber_type: FiberType::new("application"),
+          function_key: "async_foo".to_string(),
+          init_values: vec![Value::U64(a), Value::U64(b)],
+        },
+        Some(socket),
+      )
+      .await;
+  })
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
   env_logger::init();
 
   let node_urls: Vec<String> = std::env::var("NODE_URLS")
@@ -16,26 +45,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   let key_range = KeyRange(std::env::var("KEY_RANGE").unwrap_or("0".to_string()).parse::<u64>().unwrap());
 
-  let mut gw = gateway::core::Gateway::new(node_urls)?;
-  gw.start_in_background().await;
+  let mut gateway_app = Gateway::new(key_range, node_urls).expect("should be ok");
+  gateway_app.start_in_background().await;
 
-  // wait until connected
-  tokio::time::sleep(Duration::from_secs(2)).await;
+  // server
+  let gw = Router::new()
+    .route("/summarize/{a}/{b}", get(summarize_handler))
+    .with_state(Arc::new(tokio::sync::Mutex::new(gateway_app)));
 
-  for i in 0..100 {
-    let id = unique_blob_id_from_range_and_offset(key_range, KeyOffset(i));
-    let tx = Transaction {
-      meta: Meta { id, status: TxStatus::Created },
-      blueprint: TaskBlueprint {
-        fiber_type: FiberType::new("application"),
-        function_key: "async_foo".to_string(),
-        init_values: vec![Value::U64(i), Value::U64(i)],
-      },
-    };
-    _ = gw.send_request(Request::NewTransaction(tx)).await?;
-    tokio::time::sleep(Duration::from_secs(1)).await;
+  let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
+  let listener = TcpListener::bind(addr).await.unwrap();
+
+  println!("gateway ws server up on {addr}");
+
+  let server = serve(listener, gw);
+
+  let shutdown = async move {
+    let _ = tokio::signal::ctrl_c().await;
+  };
+
+  tokio::select! {
+    _ = server.with_graceful_shutdown(shutdown) => {},
   }
 
-  tokio::time::sleep(Duration::from_secs(10)).await;
-  Ok(())
+  println!("gateway ws server down");
 }

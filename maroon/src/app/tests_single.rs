@@ -10,8 +10,8 @@ use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
-use protocol::transaction::FiberType as ProtoFiberType;
-use protocol::transaction::{Meta, TaskBlueprint as ProtoBlueprint, Transaction, TxStatus};
+use protocol::node2gw::TxUpdate;
+use protocol::transaction::{Meta, TxStatus};
 use runtime::ir::FiberType;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
@@ -330,31 +330,27 @@ async fn app_executes_after_epoch_confirmed() {
   );
 
   // imitate result from runtime
-  b2a_runtime.send((UniqueU64BlobId(0), Value::U64(12)));
-  b2a_runtime.send((UniqueU64BlobId(1), Value::U64(12)));
+  b2a_runtime.send((UniqueU64BlobId(0), Value::U64(2)));
+  b2a_runtime.send((UniqueU64BlobId(1), Value::U64(2)));
 
-  tokio::time::sleep(Duration::from_millis(500)).await;
-  while let Some(Outbox::NotifyGWs(updated_txs)) = a2b_endpoint.receiver.recv().await {
-    assert_eq!(
-      vec![
-        Transaction {
-          meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished },
-          blueprint: ProtoBlueprint {
-            fiber_type: ProtoFiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(4), Value::U64(8)],
-          },
-        },
-        Transaction {
-          meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished },
-          blueprint: ProtoBlueprint {
-            fiber_type: ProtoFiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(4), Value::U64(8)],
-          },
-        },
-      ],
-      updated_txs,
-    );
+  let mut transmitted = Vec::<TxUpdate>::with_capacity(2);
+
+  while let Some(msg) = a2b_endpoint.receiver.recv().await {
+    let Outbox::NotifyGWs(mut updated_txs) = msg else {
+      continue;
+    };
+
+    transmitted.append(&mut updated_txs);
+
+    if transmitted.len() == 2 {
+      break;
+    }
   }
+  assert_eq!(
+    vec![
+      TxUpdate { meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
+      TxUpdate { meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
+    ],
+    transmitted,
+  );
 }

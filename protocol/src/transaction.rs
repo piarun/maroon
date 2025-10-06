@@ -15,6 +15,12 @@ pub struct Meta {
   pub status: TxStatus,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct TxUpdate {
+  pub meta: Meta,
+  pub result: Option<Value>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskBlueprint {
   pub fiber_type: FiberType,

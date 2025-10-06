@@ -1,4 +1,4 @@
-pub use crate::transaction::{Meta, Transaction, TxStatus};
+pub use crate::transaction::{Meta, Transaction, TxStatus, TxUpdate};
 use libp2p::{
   PeerId,
   gossipsub::{Sha256Topic, TopicHash},
@@ -25,5 +25,5 @@ pub struct GossipMessage {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum GossipPayload {
-  Node2GWTxUpdate(Vec<Transaction>),
+  Node2GWTxUpdate(Vec<TxUpdate>),
 }
