@@ -333,22 +333,24 @@ async fn app_executes_after_epoch_confirmed() {
   b2a_runtime.send((UniqueU64BlobId(0), Value::U64(2)));
   b2a_runtime.send((UniqueU64BlobId(1), Value::U64(2)));
 
-  let mut checked = false;
+  let mut transmitted = Vec::<TxUpdate>::with_capacity(2);
 
   while let Some(msg) = a2b_endpoint.receiver.recv().await {
-    let Outbox::NotifyGWs(updated_txs) = msg else {
+    let Outbox::NotifyGWs(mut updated_txs) = msg else {
       continue;
     };
 
-    assert_eq!(
-      vec![
-        TxUpdate { meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
-        TxUpdate { meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
-      ],
-      updated_txs,
-    );
-    checked = true;
-    break;
+    transmitted.append(&mut updated_txs);
+
+    if transmitted.len() == 2 {
+      break;
+    }
   }
-  assert!(checked);
+  assert_eq!(
+    vec![
+      TxUpdate { meta: Meta { id: UniqueU64BlobId(0), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
+      TxUpdate { meta: Meta { id: UniqueU64BlobId(1), status: TxStatus::Finished }, result: Some(Value::U64(2)) },
+    ],
+    transmitted,
+  );
 }
