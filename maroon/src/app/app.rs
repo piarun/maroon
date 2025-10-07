@@ -211,8 +211,13 @@ impl<L: Linearizer> App<L> {
 
           for interval in new_epoch.increments {
             for i in interval.iter() {
+              // TODO: if some transactions are not here yet but the node got a new epoch with them. Should I pause execution at all?
+              // or should I execute until I reach missing transactions? and continue only when I'll download the missing ones?
               let tx= self.transactions.get_mut(&i).expect("TODO: make sure all txs are here, epochs might contain bigger offsets that current node sees right now");
+
               // TODO: notify gateway nodes here about status changing?
+              // here I'm chaning local status of transactions but not advertising it anywhere
+              // so nobody knows about the progress, only if explicitly requests the status
               tx.meta.status = TxStatus::Pending;
 
               blueprints.push(TaskBlueprint {
@@ -283,11 +288,7 @@ impl<L: Linearizer> App<L> {
         }
 
         debug!("send_back_missing_txs to peerID:[{}]", peer_id);
-        self
-          .p2p_interface
-          .sender
-          .send(Outbox::RequestedTxsForPeer((peer_id, response)))
-          .expect("TODO: shouldnt drop sender");
+        self.p2p_interface.sender.send(Outbox::RequestedTxsForPeer((peer_id, response))).expect("shouldnt drop sender");
       }
     }
   }
@@ -427,7 +428,8 @@ fn update_self_offsets(
 
     let mut key = range_key::unique_blob_id_from_range_and_offset(range, *start);
     while transactions.contains_key(&(key + UniqueU64BlobId(1))) {
-      // TODO: there is an overflow error here. If one range is finished transaction can still be in the map, but offset will be above the maximum
+      // TODO: there is an overflow error here. If one range is finished transaction can still be in the map
+      // but offset will be above the maximum and transaction should go into another range
       key += UniqueU64BlobId(1);
     }
 
