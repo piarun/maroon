@@ -66,7 +66,7 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
 - [X] G. Minimal gateway implementation that just publishes transactions
 - [X] MN. Request outdated transactions(p2p)
 - [X] MN. Fix "epoch" (local)
-- [ ] MN. integration with state machine - "puf-puf-magic"
+- [X] MN. integration with state machine - "puf-puf-magic"
 - [ ] epoch coordinator implementation
   - [x] epoch coordinator interface
   - [x] set up etcd
@@ -75,14 +75,15 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
 - [ ] DSL
     - [X] base IR
     - [X] generate maroon steps from IR
-    - [ ] run base runtime on generated steps (functions call)
-    - [ ] advanced runtime features
-        - [ ] async/await (cross-fiber communication)
-- [ ] orderbook showcase
-    - [ ] IR implementation
+    - [X] run base runtime on generated steps (functions call)
+    - [X] advanced runtime features
+        - [X] async/await (cross-fiber communication)
+- [X] orderbook showcase
+    - [X] IR implementation
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd
 - [ ] dump data to s3?? (??: what exactly we need to persist? Format? Easy to bootstrap later??)
 - [ ] write script that finds leader, pauses the container and then restores it after a new leader elected
-- [ ] G. make it working as a server/sidecar/library
+- [X] G. make it working as a server/sidecar/library
 - [ ] MN. Bootstrap node from s3
+- [ ] 
