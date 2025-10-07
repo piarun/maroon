@@ -1,9 +1,10 @@
 use axum::{
-  Router,
-  extract::{Path, State, ws::WebSocketUpgrade},
+  http::StatusCode,
   response::IntoResponse,
-  routing::get,
+  routing::{get, post},
   serve,
+  extract::{Path, State, ws::WebSocketUpgrade},
+  Router, Json,
 };
 use gateway::core::Gateway;
 use generated::maroon_assembler::Value;
@@ -33,6 +34,15 @@ async fn summarize_handler(
   })
 }
 
+async fn new_request_handler(
+  State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
+  Json(blueprint): Json<TaskBlueprint>,
+) -> impl IntoResponse {
+  let mut gateway = gw.lock().await;
+  gateway.send_request(blueprint, None).await;
+  StatusCode::ACCEPTED
+}
+
 #[tokio::main]
 async fn main() {
   env_logger::init();
@@ -51,6 +61,7 @@ async fn main() {
   // server
   let gw = Router::new()
     .route("/summarize/{a}/{b}", get(summarize_handler))
+    .route("/new_request", post(new_request_handler))
     .with_state(Arc::new(tokio::sync::Mutex::new(gateway_app)));
 
   let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
