@@ -2,12 +2,23 @@ use crate::network_interface::{Inbox, Outbox};
 use crate::p2p::P2P;
 use axum::extract::ws::{Message, WebSocket};
 use common::duplex_channel::create_a_b_duplex_pair;
+use generated::maroon_assembler::Value;
 use log::error;
 use protocol::node2gw::{Meta, Transaction, TxStatus};
-use protocol::transaction::TaskBlueprint;
+use protocol::transaction::{FiberType, TaskBlueprint};
+use serde::Serialize;
 use std::collections::HashMap;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+  broadcast,
+  mpsc::{self, UnboundedReceiver, UnboundedSender},
+};
 use types::range_key::{KeyRange, UniqueU64BlobId, full_interval_for_range};
+
+#[derive(Debug, Clone, Serialize)]
+pub enum MonitorEvent {
+  NewRequest { id: UniqueU64BlobId, fiber_type: FiberType, function_key: String, init_values: Vec<Value> },
+  TxUpdate { meta: Meta, result: Option<Value> },
+}
 
 // if the last param is None - the request will still go and will be executed
 // it's just result is not interesting for the requester
@@ -27,6 +38,8 @@ pub struct Gateway {
 
   interval_left: UniqueU64BlobId,
   interval_right: UniqueU64BlobId,
+
+  monitor_tx: broadcast::Sender<MonitorEvent>,
 }
 
 impl Gateway {
@@ -36,6 +49,7 @@ impl Gateway {
   ) -> Result<Gateway, Box<dyn std::error::Error>> {
     let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Outbox, Inbox>();
     let (new_request_sender, new_request_receiver) = mpsc::unbounded_channel::<NewRequest>();
+    let (monitor_tx, _monitor_rx) = broadcast::channel::<MonitorEvent>(1024);
 
     let mut p2p = P2P::new(node_urls, b2a_endpoint)?;
     // TODO: prepare works in background and you can't start sending requests immediately when you created Gateway
@@ -52,7 +66,12 @@ impl Gateway {
       new_request_receiver: Some(new_request_receiver),
       interval_left: interval.start(),
       interval_right: interval.end(),
+      monitor_tx,
     })
+  }
+
+  pub fn monitor_subscribe(&self) -> broadcast::Receiver<MonitorEvent> {
+    self.monitor_tx.subscribe()
   }
 
   pub async fn start_in_background(&mut self) {
@@ -61,6 +80,7 @@ impl Gateway {
     let mut p2p_receiver = self.p2p_receiver.take().expect("cant take twice");
     let p2p_sender = self.p2p_sender.take().expect("cant take twice");
     let mut new_request_receiver = self.new_request_receiver.take().expect("cant take twice");
+    let monitor_tx = self.monitor_tx.clone();
 
     tokio::spawn(async move {
       p2p.start_event_loop().await;
@@ -72,10 +92,10 @@ impl Gateway {
       loop {
         tokio::select! {
           Some(inbox) = p2p_receiver.recv() => {
-            handle_inbox(inbox, &mut ws_registry).await;
+            handle_inbox(inbox, &mut ws_registry, &monitor_tx).await;
           }
           Some(req) = new_request_receiver.recv() => {
-            handle_send_new_request(&p2p_sender, req, &mut ws_registry);
+            handle_send_new_request(&p2p_sender, req, &mut ws_registry, &monitor_tx);
           }
         }
       }
@@ -104,17 +124,27 @@ fn handle_send_new_request(
   sender: &UnboundedSender<Outbox>,
   request: NewRequest,
   ws_registry: &mut HashMap<UniqueU64BlobId, WebSocket>,
+  monitor_tx: &broadcast::Sender<MonitorEvent>,
 ) {
   let NewRequest { id, blueprint, response_socket } = request;
+  let bp_for_monitor = blueprint.clone();
   let _ = sender.send(Outbox::NewTransaction(Transaction { meta: Meta { id, status: TxStatus::Created }, blueprint }));
   if let Some(sock) = response_socket {
     ws_registry.insert(id, sock);
   }
+
+  let _ = monitor_tx.send(MonitorEvent::NewRequest {
+    id,
+    fiber_type: bp_for_monitor.fiber_type,
+    function_key: bp_for_monitor.function_key,
+    init_values: bp_for_monitor.init_values,
+  });
 }
 
 async fn handle_inbox(
   inbox: Inbox,
   ws_registry: &mut HashMap<UniqueU64BlobId, WebSocket>,
+  monitor_tx: &broadcast::Sender<MonitorEvent>,
 ) {
   match inbox {
     Inbox::TxUpdates(tx_updates) => {
@@ -129,6 +159,8 @@ async fn handle_inbox(
             ws_registry.remove(&update.meta.id);
           }
         }
+
+        let _ = monitor_tx.send(MonitorEvent::TxUpdate { meta: update.meta, result: update.result });
       }
     }
   }

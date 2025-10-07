@@ -3,10 +3,10 @@ use axum::{
   response::IntoResponse,
   routing::{get, post},
   serve,
-  extract::{Path, State, ws::WebSocketUpgrade},
+  extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}},
   Router, Json,
 };
-use gateway::core::Gateway;
+use gateway::core::{Gateway, MonitorEvent};
 use generated::maroon_assembler::Value;
 use protocol::transaction::{FiberType, TaskBlueprint};
 use std::{net::SocketAddr, sync::Arc};
@@ -43,6 +43,36 @@ async fn new_request_handler(
   StatusCode::ACCEPTED
 }
 
+async fn monitor_ws_loop(mut socket: WebSocket, mut rx: tokio::sync::broadcast::Receiver<MonitorEvent>) {
+  loop {
+    match rx.recv().await {
+      Ok(evt) => {
+        let payload = serde_json::to_string(&evt).unwrap_or_else(|_| format!("{:?}", evt));
+        if socket.send(Message::Text(payload.into())).await.is_err() {
+          break;
+        }
+      }
+      Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+        continue;
+      }
+      Err(_) => break,
+    }
+  }
+}
+
+async fn monitor_handler(
+  State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
+  ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+  ws.on_upgrade(move |socket| async move {
+    let rx = {
+      let gateway = gw.lock().await;
+      gateway.monitor_subscribe()
+    };
+    monitor_ws_loop(socket, rx).await;
+  })
+}
+
 #[tokio::main]
 async fn main() {
   env_logger::init();
@@ -61,6 +91,7 @@ async fn main() {
   // server
   let gw = Router::new()
     .route("/summarize/{a}/{b}", get(summarize_handler))
+    .route("/monitor", get(monitor_handler))
     .route("/new_request", post(new_request_handler))
     .with_state(Arc::new(tokio::sync::Mutex::new(gateway_app)));
 
