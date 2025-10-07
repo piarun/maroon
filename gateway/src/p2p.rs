@@ -173,13 +173,6 @@ fn handle_swarm_event(
         GMEvent::Message { message, .. } => match message {
           RequestResponseMessage::Response { request_id, response } => {
             debug!("Response: {:?}, {:?}", request_id, response);
-
-            match response {
-              Response::Node2GWTxUpdate(tx_updates) => {
-                _ = sender.send(Inbox::TxUpdates(tx_updates));
-              }
-              _ => {}
-            }
           }
           _ => {}
         },
