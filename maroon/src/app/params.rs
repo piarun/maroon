@@ -20,9 +20,9 @@ pub struct Params {
 impl Params {
   pub fn default() -> Params {
     Params {
-      advertise_period: Duration::from_secs(2),
+      advertise_period: Duration::from_millis(50), // 20Hz :)
       consensus_nodes: NonZeroUsize::new(2).unwrap(),
-      epoch_period: LogicalTimeAbsoluteMs::from_millis(3000),
+      epoch_period: LogicalTimeAbsoluteMs::from_millis(50),
     }
   }
 
