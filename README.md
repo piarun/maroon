@@ -72,18 +72,24 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
   - [x] set up etcd
   - [x] write epochs to etcd
   - [x] calculate delay for each node to send epoch. Use calculated order and last commited epoch author
+  - [ ] etcd GC (when we have too many epoch records. Is it a problem? where are the limits?)
 - [ ] DSL
     - [X] base IR
     - [X] generate maroon steps from IR
     - [X] run base runtime on generated steps (functions call)
     - [X] advanced runtime features
         - [X] async/await (cross-fiber communication)
+    - [ ] user-friendly DSL(of course minimal/0.0.1 version)
 - [X] orderbook showcase
     - [X] IR implementation
+- [ ] logical time sync between nodes
+- [ ] light stress-tests (network delays between containers 20ms)
+    - [ ] high throughput demonstration case(orderbook or messenger)
+    - [ ] long-running tests
+    - [ ] kill/bootstrat/restart nodes 
 - [ ] G/MN. Add API to request key ranges for G
     - [ ] MN. store used ranges on etcd
+- [ ] external calls (possibility to make http/tcp/etc requests to external services)
 - [ ] dump data to s3?? (??: what exactly we need to persist? Format? Easy to bootstrap later??)
-- [ ] write script that finds leader, pauses the container and then restores it after a new leader elected
+    - [ ] MN. Bootstrap node from s3
 - [X] G. make it working as a server/sidecar/library
-- [ ] MN. Bootstrap node from s3
-- [ ] 
