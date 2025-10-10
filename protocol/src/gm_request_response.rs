@@ -27,6 +27,4 @@ pub enum Request {
 pub enum Response {
   Acknowledged,
   Rejected,
-  // TODO: it's not the right place. Split gw<->p2p types and p2p(gw)<->p2p(maroon)
-  Node2GWTxUpdate(Vec<TxUpdate>),
 }

@@ -57,7 +57,7 @@ run-local: # runs maroon node locally on a specified port
 	ETCD_URLS=${ETCD_URLS} \
 	SELF_URL=/ip4/127.0.0.1/tcp/${PORT} \
 	REDIS_URL=redis://127.0.0.1:6379 \
-	RUST_LOG=maroon=debug,epoch_coordinator=debug \
+	RUST_LOG=info \
 	CONSENSUS_NODES=${CONSENSUS_NODES} \
 		cargo run -p maroon $(PROFILE_FLAG)
 
@@ -65,7 +65,7 @@ run-gateway: # runs gateway imitation
 	KEY_RANGE=${KEY_RANGE} \
 	NODE_URLS=${NODE_URLS} \
 	REDIS_URL=redis://127.0.0.1:6379 \
-	RUST_LOG=gateway=debug \
+	RUST_LOG=gateway=info \
 		cargo run -p gateway $(PROFILE_FLAG)
 
 shutdown-test-etcd: # shutdown and clean up local etcd cluster

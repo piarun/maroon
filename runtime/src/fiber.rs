@@ -104,7 +104,9 @@ impl Fiber {
   }
 
   // load a task into this fiber, clearing the current stack but preserving the heap
+  //
   // TODO: should I check and if stack is not empty - panic?
+  // That might identify potential problems or unxepectedly left variables
   pub fn load_task(
     &mut self,
     func_name: impl Into<String>,

@@ -1,10 +1,13 @@
 use axum::{
+  Json, Router,
+  extract::{
+    Path, State,
+    ws::{Message, WebSocket, WebSocketUpgrade},
+  },
   http::StatusCode,
   response::IntoResponse,
   routing::{get, post},
   serve,
-  extract::{Path, State, ws::{Message, WebSocket, WebSocketUpgrade}},
-  Router, Json,
 };
 use gateway::core::{Gateway, MonitorEvent};
 use generated::maroon_assembler::Value;
@@ -43,7 +46,10 @@ async fn new_request_handler(
   StatusCode::ACCEPTED
 }
 
-async fn monitor_ws_loop(mut socket: WebSocket, mut rx: tokio::sync::broadcast::Receiver<MonitorEvent>) {
+async fn monitor_ws_loop(
+  mut socket: WebSocket,
+  mut rx: tokio::sync::broadcast::Receiver<MonitorEvent>,
+) {
   loop {
     match rx.recv().await {
       Ok(evt) => {
