@@ -14,8 +14,10 @@ use generated::maroon_assembler::Value;
 use protocol::transaction::{FiberType, TaskBlueprint};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 use types::range_key::KeyRange;
 
+#[tracing::instrument(level = "info", name = "http.summarize", skip(gw, ws), fields(a=%a, b=%b))]
 async fn summarize_handler(
   State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
   Path((a, b)): Path<(u64, u64)>,
@@ -37,10 +39,12 @@ async fn summarize_handler(
   })
 }
 
+#[tracing::instrument(level = "info", name = "http.new_request", skip(gw, blueprint))]
 async fn new_request_handler(
   State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
   Json(blueprint): Json<TaskBlueprint>,
 ) -> impl IntoResponse {
+  tracing::info!(function_key=%blueprint.function_key, fiber_type=%blueprint.fiber_type, "new request received");
   let mut gateway = gw.lock().await;
   gateway.send_request(blueprint, None).await;
   StatusCode::ACCEPTED
@@ -66,6 +70,7 @@ async fn monitor_ws_loop(
   }
 }
 
+#[tracing::instrument(level = "info", name = "http.monitor", skip(gw, ws))]
 async fn monitor_handler(
   State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
   ws: WebSocketUpgrade,
@@ -81,7 +86,11 @@ async fn monitor_handler(
 
 #[tokio::main]
 async fn main() {
-  env_logger::init();
+  let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,gateway=info"));
+  tracing_subscriber::registry()
+    .with(filter)
+    .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
+    .init();
 
   let node_urls: Vec<String> = std::env::var("NODE_URLS")
     .unwrap_or("/ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002".to_string())
@@ -104,7 +113,7 @@ async fn main() {
   let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
   let listener = TcpListener::bind(addr).await.unwrap();
 
-  println!("gateway ws server up on {addr}");
+  tracing::info!(%addr, "gateway ws server up");
 
   let server = serve(listener, gw);
 
@@ -116,5 +125,5 @@ async fn main() {
     _ = server.with_graceful_shutdown(shutdown) => {},
   }
 
-  println!("gateway ws server down");
+  tracing::info!("gateway ws server down");
 }

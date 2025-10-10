@@ -17,7 +17,6 @@ use libp2p::{
   yamux::Config as YamuxConfig,
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
-use log::{debug, error, info};
 use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Response};
 use protocol::meta_exchange::{
   self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role,
@@ -26,6 +25,7 @@ use protocol::node2gw::{GossipMessage as N2GWGossipMessage, GossipPayload as N2G
 use schema::mn_events::{CommandBody, Eid, LogEvent, LogEventBody, now_microsec};
 use std::{collections::HashSet, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::{debug, error, info};
 
 use crate::network_interface::{Inbox, Outbox};
 

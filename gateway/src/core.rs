@@ -3,7 +3,6 @@ use crate::p2p::P2P;
 use axum::extract::ws::{Message, WebSocket};
 use common::duplex_channel::create_a_b_duplex_pair;
 use generated::maroon_assembler::Value;
-use log::error;
 use protocol::node2gw::{Meta, Transaction, TxStatus};
 use protocol::transaction::{FiberType, TaskBlueprint};
 use serde::Serialize;
@@ -12,6 +11,7 @@ use tokio::sync::{
   broadcast,
   mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
+use tracing::error;
 use types::range_key::{KeyRange, UniqueU64BlobId, full_interval_for_range};
 
 #[derive(Debug, Clone, Serialize)]
