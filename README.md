@@ -82,7 +82,6 @@ NODE_URLS should contain at least one valid node url, in that case transaction w
     - [ ] user-friendly DSL(of course minimal/0.0.1 version)
 - [X] orderbook showcase
     - [X] IR implementation
-- [ ] logical time sync between nodes
 - [ ] light stress-tests (network delays between containers 20ms)
     - [ ] high throughput demonstration case(orderbook or messenger)
     - [ ] long-running tests
