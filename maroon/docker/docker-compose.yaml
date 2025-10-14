@@ -1,0 +1,50 @@
+version: '3.8'
+
+networks:
+  etcd:
+    external: true
+  maroon:
+    driver: bridge
+
+x-env-common: &env-common
+  OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: http://localhost:4317
+  RUST_LOG: info
+  ETCD_URLS: http://etcd-etcd-00-1:2379,http://etcd-etcd-01-1:2379,http://etcd-etcd-02-1:2379
+
+x-maroon-common: &maroon-common
+  build:
+    context: ../..
+    dockerfile: maroon/docker/Dockerfile
+  image: maroon:local
+  restart: unless-stopped
+  networks:
+    - maroon
+    - etcd
+
+services:
+  maroon-00:
+    <<: *maroon-common
+    environment:
+      <<: *env-common
+      NODE_URLS: /dns4/maroon-01/tcp/3001,/dns4/maroon-02/tcp/3002
+      SELF_URL: /ip4/0.0.0.0/tcp/3000
+    ports:
+      - "3000:3000"
+
+  maroon-01:
+    <<: *maroon-common
+    environment:
+      <<: *env-common
+      NODE_URLS: /dns4/maroon-00/tcp/3000,/dns4/maroon-02/tcp/3002
+      SELF_URL: /ip4/0.0.0.0/tcp/3001
+    ports:
+      - "3001:3001"
+
+  maroon-02:
+    <<: *maroon-common
+    environment:
+      <<: *env-common
+      NODE_URLS: /dns4/maroon-00/tcp/3000,/dns4/maroon-01/tcp/3001
+      SELF_URL: /ip4/0.0.0.0/tcp/3002
+    ports:
+      - "3002:3002"
