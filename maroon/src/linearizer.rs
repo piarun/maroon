@@ -1,6 +1,6 @@
 use common::range_key::UniqueU64BlobId;
 use epoch_coordinator::epoch::Epoch;
-use log::debug;
+use tracing::debug;
 
 pub trait Linearizer {
   fn new_epoch(

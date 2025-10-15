@@ -1,14 +1,19 @@
-use log::error;
 use maroon::app::Params;
 use maroon::metrics;
 use schema::mn_events::{LogEvent, LogEventBody, now_microsec};
 use std::future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use tracing::error;
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-  env_logger::init();
+  let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,maroon=info"));
+  tracing_subscriber::registry()
+    .with(filter)
+    .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
+    .init();
 
   let node_urls: Vec<String> =
     std::env::var("NODE_URLS").map_err(|e| format!("NODE_URLS not set: {}", e))?.split(',').map(String::from).collect();

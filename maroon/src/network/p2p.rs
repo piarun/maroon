@@ -19,7 +19,6 @@ use libp2p::{
   yamux::Config as YamuxConfig,
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
-use log::{debug, error, info, warn};
 use opentelemetry::{KeyValue, global, metrics::Counter};
 use protocol::gm_request_response::{
   self, Behaviour as GMBehaviour, Event as GMEvent, Request as GMRequest, Response as GMResponse,
@@ -36,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::{collections::HashSet, fmt::Debug, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::{debug, error, info, warn};
 
 fn counter_requests() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();

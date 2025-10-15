@@ -23,7 +23,6 @@ use epoch_coordinator::{
   interface::{EpochRequest, EpochUpdates},
 };
 use libp2p::PeerId;
-use log::{debug, error, info};
 use protocol::{
   node2gw::TxUpdate,
   transaction::{Transaction, TxStatus},
@@ -40,6 +39,7 @@ use tokio::{
   sync::oneshot,
   time::{MissedTickBehavior, interval},
 };
+use tracing::{debug, error, info};
 
 pub struct App<L: Linearizer> {
   params: Params,

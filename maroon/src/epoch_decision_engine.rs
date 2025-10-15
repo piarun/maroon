@@ -1,8 +1,8 @@
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use libp2p::PeerId;
-use log::debug;
 use std::{collections::HashSet, usize};
+use tracing::debug;
 
 /// takes signals(node updates, timer ticks, latest epoch time, etc) and makes decision if it's time to send new epoch or not
 pub struct EpochDecisionEngine<T: Timer> {
