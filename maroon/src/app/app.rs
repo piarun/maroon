@@ -237,6 +237,7 @@ impl<L: Linearizer> App<L> {
     }
   }
 
+  #[tracing::instrument(level = "debug", name = "handle_inbox_message", skip(self), fields(inbox=?msg))]
   fn handle_inbox_message(
     &mut self,
     msg: Inbox,
