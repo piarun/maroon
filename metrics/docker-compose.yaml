@@ -8,6 +8,8 @@ services:
       - "4317:4317"
       - "4318:4318"
       - "8889:8889"
+    networks:
+      - metrics
 
   prometheus:
     image: prom/prometheus:latest
@@ -17,6 +19,8 @@ services:
       - "9090:9090"
     depends_on:
       - otel-collector
+    networks:
+      - metrics
 
   grafana:
     image: grafana/grafana:latest
@@ -35,7 +39,10 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     depends_on:
       - prometheus
+    networks:
+      - metrics
 
 networks:
-  default:
+  metrics:
+    name: metrics
     driver: bridge
