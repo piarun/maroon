@@ -1,0 +1,18 @@
+# Trim build context to speed up docker build and reduce size
+
+# Rust build artifacts
+target/
+
+# VCS and CI metadata
+.git/
+.github/
+
+# Editor/IDE
+.vscode/
+
+# Large, non-build assets
+github.io/
+
+# OS files
+*.DS_Store
+

@@ -32,6 +32,9 @@ toolinstall: # installs tools
 build:
 	cargo build --all-targets $(PROFILE_FLAG) $(VERBOSE_RUN)
 
+build-images: # builds docker images for maroon/gateway/etc..
+	docker build -f maroon/docker/Dockerfile -t maroon:local .
+
 test: # runs unit tests
 	cargo test --workspace --exclude integration --exclude epoch_coordinator $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
 
@@ -92,6 +95,17 @@ start-redis: # starts Redis in docker compose for state log
 shutdown-redis: # shuts down Redis docker compose
 	docker compose -f state_log/docker/redis/docker-compose.yaml down -v
 
+.PHONY: start-maroon
+start-maroon: # starts maroon cluster by using maroon:local
+	docker compose -f maroon/docker/docker-compose.yaml up -d
+
+.PHONY: shutdown-maroon
+shutdown-maroon: # shuts down maroon docker compose
+	docker compose -f maroon/docker/docker-compose.yaml down -v
+
+.PHONY: maroon-logs
+maroon-logs:
+	docker compose -f maroon/docker/docker-compose.yaml logs
 
 .PHONY: start-compose
 start-compose: start-test-etcd start-metrics-stack start-redis
