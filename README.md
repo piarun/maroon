@@ -56,6 +56,10 @@ make run-gateway KEY_RANGE=2 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 that will start web-service that you can call to run some operations(you need wscat for this). ex:
 - simple summarization - `npx wscat -c ws://localhost:5000/summarize/18/24` - will print 42
 
+6. Shutdown
+- `make shutdown-maroon`
+- `make shutdown-compose`
+
 # to-do list
 - [X] local run of etcd in docker compose
     - [X] add possibility to introduce delays between etcd nodes
