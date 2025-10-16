@@ -6,6 +6,13 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    networks:
+      - state
 
 volumes:
   redis-data:
+
+networks:
+  state:
+    name: state
+    driver: bridge

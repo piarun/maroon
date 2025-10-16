@@ -7,11 +7,14 @@ networks:
     driver: bridge
   metrics:
     external: true
+  state:
+    external: true
 
 x-env-common: &env-common
   OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: http://otel-collector:4317
   RUST_LOG: info
   ETCD_URLS: http://etcd-etcd-00-1:2379,http://etcd-etcd-01-1:2379,http://etcd-etcd-02-1:2379
+  REDIS_URL: redis://my-redis:6379
 
 x-maroon-common: &maroon-common
   build:
@@ -23,6 +26,7 @@ x-maroon-common: &maroon-common
     - maroon
     - etcd
     - metrics
+    - state
 
 services:
   maroon-00:
