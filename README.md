@@ -32,12 +32,10 @@ make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 ## +- realistic run scenarios
 
 1. Run etcd:
-- `make start-test-etcd`
+- `make start-compose`
 
-2. Run in a separate terminal sessions(if you need different ports, provide correct NODE_URLS as well):
-- `make run-local PORT=3000`
-- `make run-local PORT=3001`
-- `make run-local PORT=3002`
+2. Run maroon cluster:
+- `make start-maroon`
 
 3. Now if you open another terminal session you can see updates in etcd:
 - `etcdctl --endpoints=http://localhost:2379 get --prefix /maroon/history`
@@ -45,15 +43,22 @@ make run-gateway KEY_RANGE=1 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 
 you should see published epochs but with empty increments
 
-4. In order to start publishing transactions - use [gateway](./docs/gateway.md).
 
-Right now it's very dumb implementation that can only publish empty transactions from a given [key-range](./docs/keys-range.md). To run:
+4. Metrics:
+- http://localhost:4000 - grafana. [metrics Readme.md](./metrics/README.md)
+
+5. In order to start publishing transactions - use [gateway](./docs/gateway.md).
+
+Run. NODE_URLS should contain at least one valid node url, in that case transaction will reach out all nodes in cluster eventually:
 ```sh
 make run-gateway KEY_RANGE=2 NODE_URLS=/ip4/127.0.0.1/tcp/3000
 ```
+that will start web-service that you can call to run some operations(you need wscat for this). ex:
+- simple summarization - `npx wscat -c ws://localhost:5000/summarize/18/24` - will print 42
 
-NODE_URLS should contain at least one valid node url, in that case transaction will reach out all nodes in cluster eventually
-
+6. Shutdown
+- `make shutdown-maroon`
+- `make shutdown-compose`
 
 # to-do list
 - [X] local run of etcd in docker compose
