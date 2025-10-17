@@ -21,6 +21,7 @@ services:
       - otel-collector
     networks:
       - metrics
+      - etcd
 
   grafana:
     image: grafana/grafana:latest
@@ -46,3 +47,6 @@ networks:
   metrics:
     name: metrics
     driver: bridge
+  etcd:
+    name: etcd
+    external: true

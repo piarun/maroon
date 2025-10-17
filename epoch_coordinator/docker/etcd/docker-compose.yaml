@@ -16,6 +16,8 @@ services:
       - --initial-cluster=etcd-00=http://etcd-etcd-00-1:2380,etcd-01=http://etcd-etcd-01-1:2380,etcd-02=http://etcd-etcd-02-1:2380
       - --initial-cluster-state=new
       - --initial-cluster-token=etcd-cluster-1
+      - --listen-metrics-urls=http://0.0.0.0:2381
+      - --metrics=extensive
     volumes:
       - etcd-data:/data.etcd
     networks:
@@ -47,6 +49,8 @@ services:
       - --initial-cluster=etcd-00=http://etcd-etcd-00-1:2380,etcd-01=http://etcd-etcd-01-1:2380,etcd-02=http://etcd-etcd-02-1:2380
       - --initial-cluster-state=new
       - --initial-cluster-token=etcd-cluster-1
+      - --listen-metrics-urls=http://0.0.0.0:2381
+      - --metrics=extensive
     volumes:
       - etcd-data:/data.etcd
     networks:
@@ -78,6 +82,8 @@ services:
       - --initial-cluster=etcd-00=http://etcd-etcd-00-1:2380,etcd-01=http://etcd-etcd-01-1:2380,etcd-02=http://etcd-etcd-02-1:2380
       - --initial-cluster-state=new
       - --initial-cluster-token=etcd-cluster-1
+      - --listen-metrics-urls=http://0.0.0.0:2381
+      - --metrics=extensive
     volumes:
       - etcd-data:/data.etcd
     networks:
