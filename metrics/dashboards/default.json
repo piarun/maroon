@@ -522,7 +522,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(\n    0.95, \n    sum by(id, success, le) (\n        rate(etcd_commit_ms_bucket[2m])\n    )\n)",
+          "expr": "histogram_quantile(\n    0.95, \n    sum by(id, success, le) (\n        rate(epoch_coordinator_commit_to_etcd_ms_bucket[2m])\n    )\n)",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -530,7 +530,7 @@
           "refId": "B"
         }
       ],
-      "title": "p95 etcd commit",
+      "title": "p95 epoch coordinator to etcd commit",
       "type": "timeseries"
     },
     {

@@ -23,7 +23,7 @@ fn histogram_etcd_latency() -> &'static Histogram<u64> {
   // in milliseconds
   COUNTER.get_or_init(|| {
     global::meter("etcd_epoch_coordinator")
-      .u64_histogram("etcd_commit_ms")
+      .u64_histogram("epoch_coordinator_commit_to_etcd_ms")
       .with_boundaries(vec![
         5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0, 2500.0, 5000.0, 7500.0, 10000.0,
       ])
