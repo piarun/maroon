@@ -30,9 +30,11 @@ fn histogram_etcd_latency() -> &'static Histogram<u64> {
   })
 }
 
-fn etcd_commited_transactions_counter() -> &'static Counter<u64> {
+fn epoch_coordinator_maroon_commited_transactions_counter() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
-  COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_commited_transactions").build())
+  COUNTER.get_or_init(|| {
+    global::meter("etcd_epoch_coordinator").u64_counter("epoch_coordinator_maroon_commited_transactions").build()
+  })
 }
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -189,7 +191,7 @@ async fn handle_commit_new_epoch(
   let labels = match resp {
     Ok(result) => {
       info!("commit {} epoch success: {:?}", seq_number, result.succeeded());
-      etcd_commited_transactions_counter().add(count_new_txs, &[]);
+      epoch_coordinator_maroon_commited_transactions_counter().add(count_new_txs, &[]);
       vec![KeyValue::new("success", result.succeeded())]
     }
     Err(e) => {

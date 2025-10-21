@@ -324,7 +324,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (exported_job) (\n    rate(etcd_commited_transactions_total{}[2m])\n)",
+          "expr": "sum by (exported_job) (\n    rate(epoch_coordinator_maroon_commited_transactions_total{}[2m])\n)",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -333,14 +333,14 @@
         },
         {
           "editorMode": "code",
-          "expr": "etcd_commited_transactions_total",
+          "expr": "epoch_coordinator_maroon_commited_transactions_total",
           "hide": true,
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "etcd commited transactions / s",
+      "title": "Commited maroon transactions by epoch coordinator. tx/s",
       "type": "timeseries"
     },
     {
