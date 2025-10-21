@@ -214,7 +214,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by(id, success) (\n    rate(etcd_requests_total{otel_scope_name=\"etcd_epoch_coordinator\"}[2m])\n)",
+          "expr": "sum by(id, success) (\n    rate(epoch_coordinator_requests_to_etcd_total{otel_scope_name=\"etcd_epoch_coordinator\"}[2m])\n)",
           "hide": false,
           "legendFormat": "__auto",
           "range": true,
@@ -226,7 +226,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "etcd_requests_total",
+          "expr": "epoch_coordinator_requests_to_etcd_total",
           "hide": true,
           "instant": false,
           "legendFormat": "__auto",
@@ -234,7 +234,7 @@
           "refId": "B"
         }
       ],
-      "title": "ETCD requests/s",
+      "title": "Requests to etcd/s",
       "type": "timeseries"
     },
     {

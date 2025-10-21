@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::{sync::OnceLock, time::Duration};
 use tokio::time::Instant;
 
-fn etcd_requests_counter() -> &'static Counter<u64> {
+fn epoch_coordinator_requests_to_etcd_counter() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
-  COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_requests").build())
+  COUNTER
+    .get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("epoch_coordinator_requests_to_etcd").build())
 }
 
 fn histogram_etcd_latency() -> &'static Histogram<u64> {
@@ -101,7 +102,7 @@ impl EtcdEpochCoordinator {
         }
         Err(e) => {
           error!("create watcher err: {:?}", e);
-          etcd_requests_counter().add(1, &[KeyValue::new("success", "error")]);
+          epoch_coordinator_requests_to_etcd_counter().add(1, &[KeyValue::new("success", "error")]);
           if watcher_creation_timeout <= Duration::from_secs(5) {
             watcher_creation_timeout = watcher_creation_timeout * 2;
           }
@@ -200,6 +201,6 @@ async fn handle_commit_new_epoch(
     }
   };
 
-  etcd_requests_counter().add(1, &labels);
+  epoch_coordinator_requests_to_etcd_counter().add(1, &labels);
   histogram_etcd_latency().record(start.elapsed().as_millis() as u64, &labels);
 }
