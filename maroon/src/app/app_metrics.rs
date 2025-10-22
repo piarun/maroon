@@ -1,8 +1,6 @@
-use opentelemetry::{KeyValue, global};
-use std::collections::HashMap;
+use opentelemetry::{global, metrics::Counter};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use types::range_key::{KeyOffset, KeyRange};
 
 static LATEST_EPOCH: AtomicU64 = AtomicU64::new(0);
 
@@ -27,4 +25,25 @@ pub fn register_gauges() {
 
 pub fn set_latest_epoch_seq_number(v: u64) {
   LATEST_EPOCH.store(v, Ordering::Relaxed);
+}
+
+pub fn know_txs() -> &'static Counter<u64> {
+  static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
+  COUNTER.get_or_init(|| {
+    global::meter("maroon_app")
+      .u64_counter("maroon_tx_knows")
+      .with_description("How many transactions this node knows about")
+      .build()
+  })
+}
+
+// how many transactions on this node are in finished state
+pub fn finished_txs() -> &'static Counter<u64> {
+  static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
+  COUNTER.get_or_init(|| {
+    global::meter("maroon_app")
+      .u64_counter("maroon_tx_finished")
+      .with_description("How many transactions finished by this node")
+      .build()
+  })
 }

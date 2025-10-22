@@ -25,6 +25,7 @@ use epoch_coordinator::{
 };
 use libp2p::PeerId;
 use log::{debug, error, info};
+use opentelemetry::KeyValue;
 use protocol::{
   node2gw::TxUpdate,
   transaction::{Transaction, TxStatus},
@@ -41,6 +42,7 @@ use tokio::{
   sync::oneshot,
   time::{MissedTickBehavior, interval},
 };
+use types::range_key::range_from_unique_blob_id;
 
 pub struct App<L: Linearizer> {
   params: Params,
@@ -157,6 +159,8 @@ impl<L: Linearizer> App<L> {
 
               // TODO: save results on node itself
               for_notification.push(TxUpdate { meta: tx.meta.clone(), result: Some(r.1) });
+
+              app_metrics::finished_txs().add(1, &[KeyValue::new("range", range_from_unique_blob_id(tx.meta.id).0 as i64)]);
             }
 
             self.p2p_interface.send(Outbox::NotifyGWs(for_notification));
@@ -409,6 +413,7 @@ fn update_self_offsets(
   let mut updates = Vec::<(KeyRange, KeyOffset)>::new();
 
   for (range, txs) in range_transactions {
+    app_metrics::know_txs().add(txs.len() as u64, &[KeyValue::new("range", range.0 as i64)]);
     let mut has_0_tx = false;
     for tx in txs {
       let (_, offset) = range_key::range_offset_from_unique_blob_id(tx.meta.id);
