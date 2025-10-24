@@ -8,3 +8,5 @@ mod tests_single; // test app as a black box
 pub use app::App;
 pub use interface::{CurrentOffsets, Request, Response};
 pub use params::Params;
+
+mod app_metrics;

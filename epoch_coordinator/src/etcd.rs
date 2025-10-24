@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::{sync::OnceLock, time::Duration};
 use tokio::time::Instant;
 
-fn etcd_requests_counter() -> &'static Counter<u64> {
+fn epoch_coordinator_requests_to_etcd_counter() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
-  COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_requests").build())
+  COUNTER
+    .get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("epoch_coordinator_requests_to_etcd").build())
 }
 
 fn histogram_etcd_latency() -> &'static Histogram<u64> {
@@ -22,7 +23,7 @@ fn histogram_etcd_latency() -> &'static Histogram<u64> {
   // in milliseconds
   COUNTER.get_or_init(|| {
     global::meter("etcd_epoch_coordinator")
-      .u64_histogram("etcd_commit_ms")
+      .u64_histogram("epoch_coordinator_commit_to_etcd_ms")
       .with_boundaries(vec![
         5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0, 2500.0, 5000.0, 7500.0, 10000.0,
       ])
@@ -30,9 +31,11 @@ fn histogram_etcd_latency() -> &'static Histogram<u64> {
   })
 }
 
-fn etcd_commited_transactions_counter() -> &'static Counter<u64> {
+fn epoch_coordinator_maroon_commited_transactions_counter() -> &'static Counter<u64> {
   static COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
-  COUNTER.get_or_init(|| global::meter("etcd_epoch_coordinator").u64_counter("etcd_commited_transactions").build())
+  COUNTER.get_or_init(|| {
+    global::meter("etcd_epoch_coordinator").u64_counter("epoch_coordinator_maroon_commited_transactions").build()
+  })
 }
 
 pub const MAROON_PREFIX: &str = "/maroon";
@@ -99,7 +102,7 @@ impl EtcdEpochCoordinator {
         }
         Err(e) => {
           error!("create watcher err: {:?}", e);
-          etcd_requests_counter().add(1, &[KeyValue::new("success", "error")]);
+          epoch_coordinator_requests_to_etcd_counter().add(1, &[KeyValue::new("success", "error")]);
           if watcher_creation_timeout <= Duration::from_secs(5) {
             watcher_creation_timeout = watcher_creation_timeout * 2;
           }
@@ -189,7 +192,7 @@ async fn handle_commit_new_epoch(
   let labels = match resp {
     Ok(result) => {
       info!("commit {} epoch success: {:?}", seq_number, result.succeeded());
-      etcd_commited_transactions_counter().add(count_new_txs, &[]);
+      epoch_coordinator_maroon_commited_transactions_counter().add(count_new_txs, &[]);
       vec![KeyValue::new("success", result.succeeded())]
     }
     Err(e) => {
@@ -198,6 +201,6 @@ async fn handle_commit_new_epoch(
     }
   };
 
-  etcd_requests_counter().add(1, &labels);
+  epoch_coordinator_requests_to_etcd_counter().add(1, &labels);
   histogram_etcd_latency().record(start.elapsed().as_millis() as u64, &labels);
 }
