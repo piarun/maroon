@@ -18,11 +18,7 @@ use common::{
   },
 };
 use dsl::ir::FiberType;
-use epoch_coordinator::{
-  self,
-  epoch::Epoch,
-  interface::{EpochRequest, EpochUpdates},
-};
+use epoch_coordinator::{self, epoch::Epoch, interface::{ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates}};
 use libp2p::PeerId;
 use log::{debug, error, info};
 use opentelemetry::KeyValue;
@@ -78,7 +74,7 @@ pub struct App<L: Linearizer> {
   transactions: HashMap<UniqueU64BlobId, Transaction>,
 
   linearizer: L,
-  epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
+  epoch_coordinator: EpochCoordinatorControllerInterface,
 
   /// keeps logic that calculates if it's time to send a new epoch or not
   send_decider: EpochDecisionEngine<MonotonicTimer>,
@@ -92,7 +88,7 @@ impl<L: Linearizer> App<L> {
     p2p_interface: Endpoint<Outbox, Inbox>,
     runtime_interface: Endpoint<RuntimeInput, RuntimeOutput>,
     state_interface: HandlerInterface<Request, Response>,
-    epoch_coordinator: epoch_coordinator::interface::A2BEndpoint,
+    epoch_coordinator: EpochCoordinatorControllerInterface,
     params: Params,
   ) -> Result<App<LogLineriazer>, Box<dyn std::error::Error>> {
     let epoch_period = params.epoch_period;
@@ -346,7 +342,7 @@ impl<L: Linearizer> App<L> {
     let new_epoch = Epoch::next(self.peer_id, increments, prev_epoch, self.timer.from_start());
 
     info!("attempt to commit new_epoch: {}", &new_epoch);
-    self.epoch_coordinator.send(EpochRequest { epoch: new_epoch });
+    let _ = self.epoch_coordinator.sender.send(Some(EpochRequest { epoch: new_epoch }));
   }
 
   fn recalculate_order(

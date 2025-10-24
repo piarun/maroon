@@ -7,7 +7,10 @@ use common::invoker_handler::create_invoker_handler_pair;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
 use epoch_coordinator::epoch::Epoch;
-use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
+use epoch_coordinator::interface::{
+  ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates,
+  Interface as EpochCoordinatorInterface, create_interface_pair as create_epoch_coordinator_interface_pair,
+};
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use protocol::node2gw::TxUpdate;
@@ -29,11 +32,11 @@ use tokio::sync::oneshot;
 #[tokio::test(flavor = "multi_thread")]
 async fn app_calculates_consensus_offset() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
 
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
+  let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   let n1_peer_id = PeerId::random();
@@ -77,10 +80,10 @@ async fn app_calculates_consensus_offset() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transaction() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
+  let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -118,10 +121,10 @@ async fn app_gets_missing_transaction() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transactions_that_smbd_else_requested() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
+  let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -164,10 +167,10 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_detects_that_its_behind_and_makes_request() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, _b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
-  let mut app = new_test_instance(b2a_endpoint, handler, a2b_epoch, a2b_runtime);
+  let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
   let (_shutdown_tx, shutdown_rx) = oneshot::channel();
 
   tokio::spawn(async move {
@@ -207,13 +210,13 @@ async fn app_detects_that_its_behind_and_makes_request() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_sends_epochs_to_epoch_coordinator() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, mut b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (_state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance_with_params(
     b2a_endpoint,
     handler,
-    a2b_epoch,
+    epoch_coordinator_controller_interface,
     a2b_runtime,
     Params::default()
       .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
@@ -229,13 +232,22 @@ async fn app_sends_epochs_to_epoch_coordinator() {
   let increments = Arc::new(Mutex::new(Vec::<Vec<U64BlobIdClosedInterval>>::new()));
   let incs_spawn = increments.clone();
 
+  // Listen for epoch commit requests and immediately accept them
   tokio::spawn(async move {
-    while let Some(v) = b2a_epoch.receiver.recv().await {
-      let mut guard = incs_spawn.lock().await;
-      guard.push(v.epoch.increments.clone());
-
-      // get and immediately "accept" a new epoch
-      b2a_epoch.send(EpochUpdates::New(v.epoch));
+    let mut rx = epoch_coordinator_interface.receiver;
+    let tx = epoch_coordinator_interface.sender;
+    loop {
+      if rx.changed().await.is_err() {
+        break;
+      }
+      // Drop the watch Ref before any await
+      let next = rx.borrow_and_update().clone();
+      if let Some(v) = next {
+        let mut guard = incs_spawn.lock().await;
+        guard.push(v.epoch.increments.clone());
+        // Immediately "accept" the epoch
+        let _ = tx.send(EpochUpdates::New(v.epoch));
+      }
     }
   });
 
@@ -270,13 +282,13 @@ async fn app_executes_after_epoch_confirmed() {
   // tests cycle:
   // (commited epoch) -> app -> runtime(with confirmed txs) -> (runtime exec result) -> app -> p2p network layer
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (a2b_epoch, b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
   let (a2b_runtime, mut b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (_state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance_with_params(
     b2a_endpoint,
     handler,
-    a2b_epoch,
+    epoch_coordinator_controller_interface,
     a2b_runtime,
     Params::default()
       .set_consensus_nodes(NonZeroUsize::new(1).unwrap())
@@ -296,7 +308,7 @@ async fn app_executes_after_epoch_confirmed() {
 
   let rnd_peer = PeerId::random();
   // imitate new epoch came
-  b2a_epoch.send(EpochUpdates::New(Epoch::next(
+  epoch_coordinator_interface.sender.send(EpochUpdates::New(Epoch::next(
     rnd_peer,
     vec![U64BlobIdClosedInterval::new(0, 1)],
     None,

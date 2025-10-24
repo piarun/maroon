@@ -1,5 +1,5 @@
 use super::epoch::Epoch;
-use crate::interface::{B2AEndpoint, EpochRequest, EpochUpdates};
+use crate::interface::{EpochRequest, EpochUpdates, Interface};
 use derive_more::Display;
 use etcd_client::{Client, Compare, CompareOp, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use log::{error, info, warn};
@@ -9,6 +9,7 @@ use opentelemetry::{
 };
 use serde::{Deserialize, Serialize};
 use std::{sync::OnceLock, time::Duration};
+use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
 use tokio::time::Instant;
 
 fn epoch_coordinator_requests_to_etcd_counter() -> &'static Counter<u64> {
@@ -60,28 +61,34 @@ const MAROON_HISTORY: &str = "/maroon/history";
 ///
 ///
 /// TODO: introduce some compaction or GC for older objects in history and keep the size relatively small (200-300 objects in history)
-
 pub struct EtcdEpochCoordinator {
   etcd_endpoints: Vec<String>,
-  interface: B2AEndpoint,
+  new_epoch_receiver: Receiver<Option<EpochRequest>>,
+  epoch_updates_sender: UnboundedSender<EpochUpdates>,
 }
 
 impl EtcdEpochCoordinator {
   pub fn new(
     etcd_endpoints: &Vec<String>,
-    interface: B2AEndpoint,
+    interface: Interface,
   ) -> EtcdEpochCoordinator {
-    EtcdEpochCoordinator { etcd_endpoints: etcd_endpoints.clone(), interface }
+    EtcdEpochCoordinator {
+      etcd_endpoints: etcd_endpoints.clone(),
+      new_epoch_receiver: interface.receiver,
+      epoch_updates_sender: interface.sender,
+    }
   }
 
   /// starts infinite loop. After this all the communications with corrdinator only through `EpochCoordinatorInterface`
   pub async fn start(self) -> Result<(), Error> {
     info!("start epoch coordinator");
 
-    let mut interface = self.interface;
-
     let mut client = Client::connect(self.etcd_endpoints, None).await?;
     let mut last_rev: Option<i64> = None;
+    let mut last_committed_sn: Option<u64> = None;
+
+    let mut sender = self.epoch_updates_sender;
+    let mut receiver = self.new_epoch_receiver;
 
     let mut watcher_creation_timeout = Duration::from_millis(50);
 
@@ -117,15 +124,26 @@ impl EtcdEpochCoordinator {
 
       loop {
         tokio::select! {
-          Some(payload) = interface.receiver.recv() => {
-            handle_commit_new_epoch(&mut client, payload).await;
+          _ = receiver.changed() => {
+              let next = receiver.borrow_and_update().clone();
+              if let Some(payload) = next {
+                  let sn = payload.epoch.sequence_number;
+                  if Some(sn) == last_committed_sn {
+                    continue;
+                  }
+
+                  let success = handle_commit_new_epoch(&mut client, payload).await;
+                  if success {
+                      last_committed_sn = Some(sn);
+                  }
+              }
           },
           watch_result = watch_stream.message() => match watch_result{
             Ok(Some(message)) => {
               if let Some(h) = message.header() {
                 last_rev = Some(h.revision());
               }
-              handle_watch_message(&mut interface, message);
+              handle_watch_message(&mut sender, message);
             }
             Ok(None) => {
               // Server cleanly closed the watch (EOF)
@@ -154,14 +172,16 @@ struct EpochObject {
 }
 
 fn handle_watch_message(
-  interface: &mut B2AEndpoint,
+  sender: &mut UnboundedSender<EpochUpdates>,
   message: WatchResponse,
 ) {
   for event in message.events() {
     if let Some(kv) = event.kv() {
       if let Ok(epoch_obj) = serde_json::from_slice::<EpochObject>(kv.value()) {
         info!("etcd watch got {} epoch", epoch_obj.epoch.sequence_number);
-        interface.send(EpochUpdates::New(epoch_obj.epoch));
+        if let Err(e) = sender.send(EpochUpdates::New(epoch_obj.epoch)) {
+          error!("failed to send epoch update: {}", e);
+        }
       }
     }
   }
@@ -169,15 +189,17 @@ fn handle_watch_message(
 
 // TODO: return here an error and write a dockerized-test to set/update latest
 // because right now the logic is not covered reliably
+// return true if the epoch was successfully committed
 async fn handle_commit_new_epoch(
   client: &mut Client,
   epoch_request: EpochRequest,
-) {
+) -> bool {
   let start = Instant::now();
 
   let seq_number = epoch_request.epoch.sequence_number;
   let count_new_txs = epoch_request.epoch.increments.iter().map(|r| r.ids_count() as u64).sum();
   let new_epoch = EpochObject { epoch: epoch_request.epoch };
+
   let resp = client
     .txn(
       Txn::new()
@@ -189,10 +211,13 @@ async fn handle_commit_new_epoch(
     )
     .await;
 
+  let mut success = false;
+
   let labels = match resp {
     Ok(result) => {
       info!("commit {} epoch success: {:?}", seq_number, result.succeeded());
       epoch_coordinator_maroon_commited_transactions_counter().add(count_new_txs, &[]);
+      success = result.succeeded();
       vec![KeyValue::new("success", result.succeeded())]
     }
     Err(e) => {
@@ -203,4 +228,6 @@ async fn handle_commit_new_epoch(
 
   epoch_coordinator_requests_to_etcd_counter().add(1, &labels);
   histogram_etcd_latency().record(start.elapsed().as_millis() as u64, &labels);
+
+  success
 }

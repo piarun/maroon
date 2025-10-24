@@ -5,7 +5,7 @@ use common::invoker_handler::HandlerInterface;
 use common::invoker_handler::InvokerInterface;
 use common::{duplex_channel::Endpoint, range_key::UniqueU64BlobId};
 #[cfg(test)]
-use epoch_coordinator::interface::A2BEndpoint;
+use epoch_coordinator::interface::ControllerInterface as CoordinatorControllerInterface;
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
@@ -16,7 +16,7 @@ use std::time::Duration;
 pub fn new_test_instance(
   p2p_interface: Endpoint<Outbox, Inbox>,
   state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
-  epoch_coordinator: A2BEndpoint,
+  epoch_coordinator: CoordinatorControllerInterface,
   runtime: RuntimeA2BEndpoint,
 ) -> App<LogLineriazer> {
   App::<LogLineriazer>::new(
@@ -33,7 +33,7 @@ pub fn new_test_instance(
 pub fn new_test_instance_with_params(
   p2p_interface: Endpoint<Outbox, Inbox>,
   state_interface: HandlerInterface<AppStateRequest, AppStateResponse>,
-  epoch_coordinator: A2BEndpoint,
+  epoch_coordinator: CoordinatorControllerInterface,
   runtime: RuntimeA2BEndpoint,
   params: Params,
 ) -> App<LogLineriazer> {

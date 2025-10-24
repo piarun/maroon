@@ -1,18 +1,35 @@
 use super::epoch::Epoch;
-use common::duplex_channel::Endpoint;
 use std::fmt;
+use tokio::sync::{
+  mpsc::{UnboundedReceiver, UnboundedSender},
+  watch::{Receiver, Sender},
+};
 
 // TODO: should I download epoch history through this coordinator?
 // For example node was offline or
 // if yes - add an interface
 // if no - where to download it? p2p? s3?
 
-// TODO: Don't like these names, I think it makes sense to have them.
-// It provides a bit more clarity and clearnes, but should think more no naming
-pub type B2AEndpoint = Endpoint<EpochUpdates, EpochRequest>;
-pub type A2BEndpoint = Endpoint<EpochRequest, EpochUpdates>;
+// a pair interface to ControllerInterface. Is used in epoch coordinator itself
+pub struct Interface {
+  pub receiver: Receiver<Option<EpochRequest>>,
+  pub sender: UnboundedSender<EpochUpdates>,
+}
 
-#[derive(Debug)]
+// a pair interface to Interface. Is used by some other components that want to communicate with epoch coordinator
+pub struct ControllerInterface {
+  pub receiver: UnboundedReceiver<EpochUpdates>,
+  pub sender: Sender<Option<EpochRequest>>,
+}
+
+pub fn create_interface_pair() -> (Interface, ControllerInterface) {
+  let (ec_tx, ec_rx) = tokio::sync::watch::channel::<Option<EpochRequest>>(None);
+  let (ec_tx_u, ec_rx_u) = tokio::sync::mpsc::unbounded_channel::<EpochUpdates>();
+
+  (Interface { receiver: ec_rx, sender: ec_tx_u }, ControllerInterface { receiver: ec_rx_u, sender: ec_tx })
+}
+
+#[derive(Debug, Clone)]
 pub struct EpochRequest {
   pub epoch: Epoch,
 }

@@ -7,7 +7,10 @@ use common::logical_clock::MonotonicTimer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use epoch_coordinator::etcd::EtcdEpochCoordinator;
-use epoch_coordinator::interface::{EpochRequest, EpochUpdates};
+use epoch_coordinator::interface::{
+  ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates,
+  Interface as EpochCoordinatorInterface, create_interface_pair as create_epoch_coordinator_interface_pair,
+};
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, info};
@@ -39,17 +42,18 @@ impl MaroonStack {
     params: Params,
   ) -> Result<(MaroonStack, StackRemoteControl), Box<dyn std::error::Error>> {
     let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-    let (a2b_epoch, b2a_epoch) = create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+    let (epoch_coordinator, epoch_coordinator_controller) = create_epoch_coordinator_interface_pair();
     let (a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let epoch_coordinator = EtcdEpochCoordinator::new(&etcd_urls, b2a_epoch);
+    let epoch_coordinator = EtcdEpochCoordinator::new(&etcd_urls, epoch_coordinator);
 
     let p2p = P2P::new(node_urls, self_url, a2b_endpoint)?;
     let id = p2p.peer_id;
 
     let (state_invoker, state_handler) = create_invoker_handler_pair();
-    let app = App::<LogLineriazer>::new(id, b2a_endpoint, a2b_runtime, state_handler, a2b_epoch, params)?;
+    let app =
+      App::<LogLineriazer>::new(id, b2a_endpoint, a2b_runtime, state_handler, epoch_coordinator_controller, params)?;
 
     // TODO: copy it to other components as well
     let timer = MonotonicTimer::new();
