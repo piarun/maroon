@@ -1,13 +1,11 @@
 #![allow(unused_imports)]
-
-use common::duplex_channel::{Endpoint, create_a_b_duplex_pair};
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::U64BlobIdClosedInterval;
 use epoch_coordinator::etcd::{self, MAROON_PREFIX};
 use epoch_coordinator::{
   epoch::Epoch,
   etcd::EtcdEpochCoordinator,
-  interface::{EpochRequest, EpochUpdates},
+  interface::{create_interface_pair, EpochRequest, EpochUpdates},
 };
 use etcd_client::{Client, Compare, CompareOp, DeleteOptions, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use libp2p::PeerId;
@@ -57,11 +55,10 @@ async fn etcd_epoch_coordinator() {
 
   let node_urls = vec![etcd_url];
 
-  let (Endpoint::<EpochRequest, EpochUpdates> { mut receiver, sender }, b2a) =
-    create_a_b_duplex_pair::<EpochRequest, EpochUpdates>();
+  let (iface, mut controller) = create_interface_pair();
 
   let peer_id_1 = PeerId::random();
-  let coordinator = EtcdEpochCoordinator::new(&node_urls, b2a);
+  let coordinator = EtcdEpochCoordinator::new(&node_urls, iface);
 
   coordinator.start_on_background();
 
@@ -69,11 +66,11 @@ async fn etcd_epoch_coordinator() {
   let epoch2 =
     Epoch::next(peer_id_1, vec![U64BlobIdClosedInterval::new(14, 16)], Some(&epoch), LogicalTimeAbsoluteMs(200));
 
-  _ = sender.send(EpochRequest { epoch: epoch.clone() });
-  let updates = receiver.recv().await.expect("can it be None?");
+  _ = controller.sender.send(Some(EpochRequest { epoch: epoch.clone() }));
+  let updates = controller.receiver.recv().await.expect("can it be None?");
   assert_eq!(EpochUpdates::New(epoch), updates);
 
-  _ = sender.send(EpochRequest { epoch: epoch2.clone() });
-  let updates = receiver.recv().await.expect("can it be None?");
+  _ = controller.sender.send(Some(EpochRequest { epoch: epoch2.clone() }));
+  let updates = controller.receiver.recv().await.expect("can it be None?");
   assert_eq!(EpochUpdates::New(epoch2), updates);
 }
