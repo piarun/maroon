@@ -22,7 +22,7 @@ impl Params {
     Params {
       advertise_period: Duration::from_millis(50), // 20Hz :)
       consensus_nodes: NonZeroUsize::new(2).unwrap(),
-      epoch_period: LogicalTimeAbsoluteMs::from_millis(50),
+      epoch_period: LogicalTimeAbsoluteMs::from_millis(60),
     }
   }
 

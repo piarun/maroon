@@ -5,6 +5,7 @@ VERBOSE ?= ""
 PORT ?= 3000
 NODE_URLS ?= /ip4/127.0.0.1/tcp/3000,/ip4/127.0.0.1/tcp/3001,/ip4/127.0.0.1/tcp/3002
 ETCD_URLS ?= http://localhost:2379,http://localhost:2380,http://localhost:2381
+GATEWAY_PORT ?= 5000
 
 KEY_RANGE ?= 0
 CONSENSUS_NODES ?= 2
@@ -60,7 +61,7 @@ run-local: # runs maroon node locally on a specified port
 	ETCD_URLS=${ETCD_URLS} \
 	SELF_URL=/ip4/127.0.0.1/tcp/${PORT} \
 	REDIS_URL=redis://127.0.0.1:6379 \
-	RUST_LOG=info \
+	RUST_LOG=debug \
 	CONSENSUS_NODES=${CONSENSUS_NODES} \
 		cargo run -p maroon $(PROFILE_FLAG)
 
@@ -68,6 +69,7 @@ run-gateway: # runs gateway imitation
 	KEY_RANGE=${KEY_RANGE} \
 	NODE_URLS=${NODE_URLS} \
 	REDIS_URL=redis://127.0.0.1:6379 \
+	PORT=${GATEWAY_PORT} \
 	RUST_LOG=gateway=info \
 		cargo run -p gateway $(PROFILE_FLAG)
 

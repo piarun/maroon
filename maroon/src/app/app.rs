@@ -131,7 +131,6 @@ impl<L: Linearizer> App<L> {
             self.advertise_offsets_and_request_missing();
           },
           _ = commit_epoch_ticker.tick() => {
-            // TODO: check if enough ticks has been passed(even if I'm the first - not each tick I want to publish)
             self.commit_epoch_if_needed();
           },
           Option::Some(req_wrapper) = self.state_interface.receiver.recv() => {
