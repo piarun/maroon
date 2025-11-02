@@ -1,0 +1,41 @@
+networks:
+  maroon:
+    external: true
+    name: ${MAROON_NETWORK_NAME:-docker_maroon}
+
+x-gateway-common: &gateway-common
+  build:
+    context: ../..
+    dockerfile: gateway/docker/Dockerfile
+  image: gateway:local
+  restart: unless-stopped
+  networks:
+    - maroon
+  environment:
+    RUST_LOG: info
+    NODE_URLS: /dns4/maroon-00/tcp/3000,/dns4/maroon-01/tcp/3001,/dns4/maroon-02/tcp/3002
+
+services:
+  gateway-00:
+    <<: *gateway-common
+    environment:
+      PORT: "5000"
+      KEY_RANGE: "0"
+    ports:
+      - "5000:5000"
+
+  gateway-01:
+    <<: *gateway-common
+    environment:
+      PORT: "5001"
+      KEY_RANGE: "1"
+    ports:
+      - "5001:5001"
+
+  gateway-02:
+    <<: *gateway-common
+    environment:
+      PORT: "5002"
+      KEY_RANGE: "2"
+    ports:
+      - "5002:5002"

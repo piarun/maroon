@@ -35,6 +35,7 @@ build:
 
 build-images: # builds docker images for maroon/gateway/etc..
 	docker build -f maroon/docker/Dockerfile -t maroon:local .
+	docker build -f gateway/docker/Dockerfile -t gateway:local .
 
 test: # runs unit tests
 	cargo test --workspace --exclude integration --exclude epoch_coordinator $(PROFILE_FLAG) $(VERBOSE_RUN) -- $(NOCAPTURE)
@@ -104,6 +105,14 @@ start-maroon: # starts maroon cluster by using maroon:local
 .PHONY: shutdown-maroon
 shutdown-maroon: # shuts down maroon docker compose
 	docker compose -f maroon/docker/docker-compose.yaml down -v
+
+.PHONY: start-gateway
+start-gateway: # starts gateway cluster by using gateway:local
+	docker compose -f gateway/docker/docker-compose.yaml up -d
+
+.PHONY: shutdown-gateway
+shutdown-gateway: # shuts down gateway docker compose
+	docker compose -f gateway/docker/docker-compose.yaml down -v
 
 .PHONY: maroon-logs
 maroon-logs:
