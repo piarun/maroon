@@ -736,7 +736,9 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
                   ),
                   (
                     StepId::new("a_pus_b_msg_response"),
-                    Step::ResponseToFuture()
+                    Step::ResponseToFuture(
+                      next: StepId::new("entry"),
+                    )
                     /*
                     how to do the response? Allow anybody to pass random future?
                     inside and outside, from one side, for some inside requests, we don't need this future
