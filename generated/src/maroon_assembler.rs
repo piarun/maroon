@@ -39,11 +39,21 @@ pub struct BookSnapshot {
   pub asks: Vec<Level>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AplusB {
+  pub a: u64,
+  pub b: u64,
+  pub futureResponse: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
   pub b: u64,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct SummatorFiberHeap {}
 
 #[derive(Clone, Debug, Default)]
 pub struct ApplicationHeap {}
@@ -67,12 +77,14 @@ pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
   pub orderBook: OrderBookHeap,
+  pub summatorFiber: SummatorFiberHeap,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum State {
   Completed,
   Idle,
+  SummatorFiberMainEntry,
   ApplicationAsyncFooAwait,
   ApplicationAsyncFooEntry,
   ApplicationAsyncFooReturn,
@@ -117,6 +129,7 @@ pub enum Value {
   BookSnapshot(BookSnapshot),
   OptionU64(Option<u64>),
   U64(u64),
+  Unit(()),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,6 +161,7 @@ pub enum StepResult {
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
+    State::SummatorFiberMainEntry => 0,
     State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooAwait => 3,
     State::ApplicationAsyncFooReturn => 3,
@@ -196,6 +210,7 @@ pub fn global_step(
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
+    State::SummatorFiberMainEntry => StepResult::GoTo(State::SummatorFiberMainEntry),
     State::ApplicationAsyncFooEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -746,6 +761,28 @@ pub fn global_step(
 pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;
 pub type ResultFn = fn(&[StackEntry]) -> Value;
 
+pub fn summatorFiber_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::State(State::SummatorFiberMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn summatorFiber_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn summatorFiber_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = summatorFiber_prepare_main();
+  stack
+}
+
+fn summatorFiber_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(summatorFiber_result_main(stack))
+}
+
 pub fn application_prepare_asyncFoo(
   a: u64,
   b: u64,
@@ -1246,6 +1283,7 @@ fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
+    "SummatorFiber.main" => summatorFiber_prepare_main_from_values,
     "application.async_foo" => application_prepare_asyncFoo_from_values,
     "application.sleep_and_pow" => application_prepare_sleepAndPow_from_values,
     "global.add" => global_prepare_add_from_values,
@@ -1267,6 +1305,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 
 pub fn get_result_fn(key: &str) -> ResultFn {
   match key {
+    "SummatorFiber.main" => summatorFiber_result_main_value,
     "application.async_foo" => application_result_asyncFoo_value,
     "application.sleep_and_pow" => application_result_sleepAndPow_value,
     "global.add" => global_result_add_value,

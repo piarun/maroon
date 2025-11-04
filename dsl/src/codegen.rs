@@ -12,6 +12,8 @@ fn type_variant_name(t: &Type) -> String {
     Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
     Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
     Type::Map(k, v) => format!("Map{}To{}", type_variant_name(k), type_variant_name(v)),
+    Type::Queue(name, t) => format!("Queue{}{}", pascal_case(name), type_variant_name(t)),
+    Type::Future(t) => format!("Future{}", type_variant_name(t)),
   }
 }
 
@@ -27,6 +29,8 @@ fn rust_type(t: &Type) -> String {
     Type::Struct(name, _, _) => pascal_case(name),
     Type::Option(t) => format!("Option<{}>", rust_type(t)),
     Type::Custom(name) => pascal_case(name),
+    Type::Queue(name, message_t) => todo!("do I need rust type here?"),
+    Type::Future(t) => rust_type(t), // do i even need it?
   }
 }
 
@@ -444,7 +448,7 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   out
 }
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt::format};
 
 fn collect_vars_from_expr(
   expr: &Expr,
@@ -554,6 +558,8 @@ fn default_value_expr(t: &Type) -> String {
     Type::Struct(name, _, _) | Type::Custom(name) => {
       format!("{}::default()", pascal_case(name))
     }
+    Type::Queue(_, _) => todo!("do i need it?"),
+    Type::Future(_) => todo!("do i need it?"),
   }
 }
 

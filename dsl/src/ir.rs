@@ -90,6 +90,8 @@ pub enum Step {
   SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureLabel },
   Await(AwaitSpec),
   Select { arms: Vec<AwaitSpec> },
+
+  SelectQueue { arms: Vec<QueueAwaitSpec> },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
@@ -123,6 +125,18 @@ pub struct AwaitSpec {
   pub bind: Option<String>,
   pub ret_to: StepId,
   pub future_id: FutureLabel,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueAwaitSpec {
+  // TODO: make queue not name but type?
+  // Or just check in validate step:
+  // - this queue exists
+  // - message type is the same as `message_var` type
+  pub queue_name: String,
+  /// variable name - where message from the queue will be put
+  pub message_var: String,
+  pub ret_to: StepId,
 }
 
 #[derive(Debug, Clone)]
@@ -172,6 +186,20 @@ pub enum Type {
   Option(Box<Type>),
   // reference to types defined in IR.types
   Custom(String),
+
+  /// TODO: maybe it should not be here?
+  ///
+  /// this one is different from Max/Min Queue data structure
+  /// this one is for communications between fibers
+  /// other fibers can't create or pass these queues, but they can put new messages or read from them
+  /// creating the queues is fully moved to runtime
+  /// name, input message type
+  Queue(String, Box<Type>),
+
+  /// future object. Here somebody will put result when it's ready.
+  /// it's not runtime here, it's only for IR definition
+  /// runtime will add more of the logic on top
+  Future(Box<Type>),
 }
 
 #[derive(Debug, Clone)]

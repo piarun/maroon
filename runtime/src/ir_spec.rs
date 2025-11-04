@@ -1,6 +1,6 @@
 use common::logical_time::LogicalTimeAbsoluteMs;
 use dsl::ir::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 // Shared IR specification used by build.rs (via include!) and by tests.
 pub fn sample_ir() -> IR {
@@ -695,6 +695,81 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
           ]),
         },
       ),
+      (
+        FiberType::new("SummatorFiber"),
+        Fiber{
+          fibers_limit: 1,
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{
+                in_vars:vec![],
+                out: Type::Void,
+                locals: vec![LocalVar("new_a_plus_b_msg", Type::Custom("AplusB")), LocalVar("new_a_plus_b_result", Type::UInt64)],
+                entry: StepId::new("entry"),
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::SelectQueue { 
+                      arms: vec![
+                        QueueAwaitSpec{
+                          queue_name: "a_plus_b".to_string(),
+                          message_var: "new_a_plus_b_msg".to_string(),
+                          ret_to: StepId::new("new_a_plus_b_msg"),
+                        },
+                      ]
+                    },
+                  ),
+                  (
+                    StepId::new("new_a_plus_b_msg"),
+                    Step::RustBlock { 
+                      binds: vec!["new_a_plus_b_result".to_string()], 
+                      code: #r"
+                      // some work with the message
+                      // in that case - just summarization
+                      new_a_plus_b_msg.a + new_a_plus_b_msg.b
+                      ", 
+                      next: StepId::new("a_pus_b_msg_response"),
+                    }
+                  ),
+                  (
+                    StepId::new("a_pus_b_msg_response"),
+                    Step::ResponseToFuture()
+                    /*
+                    how to do the response? Allow anybody to pass random future?
+                    inside and outside, from one side, for some inside requests, we don't need this future
+                    or might need. we don't know
+                    but what about external ones, let's say we already now at gateways/maroon level 
+                      where we want to put our message to compute, and in that case we want this request
+                      be linked to some of UniqueGlobalID, but in case when one fiber sends message we don't want this
+                      we want it just finish execution.
+
+                    when we pass meSSAGE - it's not just random message. We, might expect result on it
+                    most of the time yes - then we do need future. Provide future all the time?
+                    and always put result inside it and if smbd is awaiting it - ok, smbd will get the result
+                    if not - not
+
+                    Should we have a possibility to cancel future? 
+                    If the message linked to the future is still inside the queue - not a problem
+                    if it's already taken into work - then what? What other awaiters of this future should do?
+
+
+                    from fiber:
+                      f1 -> send msg -> f1 awaits ... -> f2 takes msg -> finishes -> puts resutlt to the future -> f1 awakes
+                      f1 -> send msg -> f1 finishes execution ... -> f2 takes msg -> finishes -> puts result to the future, that's it
+                    from gateway/maroon:
+                      send msg -> f2 takes msg -> finishes -> send result to some other outbound queue?
+
+                     */
+                  )
+                ]
+              },
+            ),
+          ]),
+        },
+      ),
     ]),
     types: vec![
       Type::Struct(
@@ -734,6 +809,23 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         ],
         String::new(),
       ),
+      Type::Struct(
+          // this struct is used as type for Queue. Should I change it so only queue can use it? 
+          "AplusB".to_string(),
+          vec![
+            StructField { name: "a".to_string(), ty: Type::UInt64 }, 
+            StructField { name: "b".to_string(), ty: Type::UInt64 }, 
+            // todo: is it necessary to explicitly put future here? I think so. but will re-evaluate it later
+            // my main argument for making it explicit right now 
+            // - we control what we want and how we pass it
+            // main concern against:
+            // - not useful as DTO field(if I want to use this type as DTO) 
+            // - not clear yet how runtime will use it. Probably runtime will wrap it somehow and provide more functions?
+            StructField { name: "future_response".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
+            ],
+          String::new(),
+      ),
+      Type::Queue("a_plus_b".to_string(), Box::new(Type::Custom("AplusB".to_string()))),
   ],
   }
 }
