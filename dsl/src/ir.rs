@@ -92,6 +92,10 @@ pub enum Step {
   Select { arms: Vec<AwaitSpec> },
 
   SelectQueue { arms: Vec<QueueAwaitSpec> },
+  // will be transformed into call to runtime
+  // runtime will take the value, find the awaiters of future(if there are)
+  //  and do some bum-bum magic and the thing that put the future will get some response
+  ResponseToFuture { value: String, future: String, next: StepId },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
@@ -136,7 +140,8 @@ pub struct QueueAwaitSpec {
   pub queue_name: String,
   /// variable name - where message from the queue will be put
   pub message_var: String,
-  pub ret_to: StepId,
+  /// next step
+  pub next: StepId,
 }
 
 #[derive(Debug, Clone)]
@@ -200,6 +205,15 @@ pub enum Type {
   /// it's not runtime here, it's only for IR definition
   /// runtime will add more of the logic on top
   Future(Box<Type>),
+  /*
+  - Type/Value: Keep Type::Future(T) in IR; codegen maps it to an opaque FutureHandle<T> (backed by a string id) and adds Value::Future<T> variants for stack/args/results.
+  - Creation: Add Step::NewFuture { out, next } to allocate a fresh handle in IR; runtime generates a unique id (no direct runtime calls from IR).
+  - Awaiting: Add Step::AwaitHandle { handle, bind, ret_to } to suspend by handle and resume with a typed value; complements existing label-based awaits.
+  - Fulfillment: Add Step::FulfillFuture { future, value, next }; runtime resolves internal waiters (binds + wake) or emits externally using the handle as correlation.
+  - Messaging: Allow future handles as fields in structs/queues; they’re passed around opaquely (serialize/deserialize), not inspected.
+  - Runtime plumbing: Track handle -> parked fiber and external correlations; unify replies (internal/external) behind the same fulfill path while preserving type safety.
+
+     */
 }
 
 #[derive(Debug, Clone)]

@@ -707,7 +707,11 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
               Func{
                 in_vars:vec![],
                 out: Type::Void,
-                locals: vec![LocalVar("new_a_plus_b_msg", Type::Custom("AplusB")), LocalVar("new_a_plus_b_result", Type::UInt64)],
+                locals: vec![
+                  LocalVar("new_a_plus_b_msg", Type::Custom("AplusB".to_string())), 
+                  LocalVar("new_a_plus_b_result", Type::UInt64),
+                  LocalVar("a_plus_b_future", Type::Future(Box::new(Type::UInt64))),
+                ],
                 entry: StepId::new("entry"),
                 steps: vec![
                   (
@@ -717,28 +721,40 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
                         QueueAwaitSpec{
                           queue_name: "a_plus_b".to_string(),
                           message_var: "new_a_plus_b_msg".to_string(),
-                          ret_to: StepId::new("new_a_plus_b_msg"),
+                          next: StepId::new("extract_future"),
                         },
                       ]
                     },
                   ),
                   (
+                    StepId::new("extract_future"),
+                    Step::RustBlock { 
+                      binds: vec!["a_plus_b_future".to_string()], 
+                      code: "new_a_plus_b_msg.future_response".to_string(), 
+                      next: StepId::new("a_pus_b_msg_response"),
+                    }
+                  ),
+                  (
                     StepId::new("new_a_plus_b_msg"),
                     Step::RustBlock { 
                       binds: vec!["new_a_plus_b_result".to_string()], 
-                      code: #r"
+                      code: r#"
                       // some work with the message
                       // in that case - just summarization
                       new_a_plus_b_msg.a + new_a_plus_b_msg.b
-                      ", 
+                      "#.to_string(), 
                       next: StepId::new("a_pus_b_msg_response"),
                     }
                   ),
                   (
                     StepId::new("a_pus_b_msg_response"),
-                    Step::ResponseToFuture(
+                    Step::ResponseToFuture{
+                      value: "new_a_plus_b_result".to_string(),
+                      future: "a_plus_b_future".to_string(),
                       next: StepId::new("entry"),
-                    )
+                    },
+                  ),
+
                     /*
                     how to do the response? Allow anybody to pass random future?
                     inside and outside, from one side, for some inside requests, we don't need this future
@@ -765,7 +781,6 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
                       send msg -> f2 takes msg -> finishes -> send result to some other outbound queue?
 
                      */
-                  )
                 ]
               },
             ),
