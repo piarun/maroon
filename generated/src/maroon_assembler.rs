@@ -15,16 +15,16 @@ pub struct Order {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trade {
+  pub maker_id: u64,
   pub price: u64,
   pub qty: u64,
-  pub takerId: u64,
-  pub makerId: u64,
+  pub taker_id: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrderIndex {
-  pub side: String,
   pub price: u64,
+  pub side: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,8 +35,8 @@ pub struct Level {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BookSnapshot {
-  pub bids: Vec<Level>,
   pub asks: Vec<Level>,
+  pub bids: Vec<Level>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -50,23 +50,23 @@ pub struct ApplicationHeap {}
 
 #[derive(Clone, Debug, Default)]
 pub struct GlobalHeap {
-  pub binarySearchValues: Vec<u64>,
+  pub binary_search_values: Vec<u64>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct OrderBookHeap {
-  pub asksByPrice: std::collections::HashMap<u64, Vec<Order>>,
-  pub asksPrices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
-  pub bidsByPrice: std::collections::HashMap<u64, Vec<Order>>,
-  pub bidsPrices: std::collections::BinaryHeap<u64>,
-  pub ordersIndex: std::collections::HashMap<u64, OrderIndex>,
+  pub asks_by_price: std::collections::HashMap<u64, Vec<Order>>,
+  pub asks_prices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
+  pub bids_by_price: std::collections::HashMap<u64, Vec<Order>>,
+  pub bids_prices: std::collections::BinaryHeap<u64>,
+  pub orders_index: std::collections::HashMap<u64, OrderIndex>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
-  pub orderBook: OrderBookHeap,
+  pub order_book: OrderBookHeap,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -87,9 +87,9 @@ pub enum State {
   GlobalBinarySearchGoLeftCheckOverflow,
   GlobalBinarySearchGoRight,
   GlobalBinarySearchRecursiveCall,
-  GlobalBinarySearchReturnNone,
   GlobalBinarySearchReturnFound,
   GlobalBinarySearchReturnIfEqual,
+  GlobalBinarySearchReturnNone,
   GlobalBinarySearchReturnResult,
   GlobalDivEntry,
   GlobalFactorialEntry,
@@ -99,10 +99,10 @@ pub enum State {
   GlobalFactorialReturn1,
   GlobalFactorialSubtract,
   GlobalMultEntry,
-  GlobalSubEntry,
   GlobalSubAddEntry,
   GlobalSubAddFinalize,
   GlobalSubAddSubSum,
+  GlobalSubEntry,
   OrderBookAddBuyEntry,
   OrderBookAddSellEntry,
   OrderBookBestAskEntry,
@@ -148,23 +148,23 @@ pub enum StepResult {
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
-    State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooAwait => 3,
+    State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooReturn => 3,
-    State::ApplicationSleepAndPowEntry => 3,
     State::ApplicationSleepAndPowAwait => 3,
     State::ApplicationSleepAndPowCalc => 3,
+    State::ApplicationSleepAndPowEntry => 3,
     State::GlobalAddEntry => 3,
-    State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchCalculateDiv => 6,
     State::GlobalBinarySearchCmpLess => 6,
+    State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchGoLeft => 6,
     State::GlobalBinarySearchGoLeftCheckOverflow => 6,
     State::GlobalBinarySearchGoRight => 6,
     State::GlobalBinarySearchRecursiveCall => 6,
-    State::GlobalBinarySearchReturnNone => 6,
     State::GlobalBinarySearchReturnFound => 6,
     State::GlobalBinarySearchReturnIfEqual => 6,
+    State::GlobalBinarySearchReturnNone => 6,
     State::GlobalBinarySearchReturnResult => 6,
     State::GlobalDivEntry => 3,
     State::GlobalFactorialEntry => 4,
@@ -174,10 +174,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalFactorialReturn1 => 4,
     State::GlobalFactorialSubtract => 4,
     State::GlobalMultEntry => 3,
-    State::GlobalSubEntry => 3,
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
+    State::GlobalSubEntry => 3,
     State::OrderBookAddBuyEntry => 4,
     State::OrderBookAddSellEntry => 4,
     State::OrderBookBestAskEntry => 1,
@@ -199,6 +199,7 @@ pub fn global_step(
     State::ApplicationAsyncFooEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::SendToFiber {
         f_type: FiberType::new("global"),
         func: "add".to_string(),
@@ -207,18 +208,26 @@ pub fn global_step(
         future_id: FutureLabel::new("async_add_future_1"),
       }
     }
-    State::ApplicationAsyncFooAwait => StepResult::Await(
-      FutureLabel::new("async_add_future_1"),
-      Some("sum".to_string()),
-      State::ApplicationAsyncFooReturn,
-    ),
+    State::ApplicationAsyncFooAwait => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Await(
+        FutureLabel::new("async_add_future_1"),
+        Some("sum".to_string()),
+        State::ApplicationAsyncFooReturn,
+      )
+    }
     State::ApplicationAsyncFooReturn => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(sum))
     }
     State::ApplicationSleepAndPowEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let pow: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::ScheduleTimer {
         ms: 20u64,
         next: State::ApplicationSleepAndPowAwait,
@@ -226,6 +235,9 @@ pub fn global_step(
       }
     }
     State::ApplicationSleepAndPowAwait => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let pow: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Await(FutureLabel::new("sleep_and_pow_entry_future"), None, State::ApplicationSleepAndPowCalc)
     }
     State::ApplicationSleepAndPowCalc => {
@@ -250,26 +262,42 @@ pub fn global_step(
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      if left > right {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      if (left > right) {
         StepResult::GoTo(State::GlobalBinarySearchReturnNone)
       } else {
         StepResult::GoTo(State::GlobalBinarySearchCalculateDiv)
       }
     }
-    State::GlobalBinarySearchCalculateDiv => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+    State::GlobalBinarySearchReturnNone => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let facCallRes: Option<u64> =
-        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::OptionU64(None))
+    }
+    State::GlobalBinarySearchCalculateDiv => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       {
         let out = {
           let o_div = (left + right) / 2;
           let s = &heap.global;
-          (o_div, s.binarySearchValues[o_div as usize])
+          (o_div, s.binary_search_values[o_div as usize])
         };
         let (o0, o1) = out;
         StepResult::Next(vec![
@@ -278,81 +306,129 @@ pub fn global_step(
         ])
       }
     }
+    State::GlobalBinarySearchReturnIfEqual => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      if (v_by_index_div == e) {
+        StepResult::GoTo(State::GlobalBinarySearchReturnFound)
+      } else {
+        StepResult::GoTo(State::GlobalBinarySearchCmpLess)
+      }
+    }
+    State::GlobalBinarySearchReturnFound => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::OptionU64(Some(div)))
+    }
     State::GlobalBinarySearchCmpLess => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      if vByIndexDiv < e {
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      if (v_by_index_div < e) {
         StepResult::GoTo(State::GlobalBinarySearchGoRight)
       } else {
         StepResult::GoTo(State::GlobalBinarySearchGoLeftCheckOverflow)
       }
     }
-    State::GlobalBinarySearchGoLeft => {
+    State::GlobalBinarySearchGoRight => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalBinarySearchRecursiveCall),
-        StackEntry::Retrn(Some(5)),
-        StackEntry::Value("a".to_string(), Value::U64(div)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalSubEntry),
+        StackEntry::Retrn(Some(6)),
+        StackEntry::Value("_".to_string(), Value::U64(div)),
+        StackEntry::Value("_".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::GlobalAddEntry),
       ])
     }
     State::GlobalBinarySearchGoLeftCheckOverflow => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      if div < 0u64 {
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      if (div < 0u64) {
         StepResult::GoTo(State::GlobalBinarySearchReturnNone)
       } else {
         StepResult::GoTo(State::GlobalBinarySearchGoLeft)
       }
     }
-    State::GlobalBinarySearchGoRight => {
+    State::GlobalBinarySearchGoLeft => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalBinarySearchRecursiveCall),
-        StackEntry::Retrn(Some(6)),
-        StackEntry::Value("a".to_string(), Value::U64(div)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalAddEntry),
+        StackEntry::Retrn(Some(5)),
+        StackEntry::Value("_".to_string(), Value::U64(div)),
+        StackEntry::Value("_".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::GlobalSubEntry),
       ])
     }
     State::GlobalBinarySearchRecursiveCall => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalBinarySearchReturnResult),
         StackEntry::Retrn(Some(2)),
-        StackEntry::Value("e".to_string(), Value::U64(e)),
-        StackEntry::Value("left".to_string(), Value::U64(left)),
-        StackEntry::Value("right".to_string(), Value::U64(right)),
+        StackEntry::Value("_".to_string(), Value::U64(e)),
+        StackEntry::Value("_".to_string(), Value::U64(left)),
+        StackEntry::Value("_".to_string(), Value::U64(right)),
         StackEntry::Value("div".to_string(), Value::U64(0u64)),
         StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)),
         StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)),
         StackEntry::State(State::GlobalBinarySearchEntry),
       ])
     }
-    State::GlobalBinarySearchReturnNone => StepResult::Return(Value::OptionU64(None)),
-    State::GlobalBinarySearchReturnFound => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::OptionU64(Some(div)))
-    }
-    State::GlobalBinarySearchReturnIfEqual => {
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      if vByIndexDiv == e {
-        StepResult::GoTo(State::GlobalBinarySearchReturnFound)
-      } else {
-        StepResult::GoTo(State::GlobalBinarySearchCmpLess)
-      }
-    }
     State::GlobalBinarySearchReturnResult => {
-      let facCallRes: Option<u64> =
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let v_by_index_div: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fac_call_res: Option<u64> =
         if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::OptionU64(facCallRes))
+      StepResult::Return(Value::OptionU64(fac_call_res))
     }
     State::GlobalDivEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -365,19 +441,53 @@ pub fn global_step(
     }
     State::GlobalFactorialEntry => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      if n == 1u64 {
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      if (n == 1u64) {
         StepResult::GoTo(State::GlobalFactorialReturn1)
       } else {
         StepResult::GoTo(State::GlobalFactorialSubtract)
       }
     }
-    State::GlobalFactorialFactorialCall => {
-      let subtractRes: u64 =
+    State::GlobalFactorialReturn1 => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::U64(1u64))
+    }
+    State::GlobalFactorialSubtract => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::GlobalFactorialFactorialCall),
+        StackEntry::Retrn(Some(3)),
+        StackEntry::Value("_".to_string(), Value::U64(n)),
+        StackEntry::Value("_".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::GlobalSubEntry),
+      ])
+    }
+    State::GlobalFactorialFactorialCall => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalFactorialMultiply),
         StackEntry::Retrn(Some(4)),
-        StackEntry::Value("n".to_string(), Value::U64(subtractRes)),
+        StackEntry::Value("_".to_string(), Value::U64(subtract_res)),
         StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)),
         StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)),
         StackEntry::Value("result".to_string(), Value::U64(0u64)),
@@ -385,32 +495,29 @@ pub fn global_step(
       ])
     }
     State::GlobalFactorialMultiply => {
-      let facCallRes: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalFactorialReturn),
         StackEntry::Retrn(Some(2)),
-        StackEntry::Value("a".to_string(), Value::U64(n)),
-        StackEntry::Value("b".to_string(), Value::U64(facCallRes)),
+        StackEntry::Value("_".to_string(), Value::U64(n)),
+        StackEntry::Value("_".to_string(), Value::U64(fac_call_res)),
         StackEntry::Value("mult".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalMultEntry),
       ])
     }
     State::GlobalFactorialReturn => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fac_call_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let subtract_res: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(result))
-    }
-    State::GlobalFactorialReturn1 => StepResult::Return(Value::U64(1u64)),
-    State::GlobalFactorialSubtract => {
-      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalFactorialFactorialCall),
-        StackEntry::Retrn(Some(3)),
-        StackEntry::Value("a".to_string(), Value::U64(n)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalSubEntry),
-      ])
     }
     State::GlobalMultEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -437,30 +544,39 @@ pub fn global_step(
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let sumAB: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalSubAddSubSum),
         StackEntry::Retrn(Some(3)),
-        StackEntry::Value("a".to_string(), Value::U64(a)),
-        StackEntry::Value("b".to_string(), Value::U64(b)),
+        StackEntry::Value("_".to_string(), Value::U64(a)),
+        StackEntry::Value("_".to_string(), Value::U64(b)),
         StackEntry::Value("sum".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalAddEntry),
       ])
     }
-    State::GlobalSubAddFinalize => {
-      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(subABC))
-    }
     State::GlobalSubAddSubSum => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let sumAB: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       StepResult::Next(vec![
         StackEntry::State(State::GlobalSubAddFinalize),
         StackEntry::Retrn(Some(2)),
-        StackEntry::Value("a".to_string(), Value::U64(sumAB)),
-        StackEntry::Value("b".to_string(), Value::U64(c)),
+        StackEntry::Value("_".to_string(), Value::U64(sumAB)),
+        StackEntry::Value("_".to_string(), Value::U64(c)),
         StackEntry::Value("sub".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalSubEntry),
       ])
+    }
+    State::GlobalSubAddFinalize => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let sumAB: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::U64(subABC))
     }
     State::OrderBookAddBuyEntry => {
       let id: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -470,7 +586,7 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::ArrayTrade(x)) = &vars[3] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
           let mut remaining = qty;
           let mut trades: Vec<Trade> = Vec::new();
 
@@ -478,15 +594,15 @@ pub fn global_step(
           loop {
             // Find current best ask
             let best_ask = loop {
-              if let Some(top) = ob.asksPrices.peek() {
+              if let Some(top) = ob.asks_prices.peek() {
                 let p = top.0;
-                if let Some(level) = ob.asksByPrice.get(&p) {
+                if let Some(level) = ob.asks_by_price.get(&p) {
                   if !level.is_empty() {
                     break Some(p);
                   }
                 }
                 // stale level
-                ob.asksPrices.pop();
+                ob.asks_prices.pop();
                 continue;
               } else {
                 break None;
@@ -496,22 +612,22 @@ pub fn global_step(
             match best_ask {
               Some(ap) if ap <= price && remaining > 0 => {
                 // Execute against this level FIFO
-                if let Some(level) = ob.asksByPrice.get_mut(&ap) {
+                if let Some(level) = ob.asks_by_price.get_mut(&ap) {
                   while remaining > 0 && !level.is_empty() {
                     let maker = &mut level[0];
                     if maker.qty <= remaining {
                       let trade_qty = maker.qty;
                       remaining -= trade_qty;
-                      trades.push(Trade { price: ap, qty: trade_qty, takerId: id, makerId: maker.id });
+                      trades.push(Trade { price: ap, qty: trade_qty, taker_id: id, maker_id: maker.id });
                       level.remove(0);
                     } else {
                       maker.qty -= remaining;
-                      trades.push(Trade { price: ap, qty: remaining, takerId: id, makerId: maker.id });
+                      trades.push(Trade { price: ap, qty: remaining, taker_id: id, maker_id: maker.id });
                       remaining = 0;
                     }
                   }
                   if level.is_empty() {
-                    ob.asksByPrice.remove(&ap);
+                    ob.asks_by_price.remove(&ap);
                   }
                 }
                 // continue loop to next level or exit if remaining==0
@@ -522,9 +638,9 @@ pub fn global_step(
 
           // If remaining, add to bids book
           if remaining > 0 {
-            ob.bidsByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-            ob.bidsPrices.push(price);
-            ob.ordersIndex.insert(id, OrderIndex { side: "buy".to_string(), price });
+            ob.bids_by_price.entry(price).or_default().push(Order { id, price, qty: remaining });
+            ob.bids_prices.push(price);
+            ob.orders_index.insert(id, OrderIndex { side: "buy".to_string(), price });
           }
 
           trades
@@ -540,7 +656,7 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::ArrayTrade(x)) = &vars[3] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
           let mut remaining = qty;
           let mut trades: Vec<Trade> = Vec::new();
 
@@ -548,14 +664,14 @@ pub fn global_step(
           loop {
             // Find current best bid
             let best_bid = loop {
-              if let Some(&bp) = ob.bidsPrices.peek() {
-                if let Some(level) = ob.bidsByPrice.get(&bp) {
+              if let Some(&bp) = ob.bids_prices.peek() {
+                if let Some(level) = ob.bids_by_price.get(&bp) {
                   if !level.is_empty() {
                     break Some(bp);
                   }
                 }
                 // stale
-                ob.bidsPrices.pop();
+                ob.bids_prices.pop();
                 continue;
               } else {
                 break None;
@@ -564,22 +680,22 @@ pub fn global_step(
 
             match best_bid {
               Some(bp) if bp >= price && remaining > 0 => {
-                if let Some(level) = ob.bidsByPrice.get_mut(&bp) {
+                if let Some(level) = ob.bids_by_price.get_mut(&bp) {
                   while remaining > 0 && !level.is_empty() {
                     let maker = &mut level[0];
                     if maker.qty <= remaining {
                       let trade_qty = maker.qty;
                       remaining -= trade_qty;
-                      trades.push(Trade { price: bp, qty: trade_qty, takerId: id, makerId: maker.id });
+                      trades.push(Trade { price: bp, qty: trade_qty, taker_id: id, maker_id: maker.id });
                       level.remove(0);
                     } else {
                       maker.qty -= remaining;
-                      trades.push(Trade { price: bp, qty: remaining, takerId: id, makerId: maker.id });
+                      trades.push(Trade { price: bp, qty: remaining, taker_id: id, maker_id: maker.id });
                       remaining = 0;
                     }
                   }
                   if level.is_empty() {
-                    ob.bidsByPrice.remove(&bp);
+                    ob.bids_by_price.remove(&bp);
                   }
                 }
               }
@@ -588,9 +704,9 @@ pub fn global_step(
           }
 
           if remaining > 0 {
-            ob.asksByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-            ob.asksPrices.push(std::cmp::Reverse(price));
-            ob.ordersIndex.insert(id, OrderIndex { side: "sell".to_string(), price });
+            ob.asks_by_price.entry(price).or_default().push(Order { id, price, qty: remaining });
+            ob.asks_prices.push(std::cmp::Reverse(price));
+            ob.orders_index.insert(id, OrderIndex { side: "sell".to_string(), price });
           }
 
           trades
@@ -603,16 +719,16 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
           loop {
-            if let Some(top) = ob.asksPrices.peek() {
+            if let Some(top) = ob.asks_prices.peek() {
               let ap = top.0; // Reverse(u64)
-              if let Some(level) = ob.asksByPrice.get(&ap) {
+              if let Some(level) = ob.asks_by_price.get(&ap) {
                 if !level.is_empty() {
                   break Some(ap);
                 }
               }
-              ob.asksPrices.pop();
+              ob.asks_prices.pop();
             } else {
               break None;
             }
@@ -626,15 +742,15 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
           loop {
-            if let Some(&bp) = ob.bidsPrices.peek() {
-              if let Some(level) = ob.bidsByPrice.get(&bp) {
+            if let Some(&bp) = ob.bids_prices.peek() {
+              if let Some(level) = ob.bids_by_price.get(&bp) {
                 if !level.is_empty() {
                   break Some(bp);
                 }
               }
-              ob.bidsPrices.pop();
+              ob.bids_prices.pop();
             } else {
               break None;
             }
@@ -648,27 +764,27 @@ pub fn global_step(
       let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
           let mut ok = 0u64;
-          if let Some(idx) = ob.ordersIndex.remove(&id) {
+          if let Some(idx) = ob.orders_index.remove(&id) {
             let price = idx.price;
             if idx.side == "buy" {
-              if let Some(level) = ob.bidsByPrice.get_mut(&price) {
+              if let Some(level) = ob.bids_by_price.get_mut(&price) {
                 if let Some(pos) = level.iter().position(|o| o.id == id) {
                   level.remove(pos);
                   ok = 1;
                   if level.is_empty() {
-                    ob.bidsByPrice.remove(&price);
+                    ob.bids_by_price.remove(&price);
                   }
                 }
               }
             } else {
-              if let Some(level) = ob.asksByPrice.get_mut(&price) {
+              if let Some(level) = ob.asks_by_price.get_mut(&price) {
                 if let Some(pos) = level.iter().position(|o| o.id == id) {
                   level.remove(pos);
                   ok = 1;
                   if level.is_empty() {
-                    ob.asksByPrice.remove(&price);
+                    ob.asks_by_price.remove(&price);
                   }
                 }
               }
@@ -685,21 +801,21 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::BookSnapshot(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = {
-          let ob = &mut heap.orderBook;
+          let ob = &mut heap.order_book;
 
           let mut bids_depth: Vec<Level> = Vec::new();
           let mut asks_depth: Vec<Level> = Vec::new();
 
           // Bids: highest first
           {
-            let mut tmp = ob.bidsPrices.clone();
+            let mut tmp = ob.bids_prices.clone();
             let mut seen = std::collections::HashSet::<u64>::new();
             while (bids_depth.len() as u64) < n {
               if let Some(bp) = tmp.pop() {
                 if seen.contains(&bp) {
                   continue;
                 }
-                if let Some(level) = ob.bidsByPrice.get(&bp) {
+                if let Some(level) = ob.bids_by_price.get(&bp) {
                   if !level.is_empty() {
                     let qty = level.iter().map(|o| o.qty).sum::<u64>();
                     bids_depth.push(Level { price: bp, qty });
@@ -714,14 +830,14 @@ pub fn global_step(
 
           // Asks: lowest first
           {
-            let mut tmp = ob.asksPrices.clone();
+            let mut tmp = ob.asks_prices.clone();
             let mut seen = std::collections::HashSet::<u64>::new();
             while (asks_depth.len() as u64) < n {
               if let Some(std::cmp::Reverse(ap)) = tmp.pop() {
                 if seen.contains(&ap) {
                   continue;
                 }
-                if let Some(level) = ob.asksByPrice.get(&ap) {
+                if let Some(level) = ob.asks_by_price.get(&ap) {
                   if !level.is_empty() {
                     let qty = level.iter().map(|o| o.qty).sum::<u64>();
                     asks_depth.push(Level { price: ap, qty });
@@ -741,12 +857,11 @@ pub fn global_step(
     }
   }
 }
-
 // Registry: function key -> (prepare_from_values, result_to_value)
 pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;
 pub type ResultFn = fn(&[StackEntry]) -> Value;
 
-pub fn application_prepare_asyncFoo(
+pub fn application_prepare_AsyncFoo(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -761,27 +876,27 @@ pub fn application_prepare_asyncFoo(
   (stack, heap)
 }
 
-pub fn application_result_asyncFoo(stack: &[StackEntry]) -> u64 {
+pub fn application_result_AsyncFoo(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn application_prepare_asyncFoo_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn application_prepare_AsyncFoo_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for application.async_foo") };
   let b: u64 =
     if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for application.async_foo") };
-  let (stack, _heap) = application_prepare_asyncFoo(a, b);
+  let (stack, _heap) = application_prepare_AsyncFoo(a, b);
   stack
 }
 
-fn application_result_asyncFoo_value(stack: &[StackEntry]) -> Value {
-  Value::U64(application_result_asyncFoo(stack))
+fn application_result_AsyncFoo_value(stack: &[StackEntry]) -> Value {
+  Value::U64(application_result_AsyncFoo(stack))
 }
 
-pub fn application_prepare_sleepAndPow(
+pub fn application_prepare_SleepAndPow(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -796,27 +911,27 @@ pub fn application_prepare_sleepAndPow(
   (stack, heap)
 }
 
-pub fn application_result_sleepAndPow(stack: &[StackEntry]) -> u64 {
+pub fn application_result_SleepAndPow(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn application_prepare_sleepAndPow_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn application_prepare_SleepAndPow_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for application.sleep_and_pow") };
   let b: u64 =
     if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for application.sleep_and_pow") };
-  let (stack, _heap) = application_prepare_sleepAndPow(a, b);
+  let (stack, _heap) = application_prepare_SleepAndPow(a, b);
   stack
 }
 
-fn application_result_sleepAndPow_value(stack: &[StackEntry]) -> Value {
-  Value::U64(application_result_sleepAndPow(stack))
+fn application_result_SleepAndPow_value(stack: &[StackEntry]) -> Value {
+  Value::U64(application_result_SleepAndPow(stack))
 }
 
-pub fn global_prepare_add(
+pub fn global_prepare_Add(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -831,25 +946,25 @@ pub fn global_prepare_add(
   (stack, heap)
 }
 
-pub fn global_result_add(stack: &[StackEntry]) -> u64 {
+pub fn global_result_Add(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_add_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_Add_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.add") };
   let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.add") };
-  let (stack, _heap) = global_prepare_add(a, b);
+  let (stack, _heap) = global_prepare_Add(a, b);
   stack
 }
 
-fn global_result_add_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_add(stack))
+fn global_result_Add_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_Add(stack))
 }
 
-pub fn global_prepare_binarySearch(
+pub fn global_prepare_BinarySearch(
   e: u64,
   left: u64,
   right: u64,
@@ -868,29 +983,29 @@ pub fn global_prepare_binarySearch(
   (stack, heap)
 }
 
-pub fn global_result_binarySearch(stack: &[StackEntry]) -> Option<u64> {
+pub fn global_result_BinarySearch(stack: &[StackEntry]) -> Option<u64> {
   match stack.last() {
     Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_binarySearch_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_BinarySearch_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let e: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
   let left: u64 =
     if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
   let right: u64 =
     if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
-  let (stack, _heap) = global_prepare_binarySearch(e, left, right);
+  let (stack, _heap) = global_prepare_BinarySearch(e, left, right);
   stack
 }
 
-fn global_result_binarySearch_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(global_result_binarySearch(stack))
+fn global_result_BinarySearch_value(stack: &[StackEntry]) -> Value {
+  Value::OptionU64(global_result_BinarySearch(stack))
 }
 
-pub fn global_prepare_div(
+pub fn global_prepare_Div(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -905,25 +1020,25 @@ pub fn global_prepare_div(
   (stack, heap)
 }
 
-pub fn global_result_div(stack: &[StackEntry]) -> u64 {
+pub fn global_result_Div(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_div_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_Div_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.div") };
   let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.div") };
-  let (stack, _heap) = global_prepare_div(a, b);
+  let (stack, _heap) = global_prepare_Div(a, b);
   stack
 }
 
-fn global_result_div_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_div(stack))
+fn global_result_Div_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_Div(stack))
 }
 
-pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
+pub fn global_prepare_Factorial(n: u64) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Retrn(Some(1)));
@@ -936,24 +1051,24 @@ pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
   (stack, heap)
 }
 
-pub fn global_result_factorial(stack: &[StackEntry]) -> u64 {
+pub fn global_result_Factorial(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_factorial_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_Factorial_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let n: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.factorial") };
-  let (stack, _heap) = global_prepare_factorial(n);
+  let (stack, _heap) = global_prepare_Factorial(n);
   stack
 }
 
-fn global_result_factorial_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_factorial(stack))
+fn global_result_Factorial_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_Factorial(stack))
 }
 
-pub fn global_prepare_mult(
+pub fn global_prepare_Mult(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -968,25 +1083,25 @@ pub fn global_prepare_mult(
   (stack, heap)
 }
 
-pub fn global_result_mult(stack: &[StackEntry]) -> u64 {
+pub fn global_result_Mult(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_mult_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_Mult_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.mult") };
   let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.mult") };
-  let (stack, _heap) = global_prepare_mult(a, b);
+  let (stack, _heap) = global_prepare_Mult(a, b);
   stack
 }
 
-fn global_result_mult_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_mult(stack))
+fn global_result_Mult_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_Mult(stack))
 }
 
-pub fn global_prepare_sub(
+pub fn global_prepare_Sub(
   a: u64,
   b: u64,
 ) -> (Vec<StackEntry>, Heap) {
@@ -1001,25 +1116,25 @@ pub fn global_prepare_sub(
   (stack, heap)
 }
 
-pub fn global_result_sub(stack: &[StackEntry]) -> u64 {
+pub fn global_result_Sub(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_sub_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_Sub_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.sub") };
   let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.sub") };
-  let (stack, _heap) = global_prepare_sub(a, b);
+  let (stack, _heap) = global_prepare_Sub(a, b);
   stack
 }
 
-fn global_result_sub_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_sub(stack))
+fn global_result_Sub_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_Sub(stack))
 }
 
-pub fn global_prepare_subAdd(
+pub fn global_prepare_SubAdd(
   a: u64,
   b: u64,
   c: u64,
@@ -1037,104 +1152,104 @@ pub fn global_prepare_subAdd(
   (stack, heap)
 }
 
-pub fn global_result_subAdd(stack: &[StackEntry]) -> u64 {
+pub fn global_result_SubAdd(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn global_prepare_subAdd_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn global_prepare_SubAdd_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
   let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
   let c: u64 = if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
-  let (stack, _heap) = global_prepare_subAdd(a, b, c);
+  let (stack, _heap) = global_prepare_SubAdd(a, b, c);
   stack
 }
 
-fn global_result_subAdd_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_subAdd(stack))
+fn global_result_SubAdd_value(stack: &[StackEntry]) -> Value {
+  Value::U64(global_result_SubAdd(stack))
 }
 
-pub fn orderBook_prepare_addBuy(
+pub fn orderBook_prepare_AddBuy(
   id: u64,
   price: u64,
   qty: u64,
 ) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
+  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(vec![])));
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("id".to_string(), Value::U64(id)));
   stack.push(StackEntry::Value("price".to_string(), Value::U64(price)));
   stack.push(StackEntry::Value("qty".to_string(), Value::U64(qty)));
-  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
+  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(vec![])));
   stack.push(StackEntry::State(State::OrderBookAddBuyEntry));
   let heap = Heap::default();
   (stack, heap)
 }
 
-pub fn orderBook_result_addBuy(stack: &[StackEntry]) -> Vec<Trade> {
+pub fn orderBook_result_AddBuy(stack: &[StackEntry]) -> Vec<Trade> {
   match stack.last() {
     Some(StackEntry::Value(_, Value::ArrayTrade(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_addBuy_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn orderBook_prepare_AddBuy_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let id: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
   let price: u64 =
     if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
   let qty: u64 =
     if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
-  let (stack, _heap) = orderBook_prepare_addBuy(id, price, qty);
+  let (stack, _heap) = orderBook_prepare_AddBuy(id, price, qty);
   stack
 }
 
-fn orderBook_result_addBuy_value(stack: &[StackEntry]) -> Value {
-  Value::ArrayTrade(orderBook_result_addBuy(stack))
+fn orderBook_result_AddBuy_value(stack: &[StackEntry]) -> Value {
+  Value::ArrayTrade(orderBook_result_AddBuy(stack))
 }
 
-pub fn orderBook_prepare_addSell(
+pub fn orderBook_prepare_AddSell(
   id: u64,
   price: u64,
   qty: u64,
 ) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
+  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(vec![])));
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("id".to_string(), Value::U64(id)));
   stack.push(StackEntry::Value("price".to_string(), Value::U64(price)));
   stack.push(StackEntry::Value("qty".to_string(), Value::U64(qty)));
-  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
+  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(vec![])));
   stack.push(StackEntry::State(State::OrderBookAddSellEntry));
   let heap = Heap::default();
   (stack, heap)
 }
 
-pub fn orderBook_result_addSell(stack: &[StackEntry]) -> Vec<Trade> {
+pub fn orderBook_result_AddSell(stack: &[StackEntry]) -> Vec<Trade> {
   match stack.last() {
     Some(StackEntry::Value(_, Value::ArrayTrade(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_addSell_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn orderBook_prepare_AddSell_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let id: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
   let price: u64 =
     if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
   let qty: u64 =
     if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
-  let (stack, _heap) = orderBook_prepare_addSell(id, price, qty);
+  let (stack, _heap) = orderBook_prepare_AddSell(id, price, qty);
   stack
 }
 
-fn orderBook_result_addSell_value(stack: &[StackEntry]) -> Value {
-  Value::ArrayTrade(orderBook_result_addSell(stack))
+fn orderBook_result_AddSell_value(stack: &[StackEntry]) -> Value {
+  Value::ArrayTrade(orderBook_result_AddSell(stack))
 }
 
-pub fn orderBook_prepare_bestAsk() -> (Vec<StackEntry>, Heap) {
+pub fn orderBook_prepare_BestAsk() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1144,23 +1259,23 @@ pub fn orderBook_prepare_bestAsk() -> (Vec<StackEntry>, Heap) {
   (stack, heap)
 }
 
-pub fn orderBook_result_bestAsk(stack: &[StackEntry]) -> Option<u64> {
+pub fn orderBook_result_BestAsk(stack: &[StackEntry]) -> Option<u64> {
   match stack.last() {
     Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_bestAsk_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = orderBook_prepare_bestAsk();
+fn orderBook_prepare_BestAsk_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = orderBook_prepare_BestAsk();
   stack
 }
 
-fn orderBook_result_bestAsk_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(orderBook_result_bestAsk(stack))
+fn orderBook_result_BestAsk_value(stack: &[StackEntry]) -> Value {
+  Value::OptionU64(orderBook_result_BestAsk(stack))
 }
 
-pub fn orderBook_prepare_bestBid() -> (Vec<StackEntry>, Heap) {
+pub fn orderBook_prepare_BestBid() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1170,23 +1285,23 @@ pub fn orderBook_prepare_bestBid() -> (Vec<StackEntry>, Heap) {
   (stack, heap)
 }
 
-pub fn orderBook_result_bestBid(stack: &[StackEntry]) -> Option<u64> {
+pub fn orderBook_result_BestBid(stack: &[StackEntry]) -> Option<u64> {
   match stack.last() {
     Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_bestBid_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = orderBook_prepare_bestBid();
+fn orderBook_prepare_BestBid_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = orderBook_prepare_BestBid();
   stack
 }
 
-fn orderBook_result_bestBid_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(orderBook_result_bestBid(stack))
+fn orderBook_result_BestBid_value(stack: &[StackEntry]) -> Value {
+  Value::OptionU64(orderBook_result_BestBid(stack))
 }
 
-pub fn orderBook_prepare_cancel(id: u64) -> (Vec<StackEntry>, Heap) {
+pub fn orderBook_prepare_Cancel(id: u64) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1197,25 +1312,25 @@ pub fn orderBook_prepare_cancel(id: u64) -> (Vec<StackEntry>, Heap) {
   (stack, heap)
 }
 
-pub fn orderBook_result_cancel(stack: &[StackEntry]) -> u64 {
+pub fn orderBook_result_Cancel(stack: &[StackEntry]) -> u64 {
   match stack.last() {
     Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_cancel_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn orderBook_prepare_Cancel_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let id: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.cancel") };
-  let (stack, _heap) = orderBook_prepare_cancel(id);
+  let (stack, _heap) = orderBook_prepare_Cancel(id);
   stack
 }
 
-fn orderBook_result_cancel_value(stack: &[StackEntry]) -> Value {
-  Value::U64(orderBook_result_cancel(stack))
+fn orderBook_result_Cancel_value(stack: &[StackEntry]) -> Value {
+  Value::U64(orderBook_result_Cancel(stack))
 }
 
-pub fn orderBook_prepare_topNDepth(n: u64) -> (Vec<StackEntry>, Heap) {
+pub fn orderBook_prepare_TopNDepth(n: u64) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::BookSnapshot(BookSnapshot::default())));
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1226,62 +1341,62 @@ pub fn orderBook_prepare_topNDepth(n: u64) -> (Vec<StackEntry>, Heap) {
   (stack, heap)
 }
 
-pub fn orderBook_result_topNDepth(stack: &[StackEntry]) -> BookSnapshot {
+pub fn orderBook_result_TopNDepth(stack: &[StackEntry]) -> BookSnapshot {
   match stack.last() {
     Some(StackEntry::Value(_, Value::BookSnapshot(v))) => v.clone(),
     _ => unreachable!("result not found on stack"),
   }
 }
 
-fn orderBook_prepare_topNDepth_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+fn orderBook_prepare_TopNDepth_from_values(args: Vec<Value>) -> Vec<StackEntry> {
   let n: u64 =
     if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.top_n_depth") };
-  let (stack, _heap) = orderBook_prepare_topNDepth(n);
+  let (stack, _heap) = orderBook_prepare_TopNDepth(n);
   stack
 }
 
-fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
-  Value::BookSnapshot(orderBook_result_topNDepth(stack))
+fn orderBook_result_TopNDepth_value(stack: &[StackEntry]) -> Value {
+  Value::BookSnapshot(orderBook_result_TopNDepth(stack))
 }
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
-    "application.async_foo" => application_prepare_asyncFoo_from_values,
-    "application.sleep_and_pow" => application_prepare_sleepAndPow_from_values,
-    "global.add" => global_prepare_add_from_values,
-    "global.binary_search" => global_prepare_binarySearch_from_values,
-    "global.div" => global_prepare_div_from_values,
-    "global.factorial" => global_prepare_factorial_from_values,
-    "global.mult" => global_prepare_mult_from_values,
-    "global.sub" => global_prepare_sub_from_values,
-    "global.subAdd" => global_prepare_subAdd_from_values,
-    "order_book.add_buy" => orderBook_prepare_addBuy_from_values,
-    "order_book.add_sell" => orderBook_prepare_addSell_from_values,
-    "order_book.best_ask" => orderBook_prepare_bestAsk_from_values,
-    "order_book.best_bid" => orderBook_prepare_bestBid_from_values,
-    "order_book.cancel" => orderBook_prepare_cancel_from_values,
-    "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
+    "application.async_foo" => application_prepare_AsyncFoo_from_values,
+    "application.sleep_and_pow" => application_prepare_SleepAndPow_from_values,
+    "global.add" => global_prepare_Add_from_values,
+    "global.binary_search" => global_prepare_BinarySearch_from_values,
+    "global.div" => global_prepare_Div_from_values,
+    "global.factorial" => global_prepare_Factorial_from_values,
+    "global.mult" => global_prepare_Mult_from_values,
+    "global.sub" => global_prepare_Sub_from_values,
+    "global.subAdd" => global_prepare_SubAdd_from_values,
+    "order_book.add_buy" => orderBook_prepare_AddBuy_from_values,
+    "order_book.add_sell" => orderBook_prepare_AddSell_from_values,
+    "order_book.best_ask" => orderBook_prepare_BestAsk_from_values,
+    "order_book.best_bid" => orderBook_prepare_BestBid_from_values,
+    "order_book.cancel" => orderBook_prepare_Cancel_from_values,
+    "order_book.top_n_depth" => orderBook_prepare_TopNDepth_from_values,
     _ => panic!("shouldnt be here"),
   }
 }
 
 pub fn get_result_fn(key: &str) -> ResultFn {
   match key {
-    "application.async_foo" => application_result_asyncFoo_value,
-    "application.sleep_and_pow" => application_result_sleepAndPow_value,
-    "global.add" => global_result_add_value,
-    "global.binary_search" => global_result_binarySearch_value,
-    "global.div" => global_result_div_value,
-    "global.factorial" => global_result_factorial_value,
-    "global.mult" => global_result_mult_value,
-    "global.sub" => global_result_sub_value,
-    "global.subAdd" => global_result_subAdd_value,
-    "order_book.add_buy" => orderBook_result_addBuy_value,
-    "order_book.add_sell" => orderBook_result_addSell_value,
-    "order_book.best_ask" => orderBook_result_bestAsk_value,
-    "order_book.best_bid" => orderBook_result_bestBid_value,
-    "order_book.cancel" => orderBook_result_cancel_value,
-    "order_book.top_n_depth" => orderBook_result_topNDepth_value,
+    "application.async_foo" => application_result_AsyncFoo_value,
+    "application.sleep_and_pow" => application_result_SleepAndPow_value,
+    "global.add" => global_result_Add_value,
+    "global.binary_search" => global_result_BinarySearch_value,
+    "global.div" => global_result_Div_value,
+    "global.factorial" => global_result_Factorial_value,
+    "global.mult" => global_result_Mult_value,
+    "global.sub" => global_result_Sub_value,
+    "global.subAdd" => global_result_SubAdd_value,
+    "order_book.add_buy" => orderBook_result_AddBuy_value,
+    "order_book.add_sell" => orderBook_result_AddSell_value,
+    "order_book.best_ask" => orderBook_result_BestAsk_value,
+    "order_book.best_bid" => orderBook_result_BestBid_value,
+    "order_book.cancel" => orderBook_result_Cancel_value,
+    "order_book.top_n_depth" => orderBook_result_TopNDepth_value,
     _ => panic!("shouldnt be here"),
   }
 }

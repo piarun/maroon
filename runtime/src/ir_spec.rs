@@ -212,7 +212,7 @@ out
                       code: r#"
                     let o_div = (left + right) / 2;
                     let s = &heap.global;
-                    (o_div, s.binarySearchValues[o_div as usize])
+                    (o_div, s.binary_search_values[o_div as usize])
                     "#
                       .to_string(),
                       next: StepId::new("return_if_equal"),
@@ -405,7 +405,7 @@ out
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 let mut remaining = qty;
 let mut trades: Vec<Trade> = Vec::new();
 
@@ -413,13 +413,13 @@ let mut trades: Vec<Trade> = Vec::new();
 loop {
   // Find current best ask
   let best_ask = loop {
-    if let Some(top) = ob.asksPrices.peek() {
+    if let Some(top) = ob.asks_prices.peek() {
       let p = top.0;
-      if let Some(level) = ob.asksByPrice.get(&p) {
+      if let Some(level) = ob.asks_by_price.get(&p) {
         if !level.is_empty() { break Some(p); }
       }
       // stale level
-      ob.asksPrices.pop();
+      ob.asks_prices.pop();
       continue;
     } else { break None; }
   };
@@ -427,22 +427,22 @@ loop {
   match best_ask {
     Some(ap) if ap <= price && remaining > 0 => {
       // Execute against this level FIFO
-      if let Some(level) = ob.asksByPrice.get_mut(&ap) {
+      if let Some(level) = ob.asks_by_price.get_mut(&ap) {
         while remaining > 0 && !level.is_empty() {
           let maker = &mut level[0];
           if maker.qty <= remaining {
             let trade_qty = maker.qty;
             remaining -= trade_qty;
-            trades.push(Trade { price: ap, qty: trade_qty, takerId: id, makerId: maker.id });
+            trades.push(Trade { price: ap, qty: trade_qty, taker_id: id, maker_id: maker.id });
             level.remove(0);
           } else {
             maker.qty -= remaining;
-            trades.push(Trade { price: ap, qty: remaining, takerId: id, makerId: maker.id });
+            trades.push(Trade { price: ap, qty: remaining, taker_id: id, maker_id: maker.id });
             remaining = 0;
           }
         }
         if level.is_empty() {
-          ob.asksByPrice.remove(&ap);
+          ob.asks_by_price.remove(&ap);
         }
       }
       // continue loop to next level or exit if remaining==0
@@ -453,9 +453,9 @@ loop {
 
 // If remaining, add to bids book
 if remaining > 0 {
-  ob.bidsByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-  ob.bidsPrices.push(price);
-  ob.ordersIndex.insert(id, OrderIndex { side: "buy".to_string(), price });
+  ob.bids_by_price.entry(price).or_default().push(Order { id, price, qty: remaining });
+  ob.bids_prices.push(price);
+  ob.orders_index.insert(id, OrderIndex { side: "buy".to_string(), price });
 }
 
 trades
@@ -480,7 +480,7 @@ trades
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 let mut remaining = qty;
 let mut trades: Vec<Trade> = Vec::new();
 
@@ -488,33 +488,33 @@ let mut trades: Vec<Trade> = Vec::new();
 loop {
   // Find current best bid
   let best_bid = loop {
-    if let Some(&bp) = ob.bidsPrices.peek() {
-      if let Some(level) = ob.bidsByPrice.get(&bp) {
+    if let Some(&bp) = ob.bids_prices.peek() {
+      if let Some(level) = ob.bids_by_price.get(&bp) {
         if !level.is_empty() { break Some(bp); }
       }
       // stale
-      ob.bidsPrices.pop();
+      ob.bids_prices.pop();
       continue;
     } else { break None; }
   };
 
   match best_bid {
     Some(bp) if bp >= price && remaining > 0 => {
-      if let Some(level) = ob.bidsByPrice.get_mut(&bp) {
+      if let Some(level) = ob.bids_by_price.get_mut(&bp) {
         while remaining > 0 && !level.is_empty() {
           let maker = &mut level[0];
           if maker.qty <= remaining {
             let trade_qty = maker.qty;
             remaining -= trade_qty;
-            trades.push(Trade { price: bp, qty: trade_qty, takerId: id, makerId: maker.id });
+            trades.push(Trade { price: bp, qty: trade_qty, taker_id: id, maker_id: maker.id });
             level.remove(0);
           } else {
             maker.qty -= remaining;
-            trades.push(Trade { price: bp, qty: remaining, takerId: id, makerId: maker.id });
+            trades.push(Trade { price: bp, qty: remaining, taker_id: id, maker_id: maker.id });
             remaining = 0;
           }
         }
-        if level.is_empty() { ob.bidsByPrice.remove(&bp); }
+        if level.is_empty() { ob.bids_by_price.remove(&bp); }
       }
     }
     _ => break,
@@ -522,9 +522,9 @@ loop {
 }
 
 if remaining > 0 {
-  ob.asksByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-  ob.asksPrices.push(std::cmp::Reverse(price));
-  ob.ordersIndex.insert(id, OrderIndex { side: "sell".to_string(), price });
+  ob.asks_by_price.entry(price).or_default().push(Order { id, price, qty: remaining });
+  ob.asks_prices.push(std::cmp::Reverse(price));
+  ob.orders_index.insert(id, OrderIndex { side: "sell".to_string(), price });
 }
 
 trades
@@ -549,17 +549,17 @@ trades
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 let mut ok = 0u64;
-if let Some(idx) = ob.ordersIndex.remove(&id) {
+if let Some(idx) = ob.orders_index.remove(&id) {
   let price = idx.price;
   if idx.side == "buy" {
-    if let Some(level) = ob.bidsByPrice.get_mut(&price) {
-      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.bidsByPrice.remove(&price); } }
+    if let Some(level) = ob.bids_by_price.get_mut(&price) {
+      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.bids_by_price.remove(&price); } }
     }
   } else {
-    if let Some(level) = ob.asksByPrice.get_mut(&price) {
-      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.asksByPrice.remove(&price); } }
+    if let Some(level) = ob.asks_by_price.get_mut(&price) {
+      if let Some(pos) = level.iter().position(|o| o.id == id) { level.remove(pos); ok = 1; if level.is_empty() { ob.asks_by_price.remove(&price); } }
     }
   }
 }
@@ -585,11 +585,11 @@ ok
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 loop {
-  if let Some(&bp) = ob.bidsPrices.peek() {
-    if let Some(level) = ob.bidsByPrice.get(&bp) { if !level.is_empty() { break Some(bp); } }
-    ob.bidsPrices.pop();
+  if let Some(&bp) = ob.bids_prices.peek() {
+    if let Some(level) = ob.bids_by_price.get(&bp) { if !level.is_empty() { break Some(bp); } }
+    ob.bids_prices.pop();
   } else { break None; }
 }
 "#.to_string(),
@@ -613,12 +613,12 @@ loop {
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 loop {
-  if let Some(top) = ob.asksPrices.peek() {
+  if let Some(top) = ob.asks_prices.peek() {
     let ap = top.0; // Reverse(u64)
-    if let Some(level) = ob.asksByPrice.get(&ap) { if !level.is_empty() { break Some(ap); } }
-    ob.asksPrices.pop();
+    if let Some(level) = ob.asks_by_price.get(&ap) { if !level.is_empty() { break Some(ap); } }
+    ob.asks_prices.pop();
   } else { break None; }
 }
 "#.to_string(),
@@ -642,19 +642,19 @@ loop {
                     Step::RustBlock {
                       binds: vec!["result".to_string()],
                       code: r#"
-let ob = &mut heap.orderBook;
+let ob = &mut heap.order_book;
 
 let mut bids_depth: Vec<Level> = Vec::new();
 let mut asks_depth: Vec<Level> = Vec::new();
 
 // Bids: highest first
 {
-  let mut tmp = ob.bidsPrices.clone();
+  let mut tmp = ob.bids_prices.clone();
   let mut seen = std::collections::HashSet::<u64>::new();
   while (bids_depth.len() as u64) < n {
     if let Some(bp) = tmp.pop() {
       if seen.contains(&bp) { continue; }
-      if let Some(level) = ob.bidsByPrice.get(&bp) {
+      if let Some(level) = ob.bids_by_price.get(&bp) {
         if !level.is_empty() {
           let qty = level.iter().map(|o| o.qty).sum::<u64>();
           bids_depth.push(Level { price: bp, qty });
@@ -667,12 +667,12 @@ let mut asks_depth: Vec<Level> = Vec::new();
 
 // Asks: lowest first
 {
-  let mut tmp = ob.asksPrices.clone();
+  let mut tmp = ob.asks_prices.clone();
   let mut seen = std::collections::HashSet::<u64>::new();
   while (asks_depth.len() as u64) < n {
     if let Some(std::cmp::Reverse(ap)) = tmp.pop() {
       if seen.contains(&ap) { continue; }
-      if let Some(level) = ob.asksByPrice.get(&ap) {
+      if let Some(level) = ob.asks_by_price.get(&ap) {
         if !level.is_empty() {
           let qty = level.iter().map(|o| o.qty).sum::<u64>();
           asks_depth.push(Level { price: ap, qty });

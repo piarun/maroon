@@ -34,7 +34,7 @@ fn b_search_function() {
   let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
   let elements_len = search_elements.len() as u64;
 
-  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, ..Default::default() };
+  let heap = Heap { global: GlobalHeap { binary_search_values: search_elements }, ..Default::default() };
 
   // initialize heap for this fiber before loading the task
   let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap, 1);
@@ -79,7 +79,7 @@ fn order_book_full_match_single_level() {
   // BUY 50@12 fully matches
   ob.load_task("add_buy", vec![Value::U64(11), Value::U64(12), Value::U64(50)], None);
   let r = ob.run();
-  let expected = vec![Trade { price: 12, qty: 50, takerId: 11, makerId: 10 }];
+  let expected = vec![Trade { price: 12, qty: 50, taker_id: 11, maker_id: 10 }];
   assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
   // Book cleared on asks side
@@ -99,7 +99,7 @@ fn order_book_partial_match_and_depth() {
   // BUY 50@12 -> trade 50@12, remaining SELL 30@12 stays
   ob.load_task("add_buy", vec![Value::U64(101), Value::U64(12), Value::U64(50)], None);
   let r = ob.run();
-  let expected = vec![Trade { price: 12, qty: 50, takerId: 101, makerId: 100 }];
+  let expected = vec![Trade { price: 12, qty: 50, taker_id: 101, maker_id: 100 }];
   assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
   // Best ask remains 12
@@ -136,9 +136,9 @@ fn order_book_cross_multiple_levels_and_fifo_cancel() {
   ob.load_task("add_buy", vec![Value::U64(300), Value::U64(14), Value::U64(50)], None);
   let r = ob.run();
   let expected = vec![
-    Trade { price: 12, qty: 10, takerId: 300, makerId: 201 },
-    Trade { price: 13, qty: 20, takerId: 300, makerId: 202 },
-    Trade { price: 14, qty: 20, takerId: 300, makerId: 203 },
+    Trade { price: 12, qty: 10, taker_id: 300, maker_id: 201 },
+    Trade { price: 13, qty: 20, taker_id: 300, maker_id: 202 },
+    Trade { price: 14, qty: 20, taker_id: 300, maker_id: 203 },
   ];
   assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
@@ -146,8 +146,8 @@ fn order_book_cross_multiple_levels_and_fifo_cancel() {
   ob.load_task("add_buy", vec![Value::U64(301), Value::U64(15), Value::U64(40)], None);
   let r = ob.run();
   let expected = vec![
-    Trade { price: 14, qty: 20, takerId: 301, makerId: 203 },
-    Trade { price: 15, qty: 20, takerId: 301, makerId: 204 },
+    Trade { price: 14, qty: 20, taker_id: 301, maker_id: 203 },
+    Trade { price: 15, qty: 20, taker_id: 301, maker_id: 204 },
   ];
   assert_eq!(RunResult::Done(Value::ArrayTrade(expected)), r);
 
