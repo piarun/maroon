@@ -1,0 +1,94 @@
+{
+  "src": "11_opt_type.mrn",
+  "maroon": {
+    "optional_struct": {
+      "line": 1,
+      "fibers": {
+        "demo": {
+          "line": 6,
+          "functions": {
+            "main": {
+              "line": 7,
+              "args": [],
+              "body": {
+                "line": 7,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 8,
+                      "name": "c",
+                      "type": "OPTIONAL_Complex",
+                      "init": "NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 9,
+                      "name": "d",
+                      "type": "OPTIONAL_Complex",
+                      "init": "Complex(U64(1), U64(2))"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 15,
+                      "stmt": "{ DEBUG_DUMP_VARS(); c = d; MUTATE(d).im = 0; DEBUG_DUMP_VARS(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 16,
+                      "stmt": "RETURN()"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "Complex": {
+          "line": 2,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "re",
+                  "type": "U64"
+                },
+                {
+                  "name": "im",
+                  "type": "U64"
+                }
+              ]
+            }
+          }
+        },
+        "OPTIONAL_Complex": {
+          "line": 8,
+          "def": {
+            "MaroonIRTypeDefOptional": {
+              "type": "Complex"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 26,
+        "maroon": "optional_struct",
+        "fiber": "demo",
+        "golden_output": [
+          "[c:None,d:Some({re:1,im:2})]",
+          "[c:Some({re:1,im:2}),d:Some({re:1,im:0})]"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+MAROON(optional) {
+  FIBER(demo) {
+    FN(main) {
+      VAR(a, OPTIONAL<U64>, NONE);
+      VAR(b, OPTIONAL<U64>, U64(1));
+      VAR(c, OPTIONAL<BOOL>, NONE);
+      VAR(d, OPTIONAL<BOOL>, BOOL(true));
+      STMT(DEBUG_DUMP_VARS());
+      STMT(a = U64(2));
+      STMT(b = NONE);
+      STMT(c = BOOL(true));
+      STMT(d = NONE);
+      STMT(DEBUG_DUMP_VARS());
+      STMT(b = a);
+      STMT(d = c);
+      STMT(DEBUG_DUMP_VARS());
+      BLOCK {
+        VAR(e, OPTIONAL<U64>, NONE);
+        STMT(DEBUG_EXPR(e));
+        STMT(e = a);
+        STMT(DEBUG_EXPR(e));
+        BLOCK {
+          VAR(f, U64, 0);
+          STMT({
+            DEBUG_EXPR(f);
+            f = VALUE(a);
+            DEBUG_EXPR(f);
+          });
+        };
+      };
+      IF(EXISTS(d), STMT(DEBUG("D EXISTS")), STMT(DEBUG("D IS NONE")));
+      STMT(d = NONE);
+      IF(EXISTS(d), STMT(DEBUG("D EXISTS")), STMT(DEBUG("D IS NONE")));
+      STMT(RETURN());  // TODO(dkorolev): Perhaps we could support `RETURN()` w/o `STMT`?
+    };
+  };
+};
+
+TEST_FIBER(
+  optional,
+  demo,
+  {
+    "[a:None,b:Some(1),c:None,d:Some(true)]",
+    "[a:Some(2),b:None,c:Some(true),d:None]",
+    "[a:Some(2),b:Some(2),c:Some(true),d:Some(true)]",
+    "e=None",
+    "e=Some(2)",
+    "f=0",
+    "f=2",
+    "D EXISTS",
+    "D IS NONE",
+  });

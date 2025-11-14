@@ -1,0 +1,26 @@
+MAROON(optional_struct) {
+  TYPE(Complex) {
+    FIELD(re, U64);
+    FIELD(im, U64);
+  };
+  FIBER(demo) {
+    FN(main) {
+      VAR(c, OPTIONAL<Complex>, NONE);
+      VAR(d, OPTIONAL<Complex>, Complex(U64(1), U64(2)));
+      STMT({
+        DEBUG_DUMP_VARS();
+        c = d;
+        MUTATE(d).im = 0;
+        DEBUG_DUMP_VARS();
+      });
+      STMT(RETURN());
+    };
+  };
+};
+
+TEST_FIBER(
+  optional_struct,
+  demo, {
+    "[c:None,d:Some({re:1,im:2})]",
+    "[c:Some({re:1,im:2}),d:Some({re:1,im:0})]",
+  });

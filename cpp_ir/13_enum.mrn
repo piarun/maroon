@@ -1,0 +1,79 @@
+MAROON(enum) {
+  TYPE(XY) {
+    FIELD(x, U64);
+    FIELD(y, U64);
+  };
+  TYPE(Z) {
+    FIELD(z, BOOL);
+  };
+  // TODO(dkorolev): Should we support no-value, "empty" cases? Rust does.
+  ENUM(Enum) {
+    CASE(A, XY);
+    CASE(B, XY);
+    CASE(C, Z);
+    CASE(D, Z);
+  };
+  FIBER(global) {
+    FN(main) {
+      VAR(xy, XY, (U64(1), U64(2)));
+      VAR(z, Z, (BOOL(true)));
+      VAR(v, Enum, D(Z(BOOL(false))));  // NOTE(dkorolev): Can also initialize with `_` as of now.
+      STMT({
+        DEBUG_EXPR(v);
+        v = A(xy);
+        DEBUG_EXPR(v);
+        v = B(xy);
+        DEBUG_EXPR(v);
+        v = C(z);
+        DEBUG_EXPR(v);
+        v = D(z);
+        DEBUG_EXPR(v);
+      });
+      MATCH_ENUM_STMT(
+        v,
+        ENUM_ARM(C, STMT({
+          DEBUG("HAS C (WRONG!)"); // Test matching w/o the captured var, since macro overloading it tricky.
+        })),
+        ENUM_ARM(D, d, STMT({
+          DEBUG("HAS D, CORRECT");
+          DEBUG_EXPR(d);
+          d.z = false;
+        })),
+        ENUM_DEFAULT(STMT(DEBUG("NOT C OR D (WRONG!)")))
+      );
+      STMT(DEBUG_EXPR(v));  // Should have `d.z` turn to `false`.
+      MATCH_ENUM_STMT(
+        v,
+        ENUM_ARM(A, a, BLOCK {
+          STMT({
+            DEBUG("HAS A (WRONG!)");
+            DEBUG_EXPR(a);
+          })
+        }),
+        ENUM_ARM(B, b, BLOCK {
+          STMT({
+            DEBUG("HAS B (WRONG!)");
+            DEBUG_EXPR(b);
+          })
+        }),
+        ENUM_DEFAULT(STMT(DEBUG("NOT A OR B, CORRECT")))
+      );
+      STMT(RETURN());
+    };
+  };
+};
+
+TEST_FIBER(
+  enum,
+  global,
+  {
+    "v=D({z:false})",
+    "v=A({x:1,y:2})",
+    "v=B({x:1,y:2})",
+    "v=C({z:true})",
+    "v=D({z:true})",
+    "HAS D, CORRECT",
+    "d={z:true}",
+    "v=D({z:false})",
+    "NOT A OR B, CORRECT",
+  });

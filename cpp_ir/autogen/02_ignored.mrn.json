@@ -1,0 +1,50 @@
+{
+  "src": "02_ignored.mrn",
+  "maroon": {
+    "second_step_ignored": {
+      "line": 5,
+      "fibers": {
+        "global": {
+          "line": 6,
+          "functions": {
+            "main": {
+              "line": 7,
+              "args": [],
+              "body": {
+                "line": 7,
+                "vars": [],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 11,
+                      "stmt": "{ DEBUG(\"yes\"); RETURN(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 15,
+                      "stmt": "{ DEBUG(\"no\"); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 23,
+        "maroon": "second_step_ignored",
+        "fiber": "global",
+        "golden_output": [
+          "yes"
+        ]
+      }
+    }
+  ]
+}

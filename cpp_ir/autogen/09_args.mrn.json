@@ -1,0 +1,333 @@
+{
+  "src": "09_args.mrn",
+  "maroon": {
+    "args": {
+      "line": 1,
+      "fibers": {
+        "first": {
+          "line": 25,
+          "functions": {
+            "first": {
+              "line": 42,
+              "ret": "XY",
+              "args": [
+                "XY",
+                "XY"
+              ],
+              "body": {
+                "line": 42,
+                "vars": [
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 43,
+                      "name": "a",
+                      "type": "XY"
+                    }
+                  },
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 44,
+                      "name": "b",
+                      "type": "XY"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 45,
+                      "stmt": "RETURN(XY(a.x, b.x))"
+                    }
+                  }
+                ]
+              }
+            },
+            "main": {
+              "line": 26,
+              "args": [],
+              "body": {
+                "line": 26,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 27,
+                      "name": "p",
+                      "type": "XY",
+                      "init": "U64(1), U64(2)"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 28,
+                      "name": "q",
+                      "type": "XY",
+                      "init": "U64(3), U64(4)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 32,
+                      "stmt": "{ DEBUG_EXPR(p); DEBUG_EXPR(q); }"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 33,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 34,
+                            "name": "r",
+                            "type": "XY",
+                            "init": "U64(0), U64(0)"
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 35,
+                            "stmt": "CALL(r, first, (p, q))"
+                          }
+                        },
+                        {
+                          "MaroonIRStmt": {
+                            "line": 39,
+                            "stmt": "{ DEBUG_EXPR(r); RETURN(); }"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "second": {
+          "line": 49,
+          "functions": {
+            "main": {
+              "line": 50,
+              "args": [],
+              "body": {
+                "line": 50,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 51,
+                      "name": "m",
+                      "type": "XY",
+                      "init": "U64(1), U64(2)"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 52,
+                      "name": "n",
+                      "type": "XY",
+                      "init": "U64(3), U64(4)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 56,
+                      "stmt": "{ DEBUG_EXPR(m); DEBUG_EXPR(n); }"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 57,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 58,
+                            "name": "r",
+                            "type": "XY",
+                            "init": "U64(0), U64(0)"
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 59,
+                            "stmt": "CALL(r, second, (m, n))"
+                          }
+                        },
+                        {
+                          "MaroonIRStmt": {
+                            "line": 63,
+                            "stmt": "{ DEBUG_EXPR(r); RETURN(); }"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "second": {
+              "line": 66,
+              "ret": "XY",
+              "args": [
+                "XY",
+                "XY"
+              ],
+              "body": {
+                "line": 66,
+                "vars": [
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 67,
+                      "name": "a",
+                      "type": "XY"
+                    }
+                  },
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 68,
+                      "name": "b",
+                      "type": "XY"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 69,
+                      "stmt": "RETURN(XY(a.y, b.y))"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "swap": {
+          "line": 7,
+          "functions": {
+            "main": {
+              "line": 8,
+              "args": [],
+              "body": {
+                "line": 8,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 9,
+                      "name": "a",
+                      "type": "XY",
+                      "init": "U64(1), U64(2)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 13,
+                      "stmt": "{ DEBUG_EXPR(a); CALL(a, swap, (a)); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 17,
+                      "stmt": "{ DEBUG_EXPR(a); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            },
+            "swap": {
+              "line": 19,
+              "ret": "XY",
+              "args": [
+                "XY"
+              ],
+              "body": {
+                "line": 19,
+                "vars": [
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 20,
+                      "name": "a",
+                      "type": "XY"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 21,
+                      "stmt": "RETURN(XY(a.y, a.x))"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "XY": {
+          "line": 2,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "x",
+                  "type": "U64"
+                },
+                {
+                  "name": "y",
+                  "type": "U64"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 80,
+        "maroon": "args",
+        "fiber": "swap",
+        "golden_output": [
+          "a={x:1,y:2}",
+          "a={x:2,y:1}"
+        ]
+      }
+    },
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 89,
+        "maroon": "args",
+        "fiber": "first",
+        "golden_output": [
+          "p={x:1,y:2}",
+          "q={x:3,y:4}",
+          "r={x:1,y:3}"
+        ]
+      }
+    },
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 98,
+        "maroon": "args",
+        "fiber": "second",
+        "golden_output": [
+          "m={x:1,y:2}",
+          "n={x:3,y:4}",
+          "r={x:2,y:4}"
+        ]
+      }
+    }
+  ]
+}

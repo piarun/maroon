@@ -1,0 +1,42 @@
+{
+  "src": "03_death_tests.mrn",
+  "maroon": {
+    "lack_of_return": {
+      "line": 1,
+      "fibers": {
+        "global": {
+          "line": 2,
+          "functions": {
+            "main": {
+              "line": 3,
+              "args": [],
+              "body": {
+                "line": 3,
+                "vars": [],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 6,
+                      "stmt": "{ DEBUG(\"hang on tight ...\"); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseFiberShouldThrow": {
+        "line": 11,
+        "maroon": "lack_of_return",
+        "fiber": "global",
+        "error": "Need `RETURN()` at least at the last `STMT()` of the `FN()`."
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+MAROON(types) {
+  TYPE(AB) {
+    FIELD(a, U64);
+    FIELD(b, U64);
+  };
+  TYPE(Empty) {};
+  TYPE(Nested) {
+    FIELD(x, AB);
+    FIELD(y, BOOL);
+    FIELD(z, Empty);
+  };
+  FIBER(global) {
+    FN(main) {
+      VAR(ab, AB, (U64(0), U64(0)));
+      STMT({
+        ab.a += U64(1);
+        ab.b += U64(2);
+      });
+      STMT({
+        DEBUG_EXPR(ab);
+        DEBUG_DUMP_STACK();
+      });
+      BLOCK {
+        VAR(e, Empty, ());
+        STMT({
+          DEBUG_EXPR(e);
+          DEBUG_DUMP_STACK();
+        });
+        BLOCK {
+          VAR(t, Nested, (AB(U64(3), U64(4)), BOOL(true), Empty()));
+          STMT({
+            DEBUG_EXPR(t);
+            DEBUG_DUMP_STACK();
+          });
+          STMT({
+            t.x = ab;
+            DEBUG_EXPR(t);
+            DEBUG_DUMP_STACK();
+            RETURN();
+          });
+        };
+      };
+    };
+  };
+};
+
+TEST_FIBER(
+  types,
+  global,
+  {
+    "ab={a:1,b:2}",
+    "<[ab:{a:1,b:2}]>",
+    "e={}",
+    "<[ab:{a:1,b:2},e:{}]>",
+    "t={x:{a:3,b:4},y:true,z:{}}",
+    "<[ab:{a:1,b:2},e:{},t:{x:{a:3,b:4},y:true,z:{}}]>",
+    // After `t.x = ab`.
+    "t={x:{a:1,b:2},y:true,z:{}}",
+    "<[ab:{a:1,b:2},e:{},t:{x:{a:1,b:2},y:true,z:{}}]>",
+  });

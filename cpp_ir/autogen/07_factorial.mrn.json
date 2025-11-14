@@ -1,0 +1,133 @@
+{
+  "src": "07_factorial.mrn",
+  "maroon": {
+    "factorial": {
+      "line": 1,
+      "fibers": {
+        "global": {
+          "line": 2,
+          "functions": {
+            "factorial": {
+              "line": 11,
+              "ret": "U64",
+              "args": [
+                "U64"
+              ],
+              "body": {
+                "line": 11,
+                "vars": [
+                  {
+                    "MaroonIRVarFunctionArg": {
+                      "line": 12,
+                      "name": "n",
+                      "type": "U64"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRIf": {
+                      "line": 35,
+                      "cond": "n <= U64(1)",
+                      "yes": {
+                        "MaroonIRStmt": {
+                          "line": 16,
+                          "stmt": "RETURN(U64(1))"
+                        }
+                      },
+                      "no": {
+                        "MaroonIRBlock": {
+                          "line": 18,
+                          "vars": [
+                            {
+                              "MaroonIRVarRegular": {
+                                "line": 20,
+                                "name": "r",
+                                "type": "U64",
+                                "init": "0"
+                              }
+                            }
+                          ],
+                          "code": [
+                            {
+                              "MaroonIRStmt": {
+                                "line": 26,
+                                "stmt": "{ DEBUG(\"before\"); DEBUG_DUMP_STACK(); CALL(r, factorial, (n - U64(1))); }"
+                              }
+                            },
+                            {
+                              "MaroonIRStmt": {
+                                "line": 33,
+                                "stmt": "{ DEBUG(\"after\"); DEBUG_DUMP_STACK(); RETURN(r * n); }"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "main": {
+              "line": 3,
+              "args": [],
+              "body": {
+                "line": 3,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 4,
+                      "name": "result",
+                      "type": "U64",
+                      "init": "0"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 5,
+                      "stmt": "CALL(result, factorial, (U64(4)))"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 9,
+                      "stmt": "{ DEBUG_EXPR(result); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 58,
+        "maroon": "factorial",
+        "fiber": "global",
+        "golden_output": [
+          "before",
+          "<[result:0],factorial@[n:4,r:0]>",
+          "before",
+          "<[result:0],factorial@[n:4,r:0],factorial@[n:3,r:0]>",
+          "before",
+          "<[result:0],factorial@[n:4,r:0],factorial@[n:3,r:0],factorial@[n:2,r:0]>",
+          "after",
+          "<[result:0],factorial@[n:4,r:0],factorial@[n:3,r:0],factorial@[n:2,r:1]>",
+          "after",
+          "<[result:0],factorial@[n:4,r:0],factorial@[n:3,r:2]>",
+          "after",
+          "<[result:0],factorial@[n:4,r:6]>",
+          "result=24"
+        ]
+      }
+    }
+  ]
+}

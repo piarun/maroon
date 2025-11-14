@@ -1,0 +1,21 @@
+name: make test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  merge_group:
+
+jobs:
+  make_test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: git clone
+        uses: actions/checkout@v4
+
+      - name: make test
+        run: (cd cpp_ir; make test)
+
