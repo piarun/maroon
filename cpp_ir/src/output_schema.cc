@@ -8,6 +8,7 @@
 #include "../current/bricks/file/file.h"
 #include "../current/typesystem/schema/schema.h"
 
+#define NO_LINE_NUMBERS
 #include "ir.h"
 
 DEFINE_string(out, "/dev/stdout", "The output file to dump the schema of the IR into.");

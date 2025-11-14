@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRVarRegular {
-  pub line: u32,
   pub name: String,
   pub r#type: String,
   pub init: String,
@@ -12,7 +11,6 @@ pub struct MaroonIRVarRegular {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRVarFunctionArg {
-  pub line: u32,
   pub name: String,
   pub r#type: String,
 }
@@ -33,13 +31,11 @@ pub enum MaroonIRVar {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRStmt {
-  pub line: u32,
   pub stmt: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRIf {
-  pub line: u32,
   pub cond: String,
   pub yes: Box<MaroonIRStmtOrBlock>,
   pub no: Box<MaroonIRStmtOrBlock>,
@@ -47,7 +43,6 @@ pub struct MaroonIRIf {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRMatchEnumStmtArm {
-  pub line: u32,
   pub key: Option<String>,
   pub capture: Option<String>,
   pub code: MaroonIRBlock,
@@ -55,14 +50,12 @@ pub struct MaroonIRMatchEnumStmtArm {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRMatchEnumStmt {
-  pub line: u32,
   pub var: String,
   pub arms: Vec<MaroonIRMatchEnumStmtArm>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRBlockPlaceholder {
-  pub line: u32,
   pub _idx: u32,
 }
 
@@ -77,14 +70,12 @@ pub enum MaroonIRStmtOrBlock {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRBlock {
-  pub line: u32,
   pub vars: Vec<MaroonIRVar>,
   pub code: Vec<MaroonIRStmtOrBlock>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRFunction {
-  pub line: u32,
   pub ret: Option<String>,
   pub args: Vec<String>,
   pub body: MaroonIRBlock,
@@ -92,7 +83,6 @@ pub struct MaroonIRFunction {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRFiber {
-  pub line: u32,
   pub functions: BTreeMap<String, MaroonIRFunction>,
 }
 
@@ -132,20 +122,17 @@ pub enum MaroonIRTypeDef {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRType {
-  pub line: u32,
   pub def: Box<MaroonIRTypeDef>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonIRNamespace {
-  pub line: u32,
   pub fibers: BTreeMap<String, MaroonIRFiber>,
   pub types: BTreeMap<String, MaroonIRType>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonTestCaseRunFiber {
-  pub line: u32,
   pub maroon: String,
   pub fiber: String,
   pub golden_output: Vec<String>,
@@ -153,7 +140,6 @@ pub struct MaroonTestCaseRunFiber {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaroonTestCaseFiberShouldThrow {
-  pub line: u32,
   pub maroon: String,
   pub fiber: String,
   pub error: String,

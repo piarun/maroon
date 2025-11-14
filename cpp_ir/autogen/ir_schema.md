@@ -3,7 +3,6 @@
 ### `MaroonIRVarRegular`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `name` | String |
 | `type` | String |
 | `init` | String |
@@ -12,7 +11,6 @@
 ### `MaroonIRVarFunctionArg`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `name` | String |
 | `type` | String |
 
@@ -32,14 +30,12 @@ Algebraic type, `MaroonIRVarRegular` or `MaroonIRVarFunctionArg` or `MaroonIRVar
 ### `MaroonIRStmt`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `stmt` | String |
 
 
 ### `MaroonIRIf`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `cond` | String |
 | `yes` | Algebraic `MaroonIRStmt` / `MaroonIRIf` / `MaroonIRBlock` / `MaroonIRMatchEnumStmt` / `MaroonIRBlockPlaceholder` (a.k.a. `MaroonIRStmtOrBlock`) |
 | `no` | Algebraic `MaroonIRStmt` / `MaroonIRIf` / `MaroonIRBlock` / `MaroonIRMatchEnumStmt` / `MaroonIRBlockPlaceholder` (a.k.a. `MaroonIRStmtOrBlock`) |
@@ -48,7 +44,6 @@ Algebraic type, `MaroonIRVarRegular` or `MaroonIRVarFunctionArg` or `MaroonIRVar
 ### `MaroonIRMatchEnumStmtArm`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `key` | `null` or String |
 | `capture` | `null` or String |
 | `code` | `MaroonIRBlock` |
@@ -57,7 +52,6 @@ Algebraic type, `MaroonIRVarRegular` or `MaroonIRVarFunctionArg` or `MaroonIRVar
 ### `MaroonIRMatchEnumStmt`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `var` | String |
 | `arms` | Array of `MaroonIRMatchEnumStmtArm` |
 
@@ -65,7 +59,6 @@ Algebraic type, `MaroonIRVarRegular` or `MaroonIRVarFunctionArg` or `MaroonIRVar
 ### `MaroonIRBlockPlaceholder`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `_idx` | Integer (32-bit unsigned) |
 
 
@@ -76,7 +69,6 @@ Algebraic type, `MaroonIRStmt` or `MaroonIRIf` or `MaroonIRBlock` or `MaroonIRMa
 ### `MaroonIRBlock`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `vars` | Array of Algebraic `MaroonIRVarRegular` / `MaroonIRVarFunctionArg` / `MaroonIRVarEnumCaseCapture` (a.k.a. `MaroonIRVar`) |
 | `code` | Array of Algebraic `MaroonIRStmt` / `MaroonIRIf` / `MaroonIRBlock` / `MaroonIRMatchEnumStmt` / `MaroonIRBlockPlaceholder` (a.k.a. `MaroonIRStmtOrBlock`) |
 
@@ -84,7 +76,6 @@ Algebraic type, `MaroonIRStmt` or `MaroonIRIf` or `MaroonIRBlock` or `MaroonIRMa
 ### `MaroonIRFunction`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `ret` | `null` or String |
 | `args` | Array of String |
 | `body` | `MaroonIRBlock` |
@@ -93,7 +84,6 @@ Algebraic type, `MaroonIRStmt` or `MaroonIRIf` or `MaroonIRBlock` or `MaroonIRMa
 ### `MaroonIRFiber`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `functions` | Ordered map of String into `MaroonIRFunction` |
 
 
@@ -136,14 +126,12 @@ Algebraic type, `MaroonIRTypeDefStruct` or `MaroonIRTypeDefEnum` or `MaroonIRTyp
 ### `MaroonIRType`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `def` | Algebraic `MaroonIRTypeDefStruct` / `MaroonIRTypeDefEnum` / `MaroonIRTypeDefOptional` (a.k.a. `MaroonIRTypeDef`) |
 
 
 ### `MaroonIRNamespace`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `fibers` | Ordered map of String into `MaroonIRFiber` |
 | `types` | Ordered map of String into `MaroonIRType` |
 
@@ -151,7 +139,6 @@ Algebraic type, `MaroonIRTypeDefStruct` or `MaroonIRTypeDefEnum` or `MaroonIRTyp
 ### `MaroonTestCaseRunFiber`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `maroon` | String |
 | `fiber` | String |
 | `golden_output` | Array of String |
@@ -160,7 +147,6 @@ Algebraic type, `MaroonIRTypeDefStruct` or `MaroonIRTypeDefEnum` or `MaroonIRTyp
 ### `MaroonTestCaseFiberShouldThrow`
 | **Field** | **Type** | **Description** |
 | ---: | :--- | :--- |
-| `line` | Integer (32-bit unsigned) |
 | `maroon` | String |
 | `fiber` | String |
 | `error` | String |
