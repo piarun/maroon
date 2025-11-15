@@ -7,6 +7,15 @@ pub fn sample_ir() -> IR {
   IR {
     fibers: HashMap::from([
       (
+        FiberType::new("main"),
+        Fiber {
+          fibers_limit: 0,
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([]),
+        }
+      ),
+      (
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,

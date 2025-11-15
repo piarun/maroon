@@ -54,6 +54,9 @@ pub struct GlobalHeap {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MainHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct OrderBookHeap {
   pub asksByPrice: std::collections::HashMap<u64, Vec<Order>>,
   pub asksPrices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
@@ -66,6 +69,7 @@ pub struct OrderBookHeap {
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
+  pub main: MainHeap,
   pub orderBook: OrderBookHeap,
 }
 
