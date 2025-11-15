@@ -184,7 +184,11 @@ impl IR {
   pub fn is_valid(&self) -> (bool, String) {
     // TODO: all branches have the same end
     let mut explanation = String::new();
+    let mut has_main_fiber = false;
     for fiber in self.fibers.iter() {
+      if fiber.0 == &FiberType::new("main") {
+        has_main_fiber = true
+      }
       for func in fiber.1.funcs.iter() {
         let mut has_entry = false; // each function should start with 'entry' stepId
         for step in func.1.steps.iter() {
@@ -199,6 +203,9 @@ impl IR {
       }
     }
 
+    if !has_main_fiber {
+      explanation.push_str("no 'main' fiber\n");
+    }
     (explanation.len() == 0, explanation)
   }
 }
