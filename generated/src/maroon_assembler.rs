@@ -73,7 +73,7 @@ pub struct Heap {
   pub orderBook: OrderBookHeap,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
   Completed,
   Idle,

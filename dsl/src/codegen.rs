@@ -176,7 +176,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("}\n\n");
 
   // 4) Emit State enum variants for all steps of all funcs (always include entry).
-  out.push_str("#[derive(Clone, Debug, PartialEq)]\npub enum State {\n");
+  out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum State {\n");
   // Always include `Completed` and `Idle` as catch-alls to mirror runtime expectations.
   out.push_str("  Completed,\n  Idle,\n");
   for (fiber_name, fiber) in fibers_sorted.iter() {
