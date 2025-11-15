@@ -1,6 +1,9 @@
-use crate::fiber::{Fiber, RunResult};
+use crate::{
+  fiber::{Fiber, RunResult},
+  trace::TraceEvent,
+};
 use dsl::ir::FiberType;
-use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, Trade, Value};
+use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEntry, State, StepResult, Trade, Value};
 
 #[test]
 fn add_function() {
@@ -27,6 +30,98 @@ fn factorial_function() {
   let result = some_t.run();
 
   assert_eq!(RunResult::Done(Value::U64(6)), result);
+  assert_eq!(
+    vec![
+      TraceEvent {
+        state: State::GlobalFactorialEntry,
+        result: StepResult::GoTo(State::GlobalFactorialSubtract),
+      },
+      TraceEvent {
+        state: State::GlobalFactorialSubtract,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialFactorialCall),
+          StackEntry::Retrn(Some(3)),
+          StackEntry::Value("a".to_string(), Value::U64(3)),
+          StackEntry::Value("b".to_string(), Value::U64(1)),
+          StackEntry::Value("sub".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalSubEntry),
+        ]),
+      },
+      TraceEvent { state: State::GlobalSubEntry, result: StepResult::Return(Value::U64(2)) },
+      TraceEvent {
+        state: State::GlobalFactorialFactorialCall,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialMultiply),
+          StackEntry::Retrn(Some(4)),
+          StackEntry::Value("n".to_string(), Value::U64(2)),
+          StackEntry::Value("fac_call_res".to_string(), Value::U64(0)),
+          StackEntry::Value("subtract_res".to_string(), Value::U64(0)),
+          StackEntry::Value("result".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalFactorialEntry),
+        ]),
+      },
+      TraceEvent {
+        state: State::GlobalFactorialEntry,
+        result: StepResult::GoTo(State::GlobalFactorialSubtract),
+      },
+      TraceEvent {
+        state: State::GlobalFactorialSubtract,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialFactorialCall),
+          StackEntry::Retrn(Some(3)),
+          StackEntry::Value("a".to_string(), Value::U64(2)),
+          StackEntry::Value("b".to_string(), Value::U64(1)),
+          StackEntry::Value("sub".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalSubEntry),
+        ]),
+      },
+      TraceEvent { state: State::GlobalSubEntry, result: StepResult::Return(Value::U64(1)) },
+      TraceEvent {
+        state: State::GlobalFactorialFactorialCall,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialMultiply),
+          StackEntry::Retrn(Some(4)),
+          StackEntry::Value("n".to_string(), Value::U64(1)),
+          StackEntry::Value("fac_call_res".to_string(), Value::U64(0)),
+          StackEntry::Value("subtract_res".to_string(), Value::U64(0)),
+          StackEntry::Value("result".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalFactorialEntry),
+        ]),
+      },
+      TraceEvent {
+        state: State::GlobalFactorialEntry,
+        result: StepResult::GoTo(State::GlobalFactorialReturn1),
+      },
+      TraceEvent { state: State::GlobalFactorialReturn1, result: StepResult::Return(Value::U64(1)) },
+      TraceEvent {
+        state: State::GlobalFactorialMultiply,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialReturn),
+          StackEntry::Retrn(Some(2)),
+          StackEntry::Value("a".to_string(), Value::U64(2)),
+          StackEntry::Value("b".to_string(), Value::U64(1)),
+          StackEntry::Value("mult".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalMultEntry),
+        ]),
+      },
+      TraceEvent { state: State::GlobalMultEntry, result: StepResult::Return(Value::U64(2)) },
+      TraceEvent { state: State::GlobalFactorialReturn, result: StepResult::Return(Value::U64(2)) },
+      TraceEvent {
+        state: State::GlobalFactorialMultiply,
+        result: StepResult::Next(vec![
+          StackEntry::State(State::GlobalFactorialReturn),
+          StackEntry::Retrn(Some(2)),
+          StackEntry::Value("a".to_string(), Value::U64(3)),
+          StackEntry::Value("b".to_string(), Value::U64(2)),
+          StackEntry::Value("mult".to_string(), Value::U64(0)),
+          StackEntry::State(State::GlobalMultEntry),
+        ]),
+      },
+      TraceEvent { state: State::GlobalMultEntry, result: StepResult::Return(Value::U64(6)) },
+      TraceEvent { state: State::GlobalFactorialReturn, result: StepResult::Return(Value::U64(6)) },
+    ],
+    some_t.trace_sink,
+  );
 }
 
 #[test]

@@ -5,6 +5,8 @@ use generated::maroon_assembler::{
   Heap, StackEntry, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
 };
 
+use crate::trace::TraceEvent;
+
 #[derive(Clone, Debug)]
 pub struct Fiber {
   pub stack: Vec<StackEntry>,
@@ -15,7 +17,13 @@ pub struct Fiber {
 
   pub f_type: FiberType,
   pub unique_id: u64,
+
   pub context: RunContext,
+
+  /// here we put full fiber history
+  /// right now - pairs (state, result), later maybe more
+  /// TODO: make it optional, so if I don't want - I won't include it
+  pub trace_sink: Vec<TraceEvent>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -85,6 +93,7 @@ impl Fiber {
       heap: Heap::default(),
       function_key: String::new(),
       context: RunContext::default(),
+      trace_sink: vec![],
     }
   }
 
@@ -100,6 +109,7 @@ impl Fiber {
       heap: heap,
       function_key: String::new(),
       context: RunContext::default(),
+      trace_sink: vec![],
     }
   }
 
@@ -173,7 +183,9 @@ impl Fiber {
       // StackEntry::Retrn is not here, only arguments + local_vars
       let start = self.stack.len() - arguments_number;
 
+      let state_cp = state.clone();
       let result = global_step(state, &self.stack[start..], &mut self.heap);
+      self.trace_sink.push(TraceEvent { state: state_cp, result: result.clone() });
 
       match result {
         StepResult::Return(val) => {
