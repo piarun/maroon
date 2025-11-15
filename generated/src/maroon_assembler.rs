@@ -123,7 +123,7 @@ pub enum Value {
   U64(u64),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StackEntry {
   State(State),
   // Option<usize> - local index offset back on stack
@@ -134,7 +134,7 @@ pub enum StackEntry {
   FrameAssign(Vec<(usize, Value)>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),

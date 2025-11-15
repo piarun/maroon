@@ -265,7 +265,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   // 6) Emit runtime-aligned scaffolding types and global_step
   out.push_str(
     r"
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StackEntry {
   State(State),
   // Option<usize> - local index offset back on stack
@@ -276,7 +276,7 @@ pub enum StackEntry {
   FrameAssign(Vec<(usize, Value)>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
