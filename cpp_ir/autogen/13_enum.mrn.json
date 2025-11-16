@@ -1,0 +1,291 @@
+{
+  "src": "13_enum.mrn",
+  "maroon": {
+    "enum": {
+      "line": 1,
+      "fibers": {
+        "global": {
+          "line": 16,
+          "functions": {
+            "main": {
+              "line": 17,
+              "args": [],
+              "body": {
+                "line": 17,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 18,
+                      "name": "xy",
+                      "type": "XY",
+                      "init": "U64(1), U64(2)"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 19,
+                      "name": "z",
+                      "type": "Z",
+                      "init": "BOOL(true)"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 20,
+                      "name": "v",
+                      "type": "Enum",
+                      "init": "D(Z(BOOL(false)))"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 31,
+                      "stmt": "{ DEBUG_EXPR(v); v = A(xy); DEBUG_EXPR(v); v = B(xy); DEBUG_EXPR(v); v = C(z); DEBUG_EXPR(v); v = D(z); DEBUG_EXPR(v); }"
+                    }
+                  },
+                  {
+                    "MaroonIRMatchEnumStmt": {
+                      "line": 43,
+                      "var": "v",
+                      "arms": [
+                        {
+                          "line": 36,
+                          "key": "C",
+                          "capture": "",
+                          "code": {
+                            "line": 36,
+                            "vars": [
+                              {
+                                "MaroonIRVarEnumCaseCapture": {
+                                  "name": "",
+                                  "key": "C",
+                                  "src": "v"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 36,
+                                  "stmt": "{ DEBUG(\"HAS C (WRONG!)\"); }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "line": 41,
+                          "key": "D",
+                          "capture": "d",
+                          "code": {
+                            "line": 41,
+                            "vars": [
+                              {
+                                "MaroonIRVarEnumCaseCapture": {
+                                  "name": "d",
+                                  "key": "D",
+                                  "src": "v"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 41,
+                                  "stmt": "{ DEBUG(\"HAS D, CORRECT\"); DEBUG_EXPR(d); d.z = false; }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "line": 42,
+                          "code": {
+                            "line": 42,
+                            "vars": [],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 42,
+                                  "stmt": "DEBUG(\"NOT C OR D (WRONG!)\")"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 44,
+                      "stmt": "DEBUG_EXPR(v)"
+                    }
+                  },
+                  {
+                    "MaroonIRMatchEnumStmt": {
+                      "line": 60,
+                      "var": "v",
+                      "arms": [
+                        {
+                          "line": 52,
+                          "key": "A",
+                          "capture": "a",
+                          "code": {
+                            "line": 47,
+                            "vars": [
+                              {
+                                "MaroonIRVarEnumCaseCapture": {
+                                  "name": "a",
+                                  "key": "A",
+                                  "src": "v"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 51,
+                                  "stmt": "{ DEBUG(\"HAS A (WRONG!)\"); DEBUG_EXPR(a); }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "line": 58,
+                          "key": "B",
+                          "capture": "b",
+                          "code": {
+                            "line": 53,
+                            "vars": [
+                              {
+                                "MaroonIRVarEnumCaseCapture": {
+                                  "name": "b",
+                                  "key": "B",
+                                  "src": "v"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 57,
+                                  "stmt": "{ DEBUG(\"HAS B (WRONG!)\"); DEBUG_EXPR(b); }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "line": 59,
+                          "code": {
+                            "line": 59,
+                            "vars": [],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 59,
+                                  "stmt": "DEBUG(\"NOT A OR B, CORRECT\")"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 61,
+                      "stmt": "RETURN()"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "Enum": {
+          "line": 10,
+          "def": {
+            "MaroonIRTypeDefEnum": {
+              "cases": [
+                {
+                  "key": "A",
+                  "type": "XY"
+                },
+                {
+                  "key": "B",
+                  "type": "XY"
+                },
+                {
+                  "key": "C",
+                  "type": "Z"
+                },
+                {
+                  "key": "D",
+                  "type": "Z"
+                }
+              ]
+            }
+          }
+        },
+        "XY": {
+          "line": 2,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "x",
+                  "type": "U64"
+                },
+                {
+                  "name": "y",
+                  "type": "U64"
+                }
+              ]
+            }
+          }
+        },
+        "Z": {
+          "line": 6,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "z",
+                  "type": "BOOL"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 79,
+        "maroon": "enum",
+        "fiber": "global",
+        "golden_output": [
+          "v=D({z:false})",
+          "v=A({x:1,y:2})",
+          "v=B({x:1,y:2})",
+          "v=C({z:true})",
+          "v=D({z:true})",
+          "HAS D, CORRECT",
+          "d={z:true}",
+          "v=D({z:false})",
+          "NOT A OR B, CORRECT"
+        ]
+      }
+    }
+  ]
+}

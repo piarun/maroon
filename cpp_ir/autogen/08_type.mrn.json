@@ -1,0 +1,165 @@
+{
+  "src": "08_type.mrn",
+  "maroon": {
+    "types": {
+      "line": 1,
+      "fibers": {
+        "global": {
+          "line": 12,
+          "functions": {
+            "main": {
+              "line": 13,
+              "args": [],
+              "body": {
+                "line": 13,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 14,
+                      "name": "ab",
+                      "type": "AB",
+                      "init": "U64(0), U64(0)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 18,
+                      "stmt": "{ ab.a += U64(1); ab.b += U64(2); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 22,
+                      "stmt": "{ DEBUG_EXPR(ab); DEBUG_DUMP_STACK(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 23,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 24,
+                            "name": "e",
+                            "type": "Empty",
+                            "init": ""
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 28,
+                            "stmt": "{ DEBUG_EXPR(e); DEBUG_DUMP_STACK(); }"
+                          }
+                        },
+                        {
+                          "MaroonIRBlock": {
+                            "line": 29,
+                            "vars": [
+                              {
+                                "MaroonIRVarRegular": {
+                                  "line": 30,
+                                  "name": "t",
+                                  "type": "Nested",
+                                  "init": "AB(U64(3), U64(4)), BOOL(true), Empty()"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 34,
+                                  "stmt": "{ DEBUG_EXPR(t); DEBUG_DUMP_STACK(); }"
+                                }
+                              },
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 40,
+                                  "stmt": "{ t.x = ab; DEBUG_EXPR(t); DEBUG_DUMP_STACK(); RETURN(); }"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "AB": {
+          "line": 2,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "a",
+                  "type": "U64"
+                },
+                {
+                  "name": "b",
+                  "type": "U64"
+                }
+              ]
+            }
+          }
+        },
+        "Empty": {
+          "line": 6,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": []
+            }
+          }
+        },
+        "Nested": {
+          "line": 7,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "x",
+                  "type": "AB"
+                },
+                {
+                  "name": "y",
+                  "type": "BOOL"
+                },
+                {
+                  "name": "z",
+                  "type": "Empty"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 60,
+        "maroon": "types",
+        "fiber": "global",
+        "golden_output": [
+          "ab={a:1,b:2}",
+          "<[ab:{a:1,b:2}]>",
+          "e={}",
+          "<[ab:{a:1,b:2},e:{}]>",
+          "t={x:{a:3,b:4},y:true,z:{}}",
+          "<[ab:{a:1,b:2},e:{},t:{x:{a:3,b:4},y:true,z:{}}]>",
+          "t={x:{a:1,b:2},y:true,z:{}}",
+          "<[ab:{a:1,b:2},e:{},t:{x:{a:1,b:2},y:true,z:{}}]>"
+        ]
+      }
+    }
+  ]
+}

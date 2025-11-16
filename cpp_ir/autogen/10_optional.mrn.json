@@ -1,0 +1,256 @@
+{
+  "src": "10_optional.mrn",
+  "maroon": {
+    "optional": {
+      "line": 1,
+      "fibers": {
+        "demo": {
+          "line": 2,
+          "functions": {
+            "main": {
+              "line": 3,
+              "args": [],
+              "body": {
+                "line": 3,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 4,
+                      "name": "a",
+                      "type": "OPTIONAL_U64",
+                      "init": "NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 5,
+                      "name": "b",
+                      "type": "OPTIONAL_U64",
+                      "init": "U64(1)"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 6,
+                      "name": "c",
+                      "type": "OPTIONAL_BOOL",
+                      "init": "NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 7,
+                      "name": "d",
+                      "type": "OPTIONAL_BOOL",
+                      "init": "BOOL(true)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 8,
+                      "stmt": "DEBUG_DUMP_VARS()"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 9,
+                      "stmt": "a = U64(2)"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 10,
+                      "stmt": "b = NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 11,
+                      "stmt": "c = BOOL(true)"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 12,
+                      "stmt": "d = NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 13,
+                      "stmt": "DEBUG_DUMP_VARS()"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 14,
+                      "stmt": "b = a"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 15,
+                      "stmt": "d = c"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 16,
+                      "stmt": "DEBUG_DUMP_VARS()"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 17,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 18,
+                            "name": "e",
+                            "type": "OPTIONAL_U64",
+                            "init": "NONE"
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 19,
+                            "stmt": "DEBUG_EXPR(e)"
+                          }
+                        },
+                        {
+                          "MaroonIRStmt": {
+                            "line": 20,
+                            "stmt": "e = a"
+                          }
+                        },
+                        {
+                          "MaroonIRStmt": {
+                            "line": 21,
+                            "stmt": "DEBUG_EXPR(e)"
+                          }
+                        },
+                        {
+                          "MaroonIRBlock": {
+                            "line": 22,
+                            "vars": [
+                              {
+                                "MaroonIRVarRegular": {
+                                  "line": 23,
+                                  "name": "f",
+                                  "type": "U64",
+                                  "init": "0"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 28,
+                                  "stmt": "{ DEBUG_EXPR(f); f = VALUE(a); DEBUG_EXPR(f); }"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "MaroonIRIf": {
+                      "line": 31,
+                      "cond": "EXISTS(d)",
+                      "yes": {
+                        "MaroonIRStmt": {
+                          "line": 31,
+                          "stmt": "DEBUG(\"D EXISTS\")"
+                        }
+                      },
+                      "no": {
+                        "MaroonIRStmt": {
+                          "line": 31,
+                          "stmt": "DEBUG(\"D IS NONE\")"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 32,
+                      "stmt": "d = NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRIf": {
+                      "line": 33,
+                      "cond": "EXISTS(d)",
+                      "yes": {
+                        "MaroonIRStmt": {
+                          "line": 33,
+                          "stmt": "DEBUG(\"D EXISTS\")"
+                        }
+                      },
+                      "no": {
+                        "MaroonIRStmt": {
+                          "line": 33,
+                          "stmt": "DEBUG(\"D IS NONE\")"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 34,
+                      "stmt": "RETURN()"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "OPTIONAL_BOOL": {
+          "line": 6,
+          "def": {
+            "MaroonIRTypeDefOptional": {
+              "type": "BOOL"
+            }
+          }
+        },
+        "OPTIONAL_U64": {
+          "line": 4,
+          "def": {
+            "MaroonIRTypeDefOptional": {
+              "type": "U64"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 52,
+        "maroon": "optional",
+        "fiber": "demo",
+        "golden_output": [
+          "[a:None,b:Some(1),c:None,d:Some(true)]",
+          "[a:Some(2),b:None,c:Some(true),d:None]",
+          "[a:Some(2),b:Some(2),c:Some(true),d:Some(true)]",
+          "e=None",
+          "e=Some(2)",
+          "f=0",
+          "f=2",
+          "D EXISTS",
+          "D IS NONE"
+        ]
+      }
+    }
+  ]
+}

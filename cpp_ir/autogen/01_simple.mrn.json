@@ -1,0 +1,51 @@
+{
+  "src": "01_simple.mrn",
+  "maroon": {
+    "two_steps": {
+      "line": 3,
+      "fibers": {
+        "global": {
+          "line": 4,
+          "functions": {
+            "main": {
+              "line": 5,
+              "args": [],
+              "body": {
+                "line": 5,
+                "vars": [],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 6,
+                      "stmt": "DEBUG(\"hello\")"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 10,
+                      "stmt": "{ DEBUG(\"world\"); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 18,
+        "maroon": "two_steps",
+        "fiber": "global",
+        "golden_output": [
+          "hello",
+          "world"
+        ]
+      }
+    }
+  ]
+}

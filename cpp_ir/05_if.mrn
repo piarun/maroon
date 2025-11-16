@@ -1,0 +1,48 @@
+MAROON(if_condition) {
+  FIBER(t1) {
+    FN(main) {
+      VAR(a, U64, 7);
+      IF(
+        a < U64(10),
+        STMT(DEBUG("A<10")),
+        STMT({
+          DEBUG("A>=10");
+          RETURN();  // Will not print "OK" if >= 10.
+        }));
+      STMT({
+        DEBUG("OK");
+        RETURN();
+      });
+    };
+  };
+  FIBER(t2) {
+    FN(main) {
+      VAR(a, U64, 17);
+      IF(
+        a < U64(10),
+        STMT(DEBUG("A<10")),
+        BLOCK {
+          STMT({
+            DEBUG("A>=10");
+            RETURN();  // Will not print the final "OK" if >= 10.
+          })
+        });
+      STMT({
+        DEBUG("OK");
+        RETURN();
+      });
+    };
+  };
+};
+
+// TODO(dkorolev): Pass an argument to the function and test properly.
+
+TEST_FIBER(
+  if_condition,
+  t1,
+  {"A<10","OK"});
+
+TEST_FIBER(
+  if_condition,
+  t2,
+  {"A>=10"});

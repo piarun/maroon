@@ -1,0 +1,163 @@
+// TODO(dkorolev): Should be able to have the `FIBER` name match the `MAROON` name. But not now.
+
+MAROON(call_smoke) {
+  FIBER(call) {
+    FN(main) {
+      STMT(DEBUG("begin"));
+      STMT({
+        CALL(inner, ());  // All `CALL()`-s are presumably async/await, and thus they must end the `STMT`. For now.
+      });
+      STMT({
+        DEBUG("end");
+        RETURN();
+      });
+    };
+    FN(inner) {
+      STMT({
+        DEBUG("inner");
+        RETURN();
+      });
+    };
+  };
+};
+
+MAROON(call_dump) {
+  FIBER(call) {
+    FN(main) {
+      VAR(a, U64, 1);
+      STMT({
+        DEBUG("begin");
+        DEBUG_DUMP_STACK();
+      });
+      STMT({
+        CALL(inner, ());  // All `CALL()`-s are presumably async/await, and thus they must end the `STMT`. For now.
+      });
+      STMT({
+        DEBUG("end");
+        DEBUG_DUMP_STACK();
+        RETURN();
+      });
+    };
+    FN(inner) {
+      VAR(b, U64, 1);
+      STMT({
+        DEBUG("inner");
+        DEBUG_DUMP_STACK();
+        RETURN();
+      });
+    };
+  };
+};
+
+MAROON(call_with_return) {
+  FIBER(call) {
+    FN(main) {
+      VAR(b, BOOL, false);
+      STMT(DEBUG_EXPR(b));
+      STMT({
+        CALL(b, yes, ());
+      });
+      STMT({
+        DEBUG_EXPR(b);
+        RETURN();
+      });
+    };
+    FN(yes, BOOL) {
+      STMT({
+        RETURN(BOOL(true));
+      });
+    };
+  };
+};
+
+MAROON(call_with_arg) {
+  FIBER(call) {
+    FN(main) {
+      VAR(x, U64, 10);
+      STMT(DEBUG_EXPR(x));
+      STMT(CALL(x, add_one, (x)));
+      STMT({
+        DEBUG_EXPR(x);
+        RETURN();
+      });
+    };
+    FN(add_one, U64) {
+      ARG(a, U64);
+      STMT({
+        DEBUG_EXPR(a);
+        RETURN(a + U64(1));
+      });
+    };
+  };
+};
+
+MAROON(call_with_two_args) {
+  FIBER(call) {
+    FN(main) {
+      VAR(x, U64, 10);
+      STMT(DEBUG_EXPR(x));
+      STMT(CALL(x, sum, (x, U64(32))));
+      STMT({
+        DEBUG_EXPR(x);
+        RETURN();
+      });
+    };
+    FN(sum, U64) {
+      ARG(a, U64);
+      ARG(b, U64);
+      STMT({
+        DEBUG_EXPR(a);
+        DEBUG_EXPR(b);
+        RETURN(a + b);
+      });
+    };
+  };
+};
+
+MAROON(call_ok_to_ignore_result) {
+  FIBER(call) {
+    FN(main) {
+      STMT({
+        CALL(foo, ());
+      });
+      STMT(RETURN());
+    };
+    FN(foo, U64) {
+      STMT(RETURN(U64(1)));
+    };
+  };
+};
+
+// TODO(dkorolev): Function return types (just U64 for now), and `RETURN()`-ing values.
+// TODO(dkorolev): Add dumping the call stack much as we have dumping the vars.
+// TODO(dkorolev): Arbitrary function return types ... once we have types for real.
+
+TEST_FIBER(
+  call_smoke,
+  call,
+  {"begin", "inner", "end"});
+
+TEST_FIBER(
+  call_dump,
+  call,
+  {"begin", "<[a:1]>", "inner", "<[a:1],inner@[b:1]>", "end", "<[a:1]>"});
+
+TEST_FIBER(
+  call_with_return,
+  call,
+  {"b=false", "b=true"});
+
+TEST_FIBER(
+  call_with_arg,
+  call,
+  {"x=10","a=10","x=11"});
+
+TEST_FIBER(
+  call_with_two_args,
+  call,
+  {"x=10","a=10","b=32","x=42"});
+
+TEST_FIBER(
+  call_ok_to_ignore_result,
+  call,
+  {});

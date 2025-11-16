@@ -1,0 +1,21 @@
+name: rust/manual_test.sh
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  rust_manual_test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: git clone
+        uses: actions/checkout@v4
+
+      - name: cpp_ir/rust/manual_test.sh
+        run: cpp_ir/rust/manual_test.sh

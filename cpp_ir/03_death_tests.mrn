@@ -1,0 +1,11 @@
+MAROON(lack_of_return) {
+  FIBER(global) {
+    FN(main) {
+      STMT({
+        DEBUG("hang on tight ...");
+      });
+    };
+  };
+};
+
+TEST_FIBER_SHOULD_THROW(lack_of_return, global, "Need `RETURN()` at least at the last `STMT()` of the `FN()`.");

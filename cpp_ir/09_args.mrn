@@ -1,0 +1,98 @@
+MAROON(args) {
+  TYPE(XY) {
+    FIELD(x, U64);
+    FIELD(y, U64);
+  };
+
+  FIBER(swap) {
+    FN(main) {
+      VAR(a, XY, (U64(1), U64(2)));
+      STMT({
+        DEBUG_EXPR(a);
+        CALL(a, swap, (a));  // No references yet, so `a = swap(a);` it is; some `inplace_swap(&mut a)` is the future.
+      });
+      STMT({
+        DEBUG_EXPR(a);
+        RETURN();
+      });
+    };
+    FN(swap, XY) {
+      ARG(a, XY);
+      STMT(RETURN(XY(a.y, a.x)));
+    };
+  };
+
+  FIBER(first) {
+    FN(main) {
+      VAR(p, XY, (U64(1), U64(2)));
+      VAR(q, XY, (U64(3), U64(4)));
+      STMT({
+        DEBUG_EXPR(p);
+        DEBUG_EXPR(q);
+      });
+      BLOCK {
+        VAR(r, XY, (U64(0), U64(0)));
+        STMT(CALL(r, first, (p, q)));
+        STMT({
+          DEBUG_EXPR(r);
+          RETURN();
+        });
+      };
+    };
+    FN(first, XY) {
+      ARG(a, XY);
+      ARG(b, XY);
+      STMT(RETURN(XY(a.x, b.x)));
+    };
+  };
+
+  FIBER(second) {
+    FN(main) {
+      VAR(m, XY, (U64(1), U64(2)));
+      VAR(n, XY, (U64(3), U64(4)));
+      STMT({
+        DEBUG_EXPR(m);
+        DEBUG_EXPR(n);
+      });
+      BLOCK {
+        VAR(r, XY, (U64(0), U64(0)));
+        STMT(CALL(r, second, (m, n)));
+        STMT({
+          DEBUG_EXPR(r);
+          RETURN();
+        });
+      };
+    };
+    FN(second, XY) {
+      ARG(a, XY);
+      ARG(b, XY);
+      STMT(RETURN(XY(a.y, b.y)));
+    };
+  };
+};
+
+TEST_FIBER(
+  args,
+  swap,
+  {
+    "a={x:1,y:2}",
+    "a={x:2,y:1}",
+  });
+
+TEST_FIBER(
+  args,
+  first,
+  {
+    "p={x:1,y:2}",
+    "q={x:3,y:4}",
+    "r={x:1,y:3}",
+  });
+
+TEST_FIBER(
+  args,
+  second,
+  {
+    "m={x:1,y:2}",
+    "n={x:3,y:4}",
+    "r={x:2,y:4}",
+  });

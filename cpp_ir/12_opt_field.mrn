@@ -1,0 +1,20 @@
+MAROON(optional_field) {
+  TYPE(Inner) {
+    FIELD(req, BOOL);
+    FIELD(opt, OPTIONAL<BOOL>);
+  };
+  FIBER(demo) {
+    FN(main) {
+      VAR(x, Inner, (BOOL(true), NONE));
+      VAR(y, Inner, (BOOL(false), BOOL(true)));
+      STMT(DEBUG_DUMP_VARS());
+      STMT(RETURN());
+    };
+  };
+};
+
+TEST_FIBER(
+  optional_field,
+  demo, {
+    "[x:{req:true,opt:None},y:{req:false,opt:Some(true)}]",
+  });

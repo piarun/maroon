@@ -1,0 +1,138 @@
+{
+  "src": "05_if.mrn",
+  "maroon": {
+    "if_condition": {
+      "line": 1,
+      "fibers": {
+        "t1": {
+          "line": 2,
+          "functions": {
+            "main": {
+              "line": 3,
+              "args": [],
+              "body": {
+                "line": 3,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 4,
+                      "name": "a",
+                      "type": "U64",
+                      "init": "7"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRIf": {
+                      "line": 11,
+                      "cond": "a < U64(10)",
+                      "yes": {
+                        "MaroonIRStmt": {
+                          "line": 7,
+                          "stmt": "DEBUG(\"A<10\")"
+                        }
+                      },
+                      "no": {
+                        "MaroonIRStmt": {
+                          "line": 11,
+                          "stmt": "{ DEBUG(\"A>=10\"); RETURN(); }"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 15,
+                      "stmt": "{ DEBUG(\"OK\"); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "t2": {
+          "line": 18,
+          "functions": {
+            "main": {
+              "line": 19,
+              "args": [],
+              "body": {
+                "line": 19,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 20,
+                      "name": "a",
+                      "type": "U64",
+                      "init": "17"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRIf": {
+                      "line": 29,
+                      "cond": "a < U64(10)",
+                      "yes": {
+                        "MaroonIRStmt": {
+                          "line": 23,
+                          "stmt": "DEBUG(\"A<10\")"
+                        }
+                      },
+                      "no": {
+                        "MaroonIRBlock": {
+                          "line": 24,
+                          "vars": [],
+                          "code": [
+                            {
+                              "MaroonIRStmt": {
+                                "line": 28,
+                                "stmt": "{ DEBUG(\"A>=10\"); RETURN(); }"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 33,
+                      "stmt": "{ DEBUG(\"OK\"); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 43,
+        "maroon": "if_condition",
+        "fiber": "t1",
+        "golden_output": [
+          "A<10",
+          "OK"
+        ]
+      }
+    },
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 48,
+        "maroon": "if_condition",
+        "fiber": "t2",
+        "golden_output": [
+          "A>=10"
+        ]
+      }
+    }
+  ]
+}

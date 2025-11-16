@@ -1,0 +1,93 @@
+{
+  "src": "12_opt_field.mrn",
+  "maroon": {
+    "optional_field": {
+      "line": 1,
+      "fibers": {
+        "demo": {
+          "line": 6,
+          "functions": {
+            "main": {
+              "line": 7,
+              "args": [],
+              "body": {
+                "line": 7,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 8,
+                      "name": "x",
+                      "type": "Inner",
+                      "init": "BOOL(true), NONE"
+                    }
+                  },
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 9,
+                      "name": "y",
+                      "type": "Inner",
+                      "init": "BOOL(false), BOOL(true)"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 10,
+                      "stmt": "DEBUG_DUMP_VARS()"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 11,
+                      "stmt": "RETURN()"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {
+        "Inner": {
+          "line": 2,
+          "def": {
+            "MaroonIRTypeDefStruct": {
+              "fields": [
+                {
+                  "name": "req",
+                  "type": "BOOL"
+                },
+                {
+                  "name": "opt",
+                  "type": "OPTIONAL_BOOL"
+                }
+              ]
+            }
+          }
+        },
+        "OPTIONAL_BOOL": {
+          "line": 4,
+          "def": {
+            "MaroonIRTypeDefOptional": {
+              "type": "BOOL"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 20,
+        "maroon": "optional_field",
+        "fiber": "demo",
+        "golden_output": [
+          "[x:{req:true,opt:None},y:{req:false,opt:Some(true)}]"
+        ]
+      }
+    }
+  ]
+}

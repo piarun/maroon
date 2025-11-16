@@ -1,0 +1,360 @@
+{
+  "src": "04_vars.mrn",
+  "maroon": {
+    "variable": {
+      "line": 1,
+      "fibers": {
+        "_00_main_empty": {
+          "line": 72,
+          "functions": {
+            "main": {
+              "line": 73,
+              "args": [],
+              "body": {
+                "line": 73,
+                "vars": [],
+                "code": []
+              }
+            }
+          }
+        },
+        "_01_main_with_empty_block": {
+          "line": 76,
+          "functions": {
+            "main": {
+              "line": 77,
+              "args": [],
+              "body": {
+                "line": 77,
+                "vars": [],
+                "code": [
+                  {
+                    "MaroonIRBlock": {
+                      "line": 78,
+                      "vars": [],
+                      "code": []
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "_02_main_with_two_empty_blocks": {
+          "line": 81,
+          "functions": {
+            "main": {
+              "line": 82,
+              "args": [],
+              "body": {
+                "line": 82,
+                "vars": [],
+                "code": [
+                  {
+                    "MaroonIRBlock": {
+                      "line": 83,
+                      "vars": [],
+                      "code": [
+                        {
+                          "MaroonIRBlock": {
+                            "line": 84,
+                            "vars": [],
+                            "code": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "_03_nested_blocks": {
+          "line": 88,
+          "functions": {
+            "name": {
+              "line": 89,
+              "args": [],
+              "body": {
+                "line": 89,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 90,
+                      "name": "a",
+                      "type": "U64",
+                      "init": "1"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 93,
+                      "stmt": "{ DEBUG_DUMP_VARS(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 94,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 95,
+                            "name": "b",
+                            "type": "U64",
+                            "init": "2"
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 98,
+                            "stmt": "{ DEBUG_DUMP_VARS(); }"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 102,
+                      "stmt": "{ DEBUG_DUMP_VARS(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "test1": {
+          "line": 2,
+          "functions": {
+            "main": {
+              "line": 3,
+              "args": [],
+              "body": {
+                "line": 3,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 4,
+                      "name": "a",
+                      "type": "U64",
+                      "init": "100"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 10,
+                      "stmt": "{ DEBUG_EXPR(a); DEBUG_DUMP_VARS(); a = a + U64(1); DEBUG_DUMP_VARS(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 14,
+                      "stmt": "{ DEBUG_EXPR(a); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "test2": {
+          "line": 17,
+          "functions": {
+            "main": {
+              "line": 18,
+              "args": [],
+              "body": {
+                "line": 18,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 19,
+                      "name": "x",
+                      "type": "U64",
+                      "init": "1"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 23,
+                      "stmt": "{ x *= U64(10); DEBUG_DUMP_VARS(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRBlock": {
+                      "line": 24,
+                      "vars": [
+                        {
+                          "MaroonIRVarRegular": {
+                            "line": 25,
+                            "name": "y",
+                            "type": "U64",
+                            "init": "2"
+                          }
+                        }
+                      ],
+                      "code": [
+                        {
+                          "MaroonIRStmt": {
+                            "line": 30,
+                            "stmt": "{ x *= U64(10); y *= U64(10); DEBUG_DUMP_VARS(); }"
+                          }
+                        },
+                        {
+                          "MaroonIRBlock": {
+                            "line": 31,
+                            "vars": [
+                              {
+                                "MaroonIRVarRegular": {
+                                  "line": 32,
+                                  "name": "z",
+                                  "type": "U64",
+                                  "init": "3"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 38,
+                                  "stmt": "{ x *= U64(10); y *= U64(10); z *= U64(10); DEBUG_DUMP_VARS(); }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "MaroonIRBlock": {
+                            "line": 40,
+                            "vars": [
+                              {
+                                "MaroonIRVarRegular": {
+                                  "line": 41,
+                                  "name": "t",
+                                  "type": "U64",
+                                  "init": "4"
+                                }
+                              }
+                            ],
+                            "code": [
+                              {
+                                "MaroonIRStmt": {
+                                  "line": 48,
+                                  "stmt": "{ x *= U64(10); y *= U64(10); t *= U64(10); DEBUG_DUMP_VARS(); }"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "MaroonIRStmt": {
+                            "line": 52,
+                            "stmt": "{ RETURN(); }"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "test3": {
+          "line": 56,
+          "functions": {
+            "main": {
+              "line": 57,
+              "args": [],
+              "body": {
+                "line": 57,
+                "vars": [
+                  {
+                    "MaroonIRVarRegular": {
+                      "line": 58,
+                      "name": "b",
+                      "type": "BOOL",
+                      "init": "false"
+                    }
+                  }
+                ],
+                "code": [
+                  {
+                    "MaroonIRStmt": {
+                      "line": 62,
+                      "stmt": "{ DEBUG_EXPR(b); DEBUG_DUMP_VARS(); }"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 63,
+                      "stmt": "b = true"
+                    }
+                  },
+                  {
+                    "MaroonIRStmt": {
+                      "line": 68,
+                      "stmt": "{ DEBUG_EXPR(b); DEBUG_DUMP_VARS(); RETURN(); }"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "types": {}
+    }
+  },
+  "tests": [
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 115,
+        "maroon": "variable",
+        "fiber": "test1",
+        "golden_output": [
+          "a=100",
+          "[a:100]",
+          "[a:101]",
+          "a=101"
+        ]
+      }
+    },
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 125,
+        "maroon": "variable",
+        "fiber": "test2",
+        "golden_output": [
+          "[x:10]",
+          "[x:100,y:20]",
+          "[x:1000,y:200,z:30]",
+          "[x:10000,y:2000,t:40]"
+        ]
+      }
+    },
+    {
+      "MaroonTestCaseRunFiber": {
+        "line": 135,
+        "maroon": "variable",
+        "fiber": "test3",
+        "golden_output": [
+          "b=false",
+          "[b:false]",
+          "b=true",
+          "[b:true]"
+        ]
+      }
+    }
+  ]
+}

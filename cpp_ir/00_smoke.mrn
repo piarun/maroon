@@ -1,0 +1,19 @@
+// This is the most trivial smoke test.
+
+MAROON(code) {
+  FIBER(global) {
+    FN(main) {
+      STMT({
+        // This is what the test checks for.
+        DEBUG("hello");
+        // Essential to terminate the fiber via `RETURN()`, see the next tests for invalid programs.
+        RETURN();
+      });
+    };
+  };
+};
+
+TEST_FIBER(
+  code,
+  global,
+  {"hello"});
