@@ -54,6 +54,9 @@ pub struct GlobalHeap {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MainHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct OrderBookHeap {
   pub asksByPrice: std::collections::HashMap<u64, Vec<Order>>,
   pub asksPrices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
@@ -66,10 +69,11 @@ pub struct OrderBookHeap {
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
+  pub main: MainHeap,
   pub orderBook: OrderBookHeap,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
   Completed,
   Idle,
@@ -119,7 +123,7 @@ pub enum Value {
   U64(u64),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StackEntry {
   State(State),
   // Option<usize> - local index offset back on stack
@@ -130,7 +134,7 @@ pub enum StackEntry {
   FrameAssign(Vec<(usize, Value)>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),

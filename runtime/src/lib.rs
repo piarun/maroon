@@ -7,3 +7,4 @@ mod generated_test;
 #[cfg(test)]
 mod ir_test;
 pub mod runtime;
+mod trace;
