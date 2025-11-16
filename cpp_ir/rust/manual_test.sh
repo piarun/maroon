@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 for i in $(cd "$SCRIPT_DIR/../autogen"; ls *.json) ; do
   echo "$i"
-  "$SCRIPT_DIR/target/debug/maroon_ir_schema_checker" --in="$SCRIPT_DIR/../autogen/$i" --out="$SCRIPT_DIR/../autogen/$i.rust.tmp"
+  (cd "$SCRIPT_DIR"; cargo run -- --in="$SCRIPT_DIR/../autogen/$i" --out="$SCRIPT_DIR/../autogen/$i.rust.tmp")
   "$SCRIPT_DIR/../autogen/diff_ir.bin" --a="$SCRIPT_DIR/../autogen/$i" --b="$SCRIPT_DIR/../autogen/$i.rust.tmp"
   echo "$i : OK"
 done
