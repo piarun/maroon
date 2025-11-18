@@ -15,9 +15,17 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::RustBlock { binds: vec!["counter".to_string()], code: "counter + 1".to_string(), next: StepId::new("compare") },
+                ),
+                (
+                  StepId::new("compare"),
+                  Step::If { cond: Expr::Equal(Box::new(Expr::Var("counter".to_string())), Box::new(Expr::UInt64(2))), then_: StepId::new("return"), else_: StepId::new("entry") },
+                ),
+                (
+                  StepId::new("return"),
                   Step::ReturnVoid,
                 ),
               ]},

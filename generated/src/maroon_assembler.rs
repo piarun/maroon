@@ -113,7 +113,9 @@ pub enum State {
   OrderBookBestBidEntry,
   OrderBookCancelEntry,
   OrderBookTopNDepthEntry,
+  RootMainCompare,
   RootMainEntry,
+  RootMainReturn,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,7 +192,9 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookBestBidEntry => 1,
     State::OrderBookCancelEntry => 2,
     State::OrderBookTopNDepthEntry => 2,
-    State::RootMainEntry => 0,
+    State::RootMainEntry => 1,
+    State::RootMainCompare => 1,
+    State::RootMainReturn => 1,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -746,7 +750,25 @@ pub fn global_step(
         StepResult::Return(Value::BookSnapshot(out))
       }
     }
-    State::RootMainEntry => StepResult::ReturnVoid,
+    State::RootMainEntry => {
+      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { counter + 1 };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
+          StackEntry::State(State::RootMainCompare),
+        ])
+      }
+    }
+    State::RootMainCompare => {
+      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      if counter == 2u64 {
+        StepResult::GoTo(State::RootMainReturn)
+      } else {
+        StepResult::GoTo(State::RootMainEntry)
+      }
+    }
+    State::RootMainReturn => StepResult::ReturnVoid,
   }
 }
 
@@ -1255,6 +1277,7 @@ fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
 pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::RootMainEntry));
   let heap = Heap::default();
   (stack, heap)

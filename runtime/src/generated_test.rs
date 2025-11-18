@@ -10,7 +10,30 @@ fn start_root_fiber() {
   let mut some_t = Fiber::new(FiberType::new("root"), 1);
   some_t.run();
 
-  assert_eq!(vec![TraceEvent { state: State::RootMainEntry, result: StepResult::ReturnVoid }], some_t.trace_sink);
+  assert_eq!(
+    vec![
+      TraceEvent {
+        state: State::RootMainEntry,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::State(State::RootMainCompare)
+        ])
+      },
+      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainEntry) },
+      TraceEvent {
+        state: State::RootMainEntry,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
+          StackEntry::State(State::RootMainCompare)
+        ])
+      },
+      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainReturn) },
+      TraceEvent { state: State::RootMainReturn, result: StepResult::ReturnVoid },
+    ],
+    some_t.trace_sink
+  );
+
+  // [TraceEvent { state: RootMainEntry, result: Next([FrameAssign([(0, U64(1))]), State(RootMainCompare)]) }, TraceEvent { state: RootMainCompare, result: GoTo(RootMainEntry) }, TraceEvent { state: RootMainEntry, result: Next([FrameAssign([(0, U64(2))]), State(RootMainCompare)]) }, TraceEvent { state: RootMainCompare, result: GoTo(RootMainReturn) }, TraceEvent { state: RootMainReturn, result: ReturnVoid }]
 }
 
 #[test]
