@@ -80,6 +80,7 @@ pub enum State {
   ApplicationAsyncFooAwait,
   ApplicationAsyncFooEntry,
   ApplicationAsyncFooReturn,
+  ApplicationMainEntry,
   ApplicationSleepAndPowAwait,
   ApplicationSleepAndPowCalc,
   ApplicationSleepAndPowEntry,
@@ -102,6 +103,7 @@ pub enum State {
   GlobalFactorialReturn,
   GlobalFactorialReturn1,
   GlobalFactorialSubtract,
+  GlobalMainEntry,
   GlobalMultEntry,
   GlobalSubEntry,
   GlobalSubAddEntry,
@@ -112,6 +114,7 @@ pub enum State {
   OrderBookBestAskEntry,
   OrderBookBestBidEntry,
   OrderBookCancelEntry,
+  OrderBookMainEntry,
   OrderBookTopNDepthEntry,
   RootMainCompare,
   RootMainEntry,
@@ -159,6 +162,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::ApplicationAsyncFooEntry => 3,
     State::ApplicationAsyncFooAwait => 3,
     State::ApplicationAsyncFooReturn => 3,
+    State::ApplicationMainEntry => 0,
     State::ApplicationSleepAndPowEntry => 3,
     State::ApplicationSleepAndPowAwait => 3,
     State::ApplicationSleepAndPowCalc => 3,
@@ -181,6 +185,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalFactorialReturn => 4,
     State::GlobalFactorialReturn1 => 4,
     State::GlobalFactorialSubtract => 4,
+    State::GlobalMainEntry => 0,
     State::GlobalMultEntry => 3,
     State::GlobalSubEntry => 3,
     State::GlobalSubAddEntry => 5,
@@ -191,6 +196,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookBestAskEntry => 1,
     State::OrderBookBestBidEntry => 1,
     State::OrderBookCancelEntry => 2,
+    State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 1,
     State::RootMainCompare => 1,
@@ -227,6 +233,7 @@ pub fn global_step(
       let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::U64(sum))
     }
+    State::ApplicationMainEntry => StepResult::ReturnVoid,
     State::ApplicationSleepAndPowEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -423,6 +430,7 @@ pub fn global_step(
         StackEntry::State(State::GlobalSubEntry),
       ])
     }
+    State::GlobalMainEntry => StepResult::ReturnVoid,
     State::GlobalMultEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -690,6 +698,7 @@ pub fn global_step(
         StepResult::Return(Value::U64(out))
       }
     }
+    State::OrderBookMainEntry => StepResult::ReturnVoid,
     State::OrderBookTopNDepthEntry => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let result: BookSnapshot =
@@ -809,6 +818,28 @@ fn application_prepare_asyncFoo_from_values(args: Vec<Value>) -> Vec<StackEntry>
 
 fn application_result_asyncFoo_value(stack: &[StackEntry]) -> Value {
   Value::U64(application_result_asyncFoo(stack))
+}
+
+pub fn application_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::State(State::ApplicationMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn application_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn application_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = application_prepare_main();
+  stack
+}
+
+fn application_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(application_result_main(stack))
 }
 
 pub fn application_prepare_sleepAndPow(
@@ -981,6 +1012,28 @@ fn global_prepare_factorial_from_values(args: Vec<Value>) -> Vec<StackEntry> {
 
 fn global_result_factorial_value(stack: &[StackEntry]) -> Value {
   Value::U64(global_result_factorial(stack))
+}
+
+pub fn global_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::State(State::GlobalMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn global_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn global_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = global_prepare_main();
+  stack
+}
+
+fn global_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(global_result_main(stack))
 }
 
 pub fn global_prepare_mult(
@@ -1245,6 +1298,28 @@ fn orderBook_result_cancel_value(stack: &[StackEntry]) -> Value {
   Value::U64(orderBook_result_cancel(stack))
 }
 
+pub fn orderBook_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::State(State::OrderBookMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn orderBook_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn orderBook_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = orderBook_prepare_main();
+  stack
+}
+
+fn orderBook_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(orderBook_result_main(stack))
+}
+
 pub fn orderBook_prepare_topNDepth(n: u64) -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Value("ret".to_string(), Value::BookSnapshot(BookSnapshot::default())));
@@ -1300,11 +1375,13 @@ fn root_result_main_value(stack: &[StackEntry]) -> Value {
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
     "application.async_foo" => application_prepare_asyncFoo_from_values,
+    "application.main" => application_prepare_main_from_values,
     "application.sleep_and_pow" => application_prepare_sleepAndPow_from_values,
     "global.add" => global_prepare_add_from_values,
     "global.binary_search" => global_prepare_binarySearch_from_values,
     "global.div" => global_prepare_div_from_values,
     "global.factorial" => global_prepare_factorial_from_values,
+    "global.main" => global_prepare_main_from_values,
     "global.mult" => global_prepare_mult_from_values,
     "global.sub" => global_prepare_sub_from_values,
     "global.subAdd" => global_prepare_subAdd_from_values,
@@ -1313,6 +1390,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.best_ask" => orderBook_prepare_bestAsk_from_values,
     "order_book.best_bid" => orderBook_prepare_bestBid_from_values,
     "order_book.cancel" => orderBook_prepare_cancel_from_values,
+    "order_book.main" => orderBook_prepare_main_from_values,
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
@@ -1322,11 +1400,13 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 pub fn get_result_fn(key: &str) -> ResultFn {
   match key {
     "application.async_foo" => application_result_asyncFoo_value,
+    "application.main" => application_result_main_value,
     "application.sleep_and_pow" => application_result_sleepAndPow_value,
     "global.add" => global_result_add_value,
     "global.binary_search" => global_result_binarySearch_value,
     "global.div" => global_result_div_value,
     "global.factorial" => global_result_factorial_value,
+    "global.main" => global_result_main_value,
     "global.mult" => global_result_mult_value,
     "global.sub" => global_result_sub_value,
     "global.subAdd" => global_result_subAdd_value,
@@ -1335,6 +1415,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.best_ask" => orderBook_result_bestAsk_value,
     "order_book.best_bid" => orderBook_result_bestBid_value,
     "order_book.cancel" => orderBook_result_cancel_value,
+    "order_book.main" => orderBook_result_main_value,
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
     _ => panic!("shouldnt be here"),

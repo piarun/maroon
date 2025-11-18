@@ -41,6 +41,16 @@ pub fn sample_ir() -> IR {
           in_messages: vec![],
           funcs: HashMap::from([
             (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
+            (
               "add".to_string(),
               Func {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
@@ -326,6 +336,16 @@ out
           // (StepId::new("await_in_message"), Step::Await(())),
           funcs: HashMap::from([
             (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
+            (
               "async_foo".to_string(),
               Func {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
@@ -419,6 +439,16 @@ out
           ]),
           in_messages: vec![],
           funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
             (
               "add_buy".to_string(),
               Func {

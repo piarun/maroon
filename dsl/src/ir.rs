@@ -157,7 +157,7 @@ pub struct FuncRef {
   pub func: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
   UInt64,
   String,
@@ -174,7 +174,7 @@ pub enum Type {
   Custom(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
   pub name: String,
   pub ty: Type,
@@ -189,6 +189,7 @@ impl IR {
       if fiber.0 == &FiberType::new("root") {
         has_root_fiber = true
       }
+      let mut has_main_function = false;
       for func in fiber.1.funcs.iter() {
         let mut has_entry = false; // each function should start with 'entry' stepId
         for step in func.1.steps.iter() {
@@ -197,9 +198,19 @@ impl IR {
             break;
           }
         }
+        if *func.0 == "main".to_string() {
+          has_main_function = true;
+
+          if func.1.out != Type::Void {
+            explanation.push_str(&format!("{} main function can only return void", fiber.0));
+          }
+        }
         if !has_entry {
           explanation.push_str(&format!("{}.{} doesnt have step 'entry'\n", fiber.0, func.0));
         }
+      }
+      if !has_main_function {
+        explanation.push_str(&format!("{} doesnt have 'main' function\n", fiber.0));
       }
     }
 
