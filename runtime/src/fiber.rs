@@ -81,6 +81,24 @@ impl FutureId {
 }
 
 impl Fiber {
+  /// creates a Fiber able to run from main function
+  pub fn new(
+    f_type: FiberType,
+    unique_id: u64,
+  ) -> Fiber {
+    let f_name = format!("{}.{}", f_type, "main");
+    let f = get_prepare_fn(f_name.as_str());
+
+    Fiber {
+      f_type,
+      unique_id,
+      stack: f(vec![]),
+      heap: Heap::default(),
+      function_key: f_name,
+      context: RunContext::default(),
+      trace_sink: vec![],
+    }
+  }
 
   // Create an empty fiber with a default heap and no loaded task.
   /// TODO: remove it as it creates unusable fiber in a new paradigm

@@ -6,6 +6,14 @@ use dsl::ir::FiberType;
 use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEntry, State, StepResult, Trade, Value};
 
 #[test]
+fn start_root_fiber() {
+  let mut some_t = Fiber::new(FiberType::new("root"), 1);
+  some_t.run();
+
+  assert_eq!(vec![TraceEvent { state: State::RootMainEntry, result: StepResult::ReturnVoid }], some_t.trace_sink);
+}
+
+#[test]
 fn add_function() {
   let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
   some_t.load_task("add", vec![Value::U64(4), Value::U64(8)], None);
