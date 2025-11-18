@@ -4,7 +4,7 @@ Fiber is a single execution flow entity. We can think about it as an Actor that 
 Fibers are run logically independently and concurrently. However the whole engine is single-threaded, so in reality there will be no parallel work(at least now)
 
 ## features/statements
-- there is one root 'main' fiber that is started automatically by runtime
+- there is one root fiber(named root) that is started automatically by runtime
 - fibers have internal states
     - heap, stack
     - internal states can't be accessed directly by other fibers, only through async messages
