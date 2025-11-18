@@ -81,8 +81,10 @@ impl FutureId {
 }
 
 impl Fiber {
+
   // Create an empty fiber with a default heap and no loaded task.
-  pub fn new(
+  /// TODO: remove it as it creates unusable fiber in a new paradigm
+  pub fn new_empty(
     f_type: FiberType,
     unique_id: u64,
   ) -> Fiber {
@@ -97,6 +99,7 @@ impl Fiber {
     }
   }
 
+  /// TODO: remove it as it creates unusable fiber in a new paradigm
   pub fn new_with_heap(
     f_type: FiberType,
     heap: Heap,

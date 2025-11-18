@@ -7,7 +7,7 @@ use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEn
 
 #[test]
 fn add_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"), 1);
+  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
   some_t.load_task("add", vec![Value::U64(4), Value::U64(8)], None);
   let result = some_t.run();
 
@@ -16,7 +16,7 @@ fn add_function() {
 
 #[test]
 fn sub_add_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"), 1);
+  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
   some_t.load_task("subAdd", vec![Value::U64(6), Value::U64(5), Value::U64(4)], None);
   let result = some_t.run();
 
@@ -25,7 +25,7 @@ fn sub_add_function() {
 
 #[test]
 fn factorial_function() {
-  let mut some_t = Fiber::new(FiberType::new("global"), 1);
+  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
   some_t.load_task("factorial", vec![Value::U64(3)], None);
   let result = some_t.run();
 

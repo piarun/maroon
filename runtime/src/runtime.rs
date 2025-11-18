@@ -209,7 +209,7 @@ limiter:
     *limit -= 1;
     let id = self.next_fiber_id;
     self.next_fiber_id += 1;
-    return Some(Fiber::new(f_type.clone(), id));
+    return Some(Fiber::new_empty(f_type.clone(), id));
   }
 
   pub fn has_available_fiber(
