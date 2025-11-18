@@ -54,9 +54,6 @@ pub struct GlobalHeap {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct MainHeap {}
-
-#[derive(Clone, Debug, Default)]
 pub struct OrderBookHeap {
   pub asksByPrice: std::collections::HashMap<u64, Vec<Order>>,
   pub asksPrices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
@@ -66,11 +63,14 @@ pub struct OrderBookHeap {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct RootHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
-  pub main: MainHeap,
   pub orderBook: OrderBookHeap,
+  pub root: RootHeap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,6 +113,7 @@ pub enum State {
   OrderBookBestBidEntry,
   OrderBookCancelEntry,
   OrderBookTopNDepthEntry,
+  RootMainEntry,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +122,7 @@ pub enum Value {
   BookSnapshot(BookSnapshot),
   OptionU64(Option<u64>),
   U64(u64),
+  Unit(()),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,6 +190,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookBestBidEntry => 1,
     State::OrderBookCancelEntry => 2,
     State::OrderBookTopNDepthEntry => 2,
+    State::RootMainEntry => 0,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -743,6 +746,7 @@ pub fn global_step(
         StepResult::Return(Value::BookSnapshot(out))
       }
     }
+    State::RootMainEntry => StepResult::ReturnVoid,
   }
 }
 
@@ -1248,6 +1252,28 @@ fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
   Value::BookSnapshot(orderBook_result_topNDepth(stack))
 }
 
+pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::State(State::RootMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn root_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn root_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = root_prepare_main();
+  stack
+}
+
+fn root_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(root_result_main(stack))
+}
+
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
     "application.async_foo" => application_prepare_asyncFoo_from_values,
@@ -1265,6 +1291,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.best_bid" => orderBook_prepare_bestBid_from_values,
     "order_book.cancel" => orderBook_prepare_cancel_from_values,
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
+    "root.main" => root_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
   }
 }
@@ -1286,6 +1313,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.best_bid" => orderBook_result_bestBid_value,
     "order_book.cancel" => orderBook_result_cancel_value,
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
+    "root.main" => root_result_main_value,
     _ => panic!("shouldnt be here"),
   }
 }

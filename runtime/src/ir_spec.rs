@@ -7,12 +7,22 @@ pub fn sample_ir() -> IR {
   IR {
     fibers: HashMap::from([
       (
-        FiberType::new("main"),
+        FiberType::new("root"),
         Fiber {
           fibers_limit: 0,
           heap: HashMap::new(),
           in_messages: vec![],
-          funcs: HashMap::from([]),
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{in_vars: vec![],out: Type::Void, locals: vec![], entry: StepId::new("entry"),steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
         }
       ),
       (
