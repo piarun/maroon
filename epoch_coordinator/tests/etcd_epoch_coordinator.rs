@@ -5,7 +5,7 @@ use epoch_coordinator::etcd::{self, MAROON_PREFIX};
 use epoch_coordinator::{
   epoch::Epoch,
   etcd::EtcdEpochCoordinator,
-  interface::{create_interface_pair, EpochRequest, EpochUpdates},
+  interface::{EpochRequest, EpochUpdates, create_interface_pair},
 };
 use etcd_client::{Client, Compare, CompareOp, DeleteOptions, Error, Txn, TxnOp, WatchOptions, WatchResponse};
 use libp2p::PeerId;

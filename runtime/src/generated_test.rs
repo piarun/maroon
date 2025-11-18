@@ -32,10 +32,7 @@ fn factorial_function() {
   assert_eq!(RunResult::Done(Value::U64(6)), result);
   assert_eq!(
     vec![
-      TraceEvent {
-        state: State::GlobalFactorialEntry,
-        result: StepResult::GoTo(State::GlobalFactorialSubtract),
-      },
+      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialSubtract) },
       TraceEvent {
         state: State::GlobalFactorialSubtract,
         result: StepResult::Next(vec![
@@ -60,10 +57,7 @@ fn factorial_function() {
           StackEntry::State(State::GlobalFactorialEntry),
         ]),
       },
-      TraceEvent {
-        state: State::GlobalFactorialEntry,
-        result: StepResult::GoTo(State::GlobalFactorialSubtract),
-      },
+      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialSubtract) },
       TraceEvent {
         state: State::GlobalFactorialSubtract,
         result: StepResult::Next(vec![
@@ -88,10 +82,7 @@ fn factorial_function() {
           StackEntry::State(State::GlobalFactorialEntry),
         ]),
       },
-      TraceEvent {
-        state: State::GlobalFactorialEntry,
-        result: StepResult::GoTo(State::GlobalFactorialReturn1),
-      },
+      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialReturn1) },
       TraceEvent { state: State::GlobalFactorialReturn1, result: StepResult::Return(Value::U64(1)) },
       TraceEvent {
         state: State::GlobalFactorialMultiply,
