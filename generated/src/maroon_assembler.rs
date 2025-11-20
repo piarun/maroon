@@ -119,6 +119,7 @@ pub enum State {
   RootMainCompare,
   RootMainEntry,
   RootMainReturn,
+  RootMainStartWork,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,6 +202,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::RootMainEntry => 1,
     State::RootMainCompare => 1,
     State::RootMainReturn => 1,
+    State::RootMainStartWork => 1,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -762,10 +764,10 @@ pub fn global_step(
     State::RootMainEntry => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
-        let out = { counter + 1 };
+        let out = { 0 };
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
-          StackEntry::State(State::RootMainCompare),
+          StackEntry::State(State::RootMainStartWork),
         ])
       }
     }
@@ -774,10 +776,20 @@ pub fn global_step(
       if counter == 2u64 {
         StepResult::GoTo(State::RootMainReturn)
       } else {
-        StepResult::GoTo(State::RootMainEntry)
+        StepResult::GoTo(State::RootMainStartWork)
       }
     }
     State::RootMainReturn => StepResult::ReturnVoid,
+    State::RootMainStartWork => {
+      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { counter + 1 };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
+          StackEntry::State(State::RootMainCompare),
+        ])
+      }
+    }
   }
 }
 

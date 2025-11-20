@@ -15,17 +15,24 @@ fn start_root_fiber() {
       TraceEvent {
         state: State::RootMainEntry,
         result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
-          StackEntry::State(State::RootMainCompare)
-        ])
+          StackEntry::FrameAssign(vec![(0, Value::U64(0))]),
+          StackEntry::State(State::RootMainStartWork),
+        ]),
       },
-      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainEntry) },
       TraceEvent {
-        state: State::RootMainEntry,
+        state: State::RootMainStartWork,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::State(State::RootMainCompare),
+        ]),
+      },
+      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainStartWork) },
+      TraceEvent {
+        state: State::RootMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
-          StackEntry::State(State::RootMainCompare)
-        ])
+          StackEntry::State(State::RootMainCompare),
+        ]),
       },
       TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainReturn) },
       TraceEvent { state: State::RootMainReturn, result: StepResult::ReturnVoid },
