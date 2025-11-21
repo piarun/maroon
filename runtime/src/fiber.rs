@@ -2,7 +2,7 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  Heap, StackEntry, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
+  Heap, StackEntry, State, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -44,6 +44,9 @@ pub enum RunResult {
   Await(FutureId, Option<String>),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
+  // Await a message arrival on one of the queues;
+  // arms are (queue_name, bind_var, next_state)
+  AwaitQueue { arms: Vec<(String, String, State)> },
 }
 
 impl std::fmt::Display for Fiber {
@@ -271,6 +274,10 @@ impl Fiber {
           self.stack.push(StackEntry::State(next_state));
           return RunResult::Await(FutureId::from_label(future_id, self.unique_id), bind_result);
         }
+        StepResult::AwaitQueue(arms) => {
+          // Pause the fiber until a queue message arrives; runtime will decide how to resume.
+          return RunResult::AwaitQueue { arms };
+        }
         StepResult::SendToFiber { f_type, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details
           self.stack.push(StackEntry::State(next));
@@ -288,7 +295,9 @@ impl Fiber {
             future_id: FutureId::from_label(future_id, self.unique_id),
           };
         }
-        _ => {}
+        StepResult::Done | StepResult::Select(_) | StepResult::Todo(_) => {
+          // No-op control signals for now; continue stepping if any state remains
+        }
       }
     }
   }

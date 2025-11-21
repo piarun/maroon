@@ -8,35 +8,22 @@ use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEn
 #[test]
 fn start_root_fiber() {
   let mut some_t = Fiber::new(FiberType::new("root"), 1);
-  some_t.run();
-
+  let run_result = some_t.run();
   assert_eq!(
-    vec![
-      TraceEvent {
-        state: State::RootMainEntry,
-        result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(0))]),
-          StackEntry::State(State::RootMainStartWork),
-        ]),
-      },
-      TraceEvent {
-        state: State::RootMainStartWork,
-        result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
-          StackEntry::State(State::RootMainCompare),
-        ]),
-      },
-      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainStartWork) },
-      TraceEvent {
-        state: State::RootMainStartWork,
-        result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
-          StackEntry::State(State::RootMainCompare),
-        ]),
-      },
-      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainReturn) },
-      TraceEvent { state: State::RootMainReturn, result: StepResult::ReturnVoid },
-    ],
+    RunResult::AwaitQueue {
+      arms: vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::RootMainStartWork)],
+    },
+    run_result
+  );
+  assert_eq!(
+    vec![TraceEvent {
+      state: State::RootMainEntry,
+      result: StepResult::AwaitQueue(vec![(
+        "runtimeInMessages".to_string(),
+        "inMessage".to_string(),
+        State::RootMainStartWork
+      ),]),
+    }],
     some_t.trace_sink
   );
 
