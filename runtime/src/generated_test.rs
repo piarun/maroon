@@ -27,7 +27,43 @@ fn start_root_fiber() {
     some_t.trace_sink
   );
 
-  // [TraceEvent { state: RootMainEntry, result: Next([FrameAssign([(0, U64(1))]), State(RootMainCompare)]) }, TraceEvent { state: RootMainCompare, result: GoTo(RootMainEntry) }, TraceEvent { state: RootMainEntry, result: Next([FrameAssign([(0, U64(2))]), State(RootMainCompare)]) }, TraceEvent { state: RootMainCompare, result: GoTo(RootMainReturn) }, TraceEvent { state: RootMainReturn, result: ReturnVoid }]
+  // State::RootMainStartWork - is the same as the one that was returned by fiber run_result
+  some_t.assign_local_and_push_next("inMessage".to_string(), Value::U64(42), State::RootMainStartWork);
+
+  // Continue execution; should complete
+  let res2 = some_t.run();
+  assert_eq!(RunResult::Done(Value::Unit(())), res2);
+
+  assert_eq!(
+    vec![
+      TraceEvent {
+        state: State::RootMainEntry,
+        result: StepResult::AwaitQueue(vec![(
+          "runtimeInMessages".to_string(),
+          "inMessage".to_string(),
+          State::RootMainStartWork
+        ),]),
+      },
+      TraceEvent {
+        state: State::RootMainStartWork,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::State(State::RootMainCompare)
+        ])
+      },
+      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainStartWork) },
+      TraceEvent {
+        state: State::RootMainStartWork,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
+          StackEntry::State(State::RootMainCompare)
+        ])
+      },
+      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainReturn) },
+      TraceEvent { state: State::RootMainReturn, result: StepResult::ReturnVoid },
+    ],
+    some_t.trace_sink
+  );
 }
 
 #[test]

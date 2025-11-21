@@ -179,6 +179,17 @@ impl Fiber {
     }
   }
 
+  // Assign a local and push the next state onto the stack (used for queue-await resume paths)
+  pub fn assign_local_and_push_next(
+    &mut self,
+    name: String,
+    val: Value,
+    next: State,
+  ) {
+    self.assign_local(name, val);
+    self.stack.push(StackEntry::State(next));
+  }
+
   // Runs until finished and gets the resutl or until parked for awaiting async results
   pub fn run(&mut self) -> RunResult {
     loop {
