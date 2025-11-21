@@ -149,6 +149,9 @@ pub enum StepResult {
   ScheduleTimer { ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<State>),
+  // Await a message arrival on one of the queues.
+  // Each arm is (queue_name, bind_var_name, next_state)
+  AwaitQueue(Vec<(String, String, State)>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -199,10 +202,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookCancelEntry => 2,
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
-    State::RootMainEntry => 1,
-    State::RootMainCompare => 1,
-    State::RootMainReturn => 1,
-    State::RootMainStartWork => 1,
+    State::RootMainEntry => 2,
+    State::RootMainCompare => 2,
+    State::RootMainReturn => 2,
+    State::RootMainStartWork => 2,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -762,14 +765,7 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => {
-      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      {
-        let out = { 0 };
-        StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
-          StackEntry::State(State::RootMainStartWork),
-        ])
-      }
+      StepResult::AwaitQueue(vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::RootMainStartWork)])
     }
     State::RootMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -782,6 +778,7 @@ pub fn global_step(
     State::RootMainReturn => StepResult::ReturnVoid,
     State::RootMainStartWork => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let inMessage: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { counter + 1 };
         StepResult::Next(vec![
@@ -1365,6 +1362,7 @@ pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("inMessage".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::RootMainEntry));
   let heap = Heap::default();
   (stack, heap)

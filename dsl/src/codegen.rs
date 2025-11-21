@@ -283,6 +283,9 @@ pub enum StepResult {
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<State>),
+  // Await a message arrival on one of the queues.
+  // Each arm is (queue_name, bind_var_name, next_state)
+  AwaitQueue(Vec<(String, String, State)>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -775,6 +778,7 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::Await(_) => {}
             Step::Select { arms: _ } => {}
+            Step::SelectQueue { .. } => {}
             Step::Call { args, .. } => {
               for e in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -817,6 +821,20 @@ fn generate_global_step(ir: &IR) -> String {
                 "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
                 ms.0, next_v, future_id.0
               ));
+            }
+            Step::SelectQueue { arms } => {
+              // Build AwaitQueue arms (queue_name, bind_var, next_state)
+              let mut arm_parts: Vec<String> = Vec::new();
+              for arm in arms {
+                let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &arm.next.0]);
+                arm_parts.push(format!(
+                  "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                  arm.queue_name, arm.message_var, next_v
+                ));
+              }
+              out.push_str("      StepResult::AwaitQueue(vec![");
+              out.push_str(&arm_parts.join(", "));
+              out.push_str("])\n");
             }
             Step::SendToFiber { fiber, message, args, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1000,6 +1018,7 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::Await(_) => {}
           Step::Select { arms: _ } => {}
+          Step::SelectQueue { .. } => {}
           Step::Call { args, .. } => {
             for e in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1045,6 +1064,20 @@ fn generate_global_step(ir: &IR) -> String {
               "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
               ms.0, next_v, future_id.0
             ));
+          }
+          Step::SelectQueue { arms } => {
+            // Build AwaitQueue arms (queue_name, bind_var, next_state)
+            let mut arm_parts: Vec<String> = Vec::new();
+            for arm in arms {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &arm.next.0]);
+              arm_parts.push(format!(
+                "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                arm.queue_name, arm.message_var, next_v
+              ));
+            }
+            out.push_str("      StepResult::AwaitQueue(vec![");
+            out.push_str(&arm_parts.join(", "));
+            out.push_str("])\n");
           }
           Step::SendToFiber { fiber, message, args, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);

@@ -15,10 +15,16 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64),LocalVar("inMessage", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
-                  Step::RustBlock { binds: vec!["counter".to_string()], code: "0".to_string(), next: StepId::new("start_work") },
+                  Step::SelectQueue { arms: vec![
+                    QueueAwaitSpec{
+                      queue_name: "runtimeInMessages".to_string(),
+                      message_var: "inMessage".to_string(),
+                      next: StepId::new("start_work"),
+                    }
+                  ] },
                 ),
                 (
                   StepId::new("start_work"),

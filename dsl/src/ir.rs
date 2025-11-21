@@ -111,6 +111,10 @@ pub enum Step {
 
   // TODO: Builtin step for "library" functions
   // Builtin { opcode: Opcode, args: Vec<Expr>, bind: Option<String>, ret_to: StepId },
+
+  // suspends fiber until a message is available
+  // if several messages are available at the same time - runtime will pick the first matching arm
+  SelectQueue { arms: Vec<QueueAwaitSpec> },
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +127,20 @@ pub struct AwaitSpec {
   pub bind: Option<String>,
   pub ret_to: StepId,
   pub future_id: FutureLabel,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueAwaitSpec {
+  // TODO: make queue not name but type?
+  // Or just check in validate step:
+  // - this queue exists
+  // - message type is the same as `message_var` type
+  pub queue_name: String,
+  /// variable name - where message from the queue will be put
+  /// TODO: check types of messages that they match
+  pub message_var: String,
+  /// next step
+  pub next: StepId,
 }
 
 #[derive(Debug, Clone)]
