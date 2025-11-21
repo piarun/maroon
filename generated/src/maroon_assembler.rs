@@ -208,10 +208,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
-    State::TestSelectQueueMainEntry => 2,
-    State::TestSelectQueueMainCompare => 2,
-    State::TestSelectQueueMainReturn => 2,
-    State::TestSelectQueueMainStartWork => 2,
+    State::TestSelectQueueMainEntry => 1,
+    State::TestSelectQueueMainCompare => 1,
+    State::TestSelectQueueMainReturn => 1,
+    State::TestSelectQueueMainStartWork => 1,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -772,13 +772,13 @@ pub fn global_step(
     }
     State::RootMainEntry => StepResult::ReturnVoid,
     State::TestSelectQueueMainEntry => StepResult::AwaitQueue(vec![(
-      "runtimeInMessages".to_string(),
-      "inMessage".to_string(),
+      "counterStartQueue".to_string(),
+      "counter".to_string(),
       State::TestSelectQueueMainStartWork,
     )]),
     State::TestSelectQueueMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      if counter == 2u64 {
+      if counter == 3u64 {
         StepResult::GoTo(State::TestSelectQueueMainReturn)
       } else {
         StepResult::GoTo(State::TestSelectQueueMainStartWork)
@@ -787,7 +787,6 @@ pub fn global_step(
     State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
     State::TestSelectQueueMainStartWork => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let inMessage: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { counter + 1 };
         StepResult::Next(vec![
@@ -1393,7 +1392,6 @@ pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("inMessage".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)

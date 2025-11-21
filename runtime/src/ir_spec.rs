@@ -26,6 +26,8 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
+        // fiber for testing select mechanism
+        // awaits a new start counter value and then starts count 
         FiberType::new("testSelectQueue"),
         Fiber {
           fibers_limit: 0,
@@ -34,13 +36,13 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64),LocalVar("inMessage", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
                   Step::SelectQueue { arms: vec![
                     QueueAwaitSpec{
-                      queue_name: "runtimeInMessages".to_string(),
-                      message_var: "inMessage".to_string(),
+                      queue_name: "counterStartQueue".to_string(),
+                      message_var: "counter".to_string(),
                       next: StepId::new("start_work"),
                     }
                   ] },
@@ -51,7 +53,7 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("compare"),
-                  Step::If { cond: Expr::Equal(Box::new(Expr::Var("counter".to_string())), Box::new(Expr::UInt64(2))), then_: StepId::new("return"), else_: StepId::new("start_work") },
+                  Step::If { cond: Expr::Equal(Box::new(Expr::Var("counter".to_string())), Box::new(Expr::UInt64(3))), then_: StepId::new("return"), else_: StepId::new("start_work") },
                 ),
                 (
                   StepId::new("return"),

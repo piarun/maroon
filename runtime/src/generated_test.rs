@@ -7,11 +7,11 @@ use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEn
 
 #[test]
 fn test_select_resume_mechanism() {
-  let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 1);
+  let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 0);
   let run_result = some_t.run();
   assert_eq!(
     RunResult::AwaitQueue {
-      arms: vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::TestSelectQueueMainStartWork)],
+      arms: vec![("counterStartQueue".to_string(), "counter".to_string(), State::TestSelectQueueMainStartWork)],
     },
     run_result
   );
@@ -19,16 +19,17 @@ fn test_select_resume_mechanism() {
     vec![TraceEvent {
       state: State::TestSelectQueueMainEntry,
       result: StepResult::AwaitQueue(vec![(
-        "runtimeInMessages".to_string(),
-        "inMessage".to_string(),
+        "counterStartQueue".to_string(),
+        "counter".to_string(),
         State::TestSelectQueueMainStartWork
       ),]),
     }],
     some_t.trace_sink
   );
 
-  // State::RootMainStartWork - is the same as the one that was returned by fiber run_result
-  some_t.assign_local_and_push_next("inMessage".to_string(), Value::U64(42), State::TestSelectQueueMainStartWork);
+  // State::TestSelectQueueMainStartWork - is the same as the one that was returned by fiber run_result
+  // we pass counter == 1 - so counter will start from 1
+  some_t.assign_local_and_push_next("counter".to_string(), Value::U64(1), State::TestSelectQueueMainStartWork);
 
   // Continue execution; should complete
   let res2 = some_t.run();
@@ -39,15 +40,15 @@ fn test_select_resume_mechanism() {
       TraceEvent {
         state: State::TestSelectQueueMainEntry,
         result: StepResult::AwaitQueue(vec![(
-          "runtimeInMessages".to_string(),
-          "inMessage".to_string(),
+          "counterStartQueue".to_string(),
+          "counter".to_string(),
           State::TestSelectQueueMainStartWork
         ),]),
       },
       TraceEvent {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
           StackEntry::State(State::TestSelectQueueMainCompare)
         ])
       },
@@ -58,7 +59,7 @@ fn test_select_resume_mechanism() {
       TraceEvent {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
+          StackEntry::FrameAssign(vec![(0, Value::U64(3))]),
           StackEntry::State(State::TestSelectQueueMainCompare)
         ])
       },
