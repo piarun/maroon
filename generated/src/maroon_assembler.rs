@@ -66,11 +66,15 @@ pub struct OrderBookHeap {
 pub struct RootHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestSelectQueueHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
   pub orderBook: OrderBookHeap,
   pub root: RootHeap,
+  pub testSelectQueue: TestSelectQueueHeap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,10 +120,11 @@ pub enum State {
   OrderBookCancelEntry,
   OrderBookMainEntry,
   OrderBookTopNDepthEntry,
-  RootMainCompare,
   RootMainEntry,
-  RootMainReturn,
-  RootMainStartWork,
+  TestSelectQueueMainCompare,
+  TestSelectQueueMainEntry,
+  TestSelectQueueMainReturn,
+  TestSelectQueueMainStartWork,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,10 +207,11 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookCancelEntry => 2,
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
-    State::RootMainEntry => 2,
-    State::RootMainCompare => 2,
-    State::RootMainReturn => 2,
-    State::RootMainStartWork => 2,
+    State::RootMainEntry => 0,
+    State::TestSelectQueueMainEntry => 2,
+    State::TestSelectQueueMainCompare => 2,
+    State::TestSelectQueueMainReturn => 2,
+    State::TestSelectQueueMainStartWork => 2,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -764,26 +770,29 @@ pub fn global_step(
         StepResult::Return(Value::BookSnapshot(out))
       }
     }
-    State::RootMainEntry => {
-      StepResult::AwaitQueue(vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::RootMainStartWork)])
-    }
-    State::RootMainCompare => {
+    State::RootMainEntry => StepResult::ReturnVoid,
+    State::TestSelectQueueMainEntry => StepResult::AwaitQueue(vec![(
+      "runtimeInMessages".to_string(),
+      "inMessage".to_string(),
+      State::TestSelectQueueMainStartWork,
+    )]),
+    State::TestSelectQueueMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       if counter == 2u64 {
-        StepResult::GoTo(State::RootMainReturn)
+        StepResult::GoTo(State::TestSelectQueueMainReturn)
       } else {
-        StepResult::GoTo(State::RootMainStartWork)
+        StepResult::GoTo(State::TestSelectQueueMainStartWork)
       }
     }
-    State::RootMainReturn => StepResult::ReturnVoid,
-    State::RootMainStartWork => {
+    State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
+    State::TestSelectQueueMainStartWork => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let inMessage: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { counter + 1 };
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
-          StackEntry::State(State::RootMainCompare),
+          StackEntry::State(State::TestSelectQueueMainCompare),
         ])
       }
     }
@@ -1361,8 +1370,6 @@ fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
 pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("inMessage".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::RootMainEntry));
   let heap = Heap::default();
   (stack, heap)
@@ -1380,6 +1387,30 @@ fn root_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
 
 fn root_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(root_result_main(stack))
+}
+
+pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("inMessage".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testSelectQueue_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testSelectQueue_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testSelectQueue_prepare_main();
+  stack
+}
+
+fn testSelectQueue_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testSelectQueue_result_main(stack))
 }
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
@@ -1403,6 +1434,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.main" => orderBook_prepare_main_from_values,
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
+    "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
   }
 }
@@ -1428,6 +1460,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.main" => orderBook_result_main_value,
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
+    "testSelectQueue.main" => testSelectQueue_result_main_value,
     _ => panic!("shouldnt be here"),
   }
 }

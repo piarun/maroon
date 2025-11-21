@@ -6,29 +6,29 @@ use dsl::ir::FiberType;
 use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEntry, State, StepResult, Trade, Value};
 
 #[test]
-fn start_root_fiber() {
-  let mut some_t = Fiber::new(FiberType::new("root"), 1);
+fn test_select_resume_mechanism() {
+  let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 1);
   let run_result = some_t.run();
   assert_eq!(
     RunResult::AwaitQueue {
-      arms: vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::RootMainStartWork)],
+      arms: vec![("runtimeInMessages".to_string(), "inMessage".to_string(), State::TestSelectQueueMainStartWork)],
     },
     run_result
   );
   assert_eq!(
     vec![TraceEvent {
-      state: State::RootMainEntry,
+      state: State::TestSelectQueueMainEntry,
       result: StepResult::AwaitQueue(vec![(
         "runtimeInMessages".to_string(),
         "inMessage".to_string(),
-        State::RootMainStartWork
+        State::TestSelectQueueMainStartWork
       ),]),
     }],
     some_t.trace_sink
   );
 
   // State::RootMainStartWork - is the same as the one that was returned by fiber run_result
-  some_t.assign_local_and_push_next("inMessage".to_string(), Value::U64(42), State::RootMainStartWork);
+  some_t.assign_local_and_push_next("inMessage".to_string(), Value::U64(42), State::TestSelectQueueMainStartWork);
 
   // Continue execution; should complete
   let res2 = some_t.run();
@@ -37,30 +37,36 @@ fn start_root_fiber() {
   assert_eq!(
     vec![
       TraceEvent {
-        state: State::RootMainEntry,
+        state: State::TestSelectQueueMainEntry,
         result: StepResult::AwaitQueue(vec![(
           "runtimeInMessages".to_string(),
           "inMessage".to_string(),
-          State::RootMainStartWork
+          State::TestSelectQueueMainStartWork
         ),]),
       },
       TraceEvent {
-        state: State::RootMainStartWork,
+        state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
-          StackEntry::State(State::RootMainCompare)
+          StackEntry::State(State::TestSelectQueueMainCompare)
         ])
       },
-      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainStartWork) },
       TraceEvent {
-        state: State::RootMainStartWork,
+        state: State::TestSelectQueueMainCompare,
+        result: StepResult::GoTo(State::TestSelectQueueMainStartWork)
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
-          StackEntry::State(State::RootMainCompare)
+          StackEntry::State(State::TestSelectQueueMainCompare)
         ])
       },
-      TraceEvent { state: State::RootMainCompare, result: StepResult::GoTo(State::RootMainReturn) },
-      TraceEvent { state: State::RootMainReturn, result: StepResult::ReturnVoid },
+      TraceEvent {
+        state: State::TestSelectQueueMainCompare,
+        result: StepResult::GoTo(State::TestSelectQueueMainReturn)
+      },
+      TraceEvent { state: State::TestSelectQueueMainReturn, result: StepResult::ReturnVoid },
     ],
     some_t.trace_sink
   );

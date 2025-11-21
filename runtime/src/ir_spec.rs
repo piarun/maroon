@@ -15,6 +15,25 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
+              Func{in_vars: vec![],out: Type::Void, locals: vec![], entry: StepId::new("entry"),steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
+        }
+      ),
+      (
+        FiberType::new("testSelectQueue"),
+        Fiber {
+          fibers_limit: 0,
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
               Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64),LocalVar("inMessage", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
