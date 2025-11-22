@@ -44,9 +44,6 @@ pub enum RunResult {
   Await(FutureId, Option<String>),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
-  // Await a message arrival on one of the queues;
-  // arms are (queue_name, bind_var, next_state)
-  AwaitQueue { arms: Vec<(String, String, State)> },
   // Select arms matching IR: can await either futures or queue messages
   Select(Vec<SelectArm>),
 }
@@ -286,10 +283,6 @@ impl Fiber {
           // Continue at `next_state` after the future resolves
           self.stack.push(StackEntry::State(next_state));
           return RunResult::Await(FutureId::from_label(future_id, self.unique_id), bind_result);
-        }
-        StepResult::AwaitQueue(arms) => {
-          // Pause the fiber until a queue message arrives; runtime will decide how to resume.
-          return RunResult::AwaitQueue { arms };
         }
         StepResult::SendToFiber { f_type, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details

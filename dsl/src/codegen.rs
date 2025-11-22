@@ -289,9 +289,6 @@ pub enum StepResult {
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<SelectArm>),
-  // Await a message arrival on one of the queues.
-  // Each arm is (queue_name, bind_var_name, next_state)
-  AwaitQueue(Vec<(String, String, State)>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,

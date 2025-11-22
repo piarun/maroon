@@ -289,7 +289,6 @@ limiter:
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);
           }
-          RunResult::AwaitQueue { arms: _ } => {}
           RunResult::Select(_states) => {}
         }
       }
