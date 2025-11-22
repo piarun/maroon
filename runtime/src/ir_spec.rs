@@ -40,7 +40,7 @@ pub fn sample_ir() -> IR {
                 (
                   StepId::new("entry"),
                   Step::Select { arms: vec![
-                    QueueAwaitSpec{
+                    AwaitSpec::Queue{
                       queue_name: "counterStartQueue".to_string(),
                       message_var: "counter".to_string(),
                       next: StepId::new("start_work"),

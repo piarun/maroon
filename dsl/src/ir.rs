@@ -113,7 +113,7 @@ pub enum Step {
 
   // suspends fiber until a message is available
   // if several messages are available at the same time - runtime will pick the first matching arm
-  Select { arms: Vec<QueueAwaitSpec> },
+  Select { arms: Vec<AwaitSpec> },
 }
 
 #[derive(Debug, Clone)]
@@ -123,21 +123,23 @@ pub enum Opcode {
 
 #[derive(Debug, Clone)]
 pub enum AwaitSpec {
-  Future { bind: Option<String>, ret_to: StepId, future_id: FutureLabel },
-}
-
-#[derive(Debug, Clone)]
-pub struct QueueAwaitSpec {
-  // TODO: make queue not name but type?
-  // Or just check in validate step:
-  // - this queue exists
-  // - message type is the same as `message_var` type
-  pub queue_name: String,
-  /// variable name - where message from the queue will be put
-  /// TODO: check types of messages that they match
-  pub message_var: String,
-  /// next step
-  pub next: StepId,
+  Future {
+    bind: Option<String>,
+    ret_to: StepId,
+    future_id: FutureLabel,
+  },
+  Queue {
+    // TODO: make queue not name but type?
+    // Or just check in validate step:
+    // - this queue exists
+    // - message type is the same as `message_var` type
+    queue_name: String,
+    /// variable name - where message from the queue will be put
+    /// TODO: check types of messages that they match
+    message_var: String,
+    /// next step after await is resolved in this arm
+    next: StepId,
+  },
 }
 
 #[derive(Debug, Clone)]

@@ -822,14 +822,19 @@ fn generate_global_step(ir: &IR) -> String {
               ));
             }
             Step::Select { arms } => {
-              // Build AwaitQueue arms (queue_name, bind_var, next_state)
+              // Build AwaitQueue arms (queue_name, bind_var, next_state) from AwaitSpec::Queue
               let mut arm_parts: Vec<String> = Vec::new();
               for arm in arms {
-                let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &arm.next.0]);
-                arm_parts.push(format!(
-                  "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
-                  arm.queue_name, arm.message_var, next_v
-                ));
+                match arm {
+                  AwaitSpec::Queue { queue_name, message_var, next } => {
+                    let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                    arm_parts.push(format!(
+                      "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                      queue_name, message_var, next_v
+                    ));
+                  }
+                  _ => {}
+                }
               }
               out.push_str("      StepResult::AwaitQueue(vec![");
               out.push_str(&arm_parts.join(", "));
@@ -877,6 +882,9 @@ fn generate_global_step(ir: &IR) -> String {
                       future_id.0, next_v
                     )),
                   }
+                }
+                AwaitSpec::Queue { .. } => {
+                  out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
                 }
               }
             }
@@ -1054,14 +1062,19 @@ fn generate_global_step(ir: &IR) -> String {
             ));
           }
           Step::Select { arms } => {
-            // Build AwaitQueue arms (queue_name, bind_var, next_state)
+            // Build AwaitQueue arms (queue_name, bind_var, next_state) from AwaitSpec::Queue
             let mut arm_parts: Vec<String> = Vec::new();
             for arm in arms {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &arm.next.0]);
-              arm_parts.push(format!(
-                "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
-                arm.queue_name, arm.message_var, next_v
-              ));
+              match arm {
+                AwaitSpec::Queue { queue_name, message_var, next } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                  arm_parts.push(format!(
+                    "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                    queue_name, message_var, next_v
+                  ));
+                }
+                _ => {}
+              }
             }
             out.push_str("      StepResult::AwaitQueue(vec![");
             out.push_str(&arm_parts.join(", "));
@@ -1108,6 +1121,9 @@ fn generate_global_step(ir: &IR) -> String {
                     future_id.0, next_v
                   )),
                 }
+              }
+              AwaitSpec::Queue { .. } => {
+                out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
               }
             }
           }
