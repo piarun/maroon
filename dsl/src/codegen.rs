@@ -777,7 +777,6 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(_) => {}
-            Step::Select { arms: _ } => {}
             Step::SelectQueue { .. } => {}
             Step::Call { args, .. } => {
               for e in args {
@@ -876,20 +875,6 @@ fn generate_global_step(ir: &IR) -> String {
                   spec.future_id.0, next_v
                 )),
               }
-            }
-            Step::Select { arms } => {
-              let mut arm_states: Vec<String> = Vec::new();
-              for arm in arms {
-                arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
-              }
-              out.push_str("      StepResult::Select(vec![");
-              for (i, st) in arm_states.iter().enumerate() {
-                if i > 0 {
-                  out.push_str(", ");
-                }
-                out.push_str(&format!("State::{}", st));
-              }
-              out.push_str("])\n");
             }
             Step::Call { target, args, ret_to, bind } => {
               out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
@@ -1017,7 +1002,6 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(_) => {}
-          Step::Select { arms: _ } => {}
           Step::SelectQueue { .. } => {}
           Step::Call { args, .. } => {
             for e in args {
@@ -1118,20 +1102,6 @@ fn generate_global_step(ir: &IR) -> String {
                 spec.future_id.0, next_v
               )),
             }
-          }
-          Step::Select { arms } => {
-            let mut arm_states: Vec<String> = Vec::new();
-            for arm in arms {
-              arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
-            }
-            out.push_str("      StepResult::Select(vec![");
-            for (i, st) in arm_states.iter().enumerate() {
-              if i > 0 {
-                out.push_str(", ");
-              }
-              out.push_str(&format!("State::{}", st));
-            }
-            out.push_str("])\n");
           }
           Step::Call { target, args, ret_to, bind } => {
             out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));

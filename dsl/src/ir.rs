@@ -89,7 +89,6 @@ pub enum Step {
   // args: (name on the incoming side, variable)
   SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureLabel },
   Await(AwaitSpec),
-  Select { arms: Vec<AwaitSpec> },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
