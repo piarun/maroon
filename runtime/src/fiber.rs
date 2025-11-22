@@ -2,7 +2,7 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  Heap, StackEntry, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
+  Heap, SelectArm, StackEntry, State, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -44,6 +44,8 @@ pub enum RunResult {
   Await(FutureId, Option<String>),
   AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
+  // Select arms matching IR: can await either futures or queue messages
+  Select(Vec<SelectArm>),
 }
 
 impl std::fmt::Display for Fiber {
@@ -81,8 +83,28 @@ impl FutureId {
 }
 
 impl Fiber {
-  // Create an empty fiber with a default heap and no loaded task.
+  /// creates a Fiber able to run from main function
   pub fn new(
+    f_type: FiberType,
+    unique_id: u64,
+  ) -> Fiber {
+    let f_name = format!("{}.{}", f_type, "main");
+    let f = get_prepare_fn(f_name.as_str());
+
+    Fiber {
+      f_type,
+      unique_id,
+      stack: f(vec![]),
+      heap: Heap::default(),
+      function_key: f_name,
+      context: RunContext::default(),
+      trace_sink: vec![],
+    }
+  }
+
+  // Create an empty fiber with a default heap and no loaded task.
+  /// TODO: remove it as it creates unusable fiber in a new paradigm
+  pub fn new_empty(
     f_type: FiberType,
     unique_id: u64,
   ) -> Fiber {
@@ -97,6 +119,7 @@ impl Fiber {
     }
   }
 
+  /// TODO: remove it as it creates unusable fiber in a new paradigm
   pub fn new_with_heap(
     f_type: FiberType,
     heap: Heap,
@@ -153,6 +176,17 @@ impl Fiber {
     } else {
       panic!("didnt find the value with the right name, something is completely wrong");
     }
+  }
+
+  // Assign a local and push the next state onto the stack (used for queue-await resume paths)
+  pub fn assign_local_and_push_next(
+    &mut self,
+    name: String,
+    val: Value,
+    next: State,
+  ) {
+    self.assign_local(name, val);
+    self.stack.push(StackEntry::State(next));
   }
 
   // Runs until finished and gets the resutl or until parked for awaiting async results
@@ -267,7 +301,12 @@ impl Fiber {
             future_id: FutureId::from_label(future_id, self.unique_id),
           };
         }
-        _ => {}
+        StepResult::Select(arms) => {
+          return RunResult::Select(arms);
+        }
+        StepResult::Done | StepResult::Todo(_) => {
+          // No-op control signals for now; continue stepping if any state remains
+        }
       }
     }
   }

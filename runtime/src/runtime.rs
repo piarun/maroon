@@ -209,7 +209,7 @@ limiter:
     *limit -= 1;
     let id = self.next_fiber_id;
     self.next_fiber_id += 1;
-    return Some(Fiber::new(f_type.clone(), id));
+    return Some(Fiber::new_empty(f_type.clone(), id));
   }
 
   pub fn has_available_fiber(
@@ -289,6 +289,7 @@ limiter:
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);
           }
+          RunResult::Select(_states) => {}
         }
       }
 

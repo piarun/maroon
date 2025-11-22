@@ -89,7 +89,6 @@ pub enum Step {
   // args: (name on the incoming side, variable)
   SendToFiber { fiber: String, message: String, args: Vec<(String, Expr)>, next: StepId, future_id: FutureLabel },
   Await(AwaitSpec),
-  Select { arms: Vec<AwaitSpec> },
   // `ret_to` is the continuation step in the caller
   // bind - local variable into which response will be written
   // THINK: should I get rid of call and alway do it through SendToFiber+Await?
@@ -111,6 +110,10 @@ pub enum Step {
 
   // TODO: Builtin step for "library" functions
   // Builtin { opcode: Opcode, args: Vec<Expr>, bind: Option<String>, ret_to: StepId },
+
+  // suspends fiber until a message is available
+  // if several messages are available at the same time - runtime will pick the first matching arm
+  Select { arms: Vec<AwaitSpec> },
 }
 
 #[derive(Debug, Clone)]
@@ -119,10 +122,24 @@ pub enum Opcode {
 }
 
 #[derive(Debug, Clone)]
-pub struct AwaitSpec {
-  pub bind: Option<String>,
-  pub ret_to: StepId,
-  pub future_id: FutureLabel,
+pub enum AwaitSpec {
+  Future {
+    bind: Option<String>,
+    ret_to: StepId,
+    future_id: FutureLabel,
+  },
+  Queue {
+    // TODO: make queue not name but type?
+    // Or just check in validate step:
+    // - this queue exists
+    // - message type is the same as `message_var` type
+    queue_name: String,
+    /// variable name - where message from the queue will be put
+    /// TODO: check types of messages that they match
+    message_var: String,
+    /// next step after await is resolved in this arm
+    next: StepId,
+  },
 }
 
 #[derive(Debug, Clone)]
@@ -157,7 +174,7 @@ pub struct FuncRef {
   pub func: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
   UInt64,
   String,
@@ -174,7 +191,7 @@ pub enum Type {
   Custom(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
   pub name: String,
   pub ty: Type,
@@ -184,11 +201,12 @@ impl IR {
   pub fn is_valid(&self) -> (bool, String) {
     // TODO: all branches have the same end
     let mut explanation = String::new();
-    let mut has_main_fiber = false;
+    let mut has_root_fiber = false;
     for fiber in self.fibers.iter() {
-      if fiber.0 == &FiberType::new("main") {
-        has_main_fiber = true
+      if fiber.0 == &FiberType::new("root") {
+        has_root_fiber = true
       }
+      let mut has_main_function = false;
       for func in fiber.1.funcs.iter() {
         let mut has_entry = false; // each function should start with 'entry' stepId
         for step in func.1.steps.iter() {
@@ -197,14 +215,24 @@ impl IR {
             break;
           }
         }
+        if *func.0 == "main".to_string() {
+          has_main_function = true;
+
+          if func.1.out != Type::Void {
+            explanation.push_str(&format!("{} main function can only return void", fiber.0));
+          }
+        }
         if !has_entry {
           explanation.push_str(&format!("{}.{} doesnt have step 'entry'\n", fiber.0, func.0));
         }
       }
+      if !has_main_function {
+        explanation.push_str(&format!("{} doesnt have 'main' function\n", fiber.0));
+      }
     }
 
-    if !has_main_fiber {
-      explanation.push_str("no 'main' fiber\n");
+    if !has_root_fiber {
+      explanation.push_str("no 'root' fiber\n");
     }
     (explanation.len() == 0, explanation)
   }

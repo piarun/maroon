@@ -7,12 +7,73 @@ pub fn sample_ir() -> IR {
   IR {
     fibers: HashMap::from([
       (
-        FiberType::new("main"),
+        FiberType::new("root"),
         Fiber {
           fibers_limit: 0,
           heap: HashMap::new(),
           in_messages: vec![],
-          funcs: HashMap::from([]),
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{in_vars: vec![],out: Type::Void, locals: vec![], entry: StepId::new("entry"),steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
+        }
+      ),
+      (
+        // fiber for testing select mechanism
+        // awaits a new start counter value and then starts count 
+        FiberType::new("testSelectQueue"),
+        Fiber {
+          fibers_limit: 0,
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::Select { arms: vec![
+                    AwaitSpec::Queue{
+                      queue_name: "counterStartQueue".to_string(),
+                      message_var: "counter".to_string(),
+                      next: StepId::new("start_work"),
+                    },
+                    AwaitSpec::Future { 
+                      // doesn't matter how this future ended up here for tests
+                      // in real life this future should be created or passed somehow
+                      bind: Some("responseFromFut".to_string()),
+                      ret_to: StepId::new("inc_from_fut"),
+                      future_id: FutureLabel::new("testSelectQueue_future_1"),
+                    }
+                  ] },
+                ),
+                (
+                  // added this artificial step to see the difference in path in tests
+                  StepId::new("inc_from_fut"),
+                  Step::RustBlock { binds: vec!["counter".to_string()], code: "responseFromFut - 1".to_string(), next: StepId::new("compare") },
+                ),
+                (
+                  StepId::new("start_work"),
+                  Step::RustBlock { binds: vec!["counter".to_string()], code: "counter + 1".to_string(), next: StepId::new("compare") },
+                ),
+                (
+                  StepId::new("compare"),
+                  Step::If { cond: Expr::Equal(Box::new(Expr::Var("counter".to_string())), Box::new(Expr::UInt64(3))), then_: StepId::new("return"), else_: StepId::new("start_work") },
+                ),
+                (
+                  StepId::new("return"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
         }
       ),
       (
@@ -22,6 +83,16 @@ pub fn sample_ir() -> IR {
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           in_messages: vec![],
           funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
             (
               "add".to_string(),
               Func {
@@ -308,6 +379,16 @@ out
           // (StepId::new("await_in_message"), Step::Await(())),
           funcs: HashMap::from([
             (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
+            (
               "async_foo".to_string(),
               Func {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
@@ -330,7 +411,7 @@ out
                   ),
                   (
                     StepId::new("await"),
-                    Step::Await(AwaitSpec {
+                    Step::Await(AwaitSpec::Future {
                       bind: Some("sum".to_string()),
                       ret_to: StepId::new("return"),
                       future_id: FutureLabel::new("async_add_future_1"),
@@ -358,7 +439,7 @@ out
                   ),
                   (
                     StepId::new("await"),
-                    Step::Await(AwaitSpec {
+                    Step::Await(AwaitSpec::Future {
                       bind: None,
                       ret_to: StepId::new("calc"),
                       future_id: FutureLabel::new("sleep_and_pow_entry_future"),
@@ -401,6 +482,16 @@ out
           ]),
           in_messages: vec![],
           funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals:vec![],
+                entry: StepId::new("entry"),
+                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+              },
+            ),
             (
               "add_buy".to_string(),
               Func {

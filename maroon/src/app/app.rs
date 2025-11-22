@@ -18,7 +18,11 @@ use common::{
   },
 };
 use dsl::ir::FiberType;
-use epoch_coordinator::{self, epoch::Epoch, interface::{ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates}};
+use epoch_coordinator::{
+  self,
+  epoch::Epoch,
+  interface::{ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates},
+};
 use libp2p::PeerId;
 use log::{debug, error, info};
 use opentelemetry::KeyValue;

@@ -32,7 +32,8 @@ use tokio::sync::oneshot;
 #[tokio::test(flavor = "multi_thread")]
 async fn app_calculates_consensus_offset() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) =
+    create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
 
   let (state_invoker, handler) = create_invoker_handler_pair();
@@ -80,7 +81,8 @@ async fn app_calculates_consensus_offset() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transaction() {
   let (a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) =
+    create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
@@ -121,7 +123,8 @@ async fn app_gets_missing_transaction() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_gets_missing_transactions_that_smbd_else_requested() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) =
+    create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);
@@ -167,7 +170,8 @@ async fn app_gets_missing_transactions_that_smbd_else_requested() {
 #[tokio::test(flavor = "multi_thread")]
 async fn app_detects_that_its_behind_and_makes_request() {
   let (mut a2b_endpoint, b2a_endpoint) = create_a_b_duplex_pair::<Inbox, Outbox>();
-  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) = create_epoch_coordinator_interface_pair();
+  let (_epoch_coordinator_interface, epoch_coordinator_controller_interface) =
+    create_epoch_coordinator_interface_pair();
   let (a2b_runtime, _b2a_runtime) = create_a_b_duplex_pair::<RuntimeInput, RuntimeOutput>();
   let (state_invoker, handler) = create_invoker_handler_pair();
   let mut app = new_test_instance(b2a_endpoint, handler, epoch_coordinator_controller_interface, a2b_runtime);

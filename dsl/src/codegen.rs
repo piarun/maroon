@@ -277,12 +277,18 @@ pub enum StackEntry {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectArm {
+  Future { future_id: FutureLabel, bind: Option<String>, next: State },
+  Queue { queue_name: String, bind: String, next: State },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
-  Select(Vec<State>),
+  Select(Vec<SelectArm>),
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -774,7 +780,7 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(_) => {}
-            Step::Select { arms: _ } => {}
+            Step::Select { .. } => {}
             Step::Call { args, .. } => {
               for e in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -818,6 +824,37 @@ fn generate_global_step(ir: &IR) -> String {
                 ms.0, next_v, future_id.0
               ));
             }
+            Step::Select { arms } => {
+              // Build structured Select arms supporting Future and Queue
+              let mut arm_parts: Vec<String> = Vec::new();
+              for arm in arms {
+                match arm {
+                  AwaitSpec::Queue { queue_name, message_var, next } => {
+                    let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                    arm_parts.push(format!(
+                      "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
+                      queue_name, message_var, next_v
+                    ));
+                  }
+                  AwaitSpec::Future { bind, ret_to, future_id } => {
+                    let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                    match bind {
+                      Some(name) => arm_parts.push(format!(
+                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
+                        future_id.0, name, next_v
+                      )),
+                      None => arm_parts.push(format!(
+                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
+                        future_id.0, next_v
+                      )),
+                    }
+                  }
+                }
+              }
+              out.push_str("      StepResult::Select(vec![");
+              out.push_str(&arm_parts.join(", "));
+              out.push_str("])\n");
+            }
             Step::SendToFiber { fiber, message, args, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               // Build args vector in callee's param order/types
@@ -846,32 +883,25 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(spec) => {
-              // Pause current task until future resolves; push continuation state on stack when resuming.
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-              match &spec.bind {
-                Some(name) => out.push_str(&format!(
-                  "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                  spec.future_id.0, name, next_v
-                )),
-                None => out.push_str(&format!(
-                  "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
-                  spec.future_id.0, next_v
-                )),
-              }
-            }
-            Step::Select { arms } => {
-              let mut arm_states: Vec<String> = Vec::new();
-              for arm in arms {
-                arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
-              }
-              out.push_str("      StepResult::Select(vec![");
-              for (i, st) in arm_states.iter().enumerate() {
-                if i > 0 {
-                  out.push_str(", ");
+              // Pause current task until a future resolves; push continuation state when resuming.
+              match spec {
+                AwaitSpec::Future { bind, ret_to, future_id } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                  match bind {
+                    Some(name) => out.push_str(&format!(
+                      "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                      future_id.0, name, next_v
+                    )),
+                    None => out.push_str(&format!(
+                      "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                      future_id.0, next_v
+                    )),
+                  }
                 }
-                out.push_str(&format!("State::{}", st));
+                AwaitSpec::Queue { .. } => {
+                  out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
+                }
               }
-              out.push_str("])\n");
             }
             Step::Call { target, args, ret_to, bind } => {
               out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
@@ -999,7 +1029,7 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(_) => {}
-          Step::Select { arms: _ } => {}
+          Step::Select { .. } => {}
           Step::Call { args, .. } => {
             for e in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1046,6 +1076,37 @@ fn generate_global_step(ir: &IR) -> String {
               ms.0, next_v, future_id.0
             ));
           }
+          Step::Select { arms } => {
+            // Build structured Select arms supporting Future and Queue
+            let mut arm_parts: Vec<String> = Vec::new();
+            for arm in arms {
+              match arm {
+                AwaitSpec::Queue { queue_name, message_var, next } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                  arm_parts.push(format!(
+                    "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
+                    queue_name, message_var, next_v
+                  ));
+                }
+                AwaitSpec::Future { bind, ret_to, future_id } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                  match bind {
+                    Some(name) => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
+                      future_id.0, name, next_v
+                    )),
+                    None => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
+                      future_id.0, next_v
+                    )),
+                  }
+                }
+              }
+            }
+            out.push_str("      StepResult::Select(vec![");
+            out.push_str(&arm_parts.join(", "));
+            out.push_str("])\n");
+          }
           Step::SendToFiber { fiber, message, args, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
@@ -1073,32 +1134,25 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(spec) => {
-            // Pause current task until future resolves; push continuation state on stack when resuming.
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-            match &spec.bind {
-              Some(name) => out.push_str(&format!(
-                "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                spec.future_id.0, name, next_v
-              )),
-              None => out.push_str(&format!(
-                "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
-                spec.future_id.0, next_v
-              )),
-            }
-          }
-          Step::Select { arms } => {
-            let mut arm_states: Vec<String> = Vec::new();
-            for arm in arms {
-              arm_states.push(variant_name(&[fiber_name.0.as_str(), func_name, &arm.ret_to.0]));
-            }
-            out.push_str("      StepResult::Select(vec![");
-            for (i, st) in arm_states.iter().enumerate() {
-              if i > 0 {
-                out.push_str(", ");
+            // Pause current task until a future resolves; push continuation state when resuming.
+            match spec {
+              AwaitSpec::Future { bind, ret_to, future_id } => {
+                let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                match bind {
+                  Some(name) => out.push_str(&format!(
+                    "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                    future_id.0, name, next_v
+                  )),
+                  None => out.push_str(&format!(
+                    "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                    future_id.0, next_v
+                  )),
+                }
               }
-              out.push_str(&format!("State::{}", st));
+              AwaitSpec::Queue { .. } => {
+                out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
+              }
             }
-            out.push_str("])\n");
           }
           Step::Call { target, args, ret_to, bind } => {
             out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
