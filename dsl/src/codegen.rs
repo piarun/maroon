@@ -777,7 +777,7 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(_) => {}
-            Step::SelectQueue { .. } => {}
+            Step::Select { .. } => {}
             Step::Call { args, .. } => {
               for e in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -821,7 +821,7 @@ fn generate_global_step(ir: &IR) -> String {
                 ms.0, next_v, future_id.0
               ));
             }
-            Step::SelectQueue { arms } => {
+            Step::Select { arms } => {
               // Build AwaitQueue arms (queue_name, bind_var, next_state)
               let mut arm_parts: Vec<String> = Vec::new();
               for arm in arms {
@@ -1002,7 +1002,7 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(_) => {}
-          Step::SelectQueue { .. } => {}
+          Step::Select { .. } => {}
           Step::Call { args, .. } => {
             for e in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1049,7 +1049,7 @@ fn generate_global_step(ir: &IR) -> String {
               ms.0, next_v, future_id.0
             ));
           }
-          Step::SelectQueue { arms } => {
+          Step::Select { arms } => {
             // Build AwaitQueue arms (queue_name, bind_var, next_state)
             let mut arm_parts: Vec<String> = Vec::new();
             for arm in arms {

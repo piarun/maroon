@@ -39,7 +39,7 @@ pub fn sample_ir() -> IR {
               Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
-                  Step::SelectQueue { arms: vec![
+                  Step::Select { arms: vec![
                     QueueAwaitSpec{
                       queue_name: "counterStartQueue".to_string(),
                       message_var: "counter".to_string(),

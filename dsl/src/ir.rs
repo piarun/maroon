@@ -113,7 +113,7 @@ pub enum Step {
 
   // suspends fiber until a message is available
   // if several messages are available at the same time - runtime will pick the first matching arm
-  SelectQueue { arms: Vec<QueueAwaitSpec> },
+  Select { arms: Vec<QueueAwaitSpec> },
 }
 
 #[derive(Debug, Clone)]
