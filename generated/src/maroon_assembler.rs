@@ -123,6 +123,7 @@ pub enum State {
   RootMainEntry,
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
+  TestSelectQueueMainIncFromFut,
   TestSelectQueueMainReturn,
   TestSelectQueueMainStartWork,
 }
@@ -211,10 +212,11 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
-    State::TestSelectQueueMainEntry => 1,
-    State::TestSelectQueueMainCompare => 1,
-    State::TestSelectQueueMainReturn => 1,
-    State::TestSelectQueueMainStartWork => 1,
+    State::TestSelectQueueMainEntry => 2,
+    State::TestSelectQueueMainCompare => 2,
+    State::TestSelectQueueMainIncFromFut => 2,
+    State::TestSelectQueueMainReturn => 2,
+    State::TestSelectQueueMainStartWork => 2,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -782,8 +784,8 @@ pub fn global_step(
       },
       SelectArm::Future {
         future_id: FutureLabel::new("testSelectQueue_future_1"),
-        bind: Some("counter".to_string()),
-        next: State::TestSelectQueueMainStartWork,
+        bind: Some("responseFromFut".to_string()),
+        next: State::TestSelectQueueMainIncFromFut,
       },
     ]),
     State::TestSelectQueueMainCompare => {
@@ -794,9 +796,23 @@ pub fn global_step(
         StepResult::GoTo(State::TestSelectQueueMainStartWork)
       }
     }
+    State::TestSelectQueueMainIncFromFut => {
+      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let responseFromFut: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      {
+        let out = { responseFromFut - 1 };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
+          StackEntry::State(State::TestSelectQueueMainCompare),
+        ])
+      }
+    }
     State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
     State::TestSelectQueueMainStartWork => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let responseFromFut: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { counter + 1 };
         StepResult::Next(vec![
@@ -1402,6 +1418,7 @@ pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("responseFromFut".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)

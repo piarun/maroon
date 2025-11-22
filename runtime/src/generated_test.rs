@@ -11,91 +11,113 @@ use generated::maroon_assembler::{
 fn test_select_resume_mechanism() {
   let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 0);
   let run_result = some_t.run();
-  assert_eq!(
-    RunResult::Select(vec![
-      SelectArm::Queue {
-        queue_name: "counterStartQueue".to_string(),
-        bind: "counter".to_string(),
-        next: State::TestSelectQueueMainStartWork,
-      },
-      SelectArm::Future {
-        future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
-        bind: Some("counter".to_string()),
-        next: State::TestSelectQueueMainStartWork
-      }
-    ]),
-    run_result
-  );
+  let expected_selects_on_first_step = vec![
+    SelectArm::Queue {
+      queue_name: "counterStartQueue".to_string(),
+      bind: "counter".to_string(),
+      next: State::TestSelectQueueMainStartWork,
+    },
+    SelectArm::Future {
+      future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
+      bind: Some("responseFromFut".to_string()),
+      next: State::TestSelectQueueMainIncFromFut,
+    },
+  ];
+
+  assert_eq!(RunResult::Select(expected_selects_on_first_step.clone()), run_result);
   assert_eq!(
     vec![TraceEvent {
       state: State::TestSelectQueueMainEntry,
-      result: StepResult::Select(vec![
-        SelectArm::Queue {
-          queue_name: "counterStartQueue".to_string(),
-          bind: "counter".to_string(),
-          next: State::TestSelectQueueMainStartWork,
-        },
-        SelectArm::Future {
-          future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
-          bind: Some("counter".to_string()),
-          next: State::TestSelectQueueMainStartWork
-        }
-      ]),
+      result: StepResult::Select(expected_selects_on_first_step.clone())
     }],
     some_t.trace_sink
   );
 
-  // State::TestSelectQueueMainStartWork - is the same as the one that was returned by fiber run_result
-  // we pass counter == 1 - so counter will start from 1
-  some_t.assign_local_and_push_next("counter".to_string(), Value::U64(1), State::TestSelectQueueMainStartWork);
+  // `split` fiber, and further I'll run both select return branches
+  let mut queue_response = some_t.clone();
+  let mut future_response = some_t;
+
+  // imitation resumes from runtime
+  {
+    // queue imitation
+    // we pass counter == 1 - so counter will start from 1
+    queue_response.assign_local_and_push_next(
+      "counter".to_string(),
+      Value::U64(1),
+      State::TestSelectQueueMainStartWork,
+    );
+
+    // future imitation
+    // we pass responseFromFut == 2 - so counter will start from 1
+    future_response.assign_local_and_push_next(
+      "responseFromFut".to_string(),
+      Value::U64(2),
+      State::TestSelectQueueMainIncFromFut,
+    );
+  }
 
   // Continue execution; should complete
-  let res2 = some_t.run();
-  assert_eq!(RunResult::Done(Value::Unit(())), res2);
+  {
+    let queue_run_result = queue_response.run();
+    assert_eq!(RunResult::Done(Value::Unit(())), queue_run_result);
 
-  assert_eq!(
-    vec![
-      TraceEvent {
-        state: State::TestSelectQueueMainEntry,
-        result: StepResult::Select(vec![
-          SelectArm::Queue {
-            queue_name: "counterStartQueue".to_string(),
-            bind: "counter".to_string(),
-            next: State::TestSelectQueueMainStartWork,
-          },
-          SelectArm::Future {
-            future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
-            bind: Some("counter".to_string()),
-            next: State::TestSelectQueueMainStartWork
-          }
-        ]),
-      },
+    let future_run_result = future_response.run();
+    assert_eq!(RunResult::Done(Value::Unit(())), future_run_result);
+  }
+
+  // check traces
+  {
+    let expected_inc_and_compare_tail = vec![
       TraceEvent {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
-          StackEntry::State(State::TestSelectQueueMainCompare)
-        ])
+          StackEntry::State(State::TestSelectQueueMainCompare),
+        ]),
       },
       TraceEvent {
         state: State::TestSelectQueueMainCompare,
-        result: StepResult::GoTo(State::TestSelectQueueMainStartWork)
+        result: StepResult::GoTo(State::TestSelectQueueMainStartWork),
       },
       TraceEvent {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(3))]),
-          StackEntry::State(State::TestSelectQueueMainCompare)
-        ])
+          StackEntry::State(State::TestSelectQueueMainCompare),
+        ]),
       },
       TraceEvent {
         state: State::TestSelectQueueMainCompare,
-        result: StepResult::GoTo(State::TestSelectQueueMainReturn)
+        result: StepResult::GoTo(State::TestSelectQueueMainReturn),
       },
       TraceEvent { state: State::TestSelectQueueMainReturn, result: StepResult::ReturnVoid },
-    ],
-    some_t.trace_sink
-  );
+    ];
+
+    // Build expected vectors using extend (extend returns (), so build first then assert)
+    let mut expected_queue_trace = vec![TraceEvent {
+      state: State::TestSelectQueueMainEntry,
+      result: StepResult::Select(expected_selects_on_first_step.clone()),
+    }];
+    expected_queue_trace.extend(expected_inc_and_compare_tail.clone());
+    assert_eq!(expected_queue_trace, queue_response.trace_sink);
+
+    let mut expected_future_trace = vec![
+      TraceEvent { state: State::TestSelectQueueMainEntry, result: StepResult::Select(expected_selects_on_first_step) },
+      TraceEvent {
+        state: State::TestSelectQueueMainIncFromFut,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::State(State::TestSelectQueueMainCompare),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainCompare,
+        result: StepResult::GoTo(State::TestSelectQueueMainStartWork),
+      },
+    ];
+    expected_future_trace.extend(expected_inc_and_compare_tail);
+    assert_eq!(expected_future_trace, future_response.trace_sink);
+  }
 }
 
 #[test]

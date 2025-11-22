@@ -36,7 +36,7 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
                 (
                   StepId::new("entry"),
                   Step::Select { arms: vec![
@@ -48,11 +48,16 @@ pub fn sample_ir() -> IR {
                     AwaitSpec::Future { 
                       // doesn't matter how this future ended up here for tests
                       // in real life this future should be created or passed somehow
-                      bind: Some("counter".to_string()),
-                      ret_to: StepId::new("start_work"),
+                      bind: Some("responseFromFut".to_string()),
+                      ret_to: StepId::new("inc_from_fut"),
                       future_id: FutureLabel::new("testSelectQueue_future_1"),
                     }
                   ] },
+                ),
+                (
+                  // added this artificial step to see the difference in path in tests
+                  StepId::new("inc_from_fut"),
+                  Step::RustBlock { binds: vec!["counter".to_string()], code: "responseFromFut - 1".to_string(), next: StepId::new("compare") },
                 ),
                 (
                   StepId::new("start_work"),
