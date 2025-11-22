@@ -290,6 +290,7 @@ limiter:
             self.active_fibers.push_front(fiber);
           }
           RunResult::AwaitQueue { arms: _ } => {}
+          RunResult::Select(_states) => {}
         }
       }
 

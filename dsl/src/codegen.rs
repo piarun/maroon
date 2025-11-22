@@ -277,12 +277,18 @@ pub enum StackEntry {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectArm {
+  Future { future_id: FutureLabel, bind: Option<String>, next: State },
+  Queue { queue_name: String, bind: String, next: State },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
-  Select(Vec<State>),
+  Select(Vec<SelectArm>),
   // Await a message arrival on one of the queues.
   // Each arm is (queue_name, bind_var_name, next_state)
   AwaitQueue(Vec<(String, String, State)>),
@@ -822,21 +828,33 @@ fn generate_global_step(ir: &IR) -> String {
               ));
             }
             Step::Select { arms } => {
-              // Build AwaitQueue arms (queue_name, bind_var, next_state) from AwaitSpec::Queue
+              // Build structured Select arms supporting Future and Queue
               let mut arm_parts: Vec<String> = Vec::new();
               for arm in arms {
                 match arm {
                   AwaitSpec::Queue { queue_name, message_var, next } => {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
                     arm_parts.push(format!(
-                      "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                      "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
                       queue_name, message_var, next_v
                     ));
                   }
-                  _ => {}
+                  AwaitSpec::Future { bind, ret_to, future_id } => {
+                    let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                    match bind {
+                      Some(name) => arm_parts.push(format!(
+                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
+                        future_id.0, name, next_v
+                      )),
+                      None => arm_parts.push(format!(
+                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
+                        future_id.0, next_v
+                      )),
+                    }
+                  }
                 }
               }
-              out.push_str("      StepResult::AwaitQueue(vec![");
+              out.push_str("      StepResult::Select(vec![");
               out.push_str(&arm_parts.join(", "));
               out.push_str("])\n");
             }
@@ -1062,21 +1080,33 @@ fn generate_global_step(ir: &IR) -> String {
             ));
           }
           Step::Select { arms } => {
-            // Build AwaitQueue arms (queue_name, bind_var, next_state) from AwaitSpec::Queue
+            // Build structured Select arms supporting Future and Queue
             let mut arm_parts: Vec<String> = Vec::new();
             for arm in arms {
               match arm {
                 AwaitSpec::Queue { queue_name, message_var, next } => {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
                   arm_parts.push(format!(
-                    "(\"{}\".to_string(), \"{}\".to_string(), State::{})",
+                    "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
                     queue_name, message_var, next_v
                   ));
                 }
-                _ => {}
+                AwaitSpec::Future { bind, ret_to, future_id } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                  match bind {
+                    Some(name) => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
+                      future_id.0, name, next_v
+                    )),
+                    None => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
+                      future_id.0, next_v
+                    )),
+                  }
+                }
               }
             }
-            out.push_str("      StepResult::AwaitQueue(vec![");
+            out.push_str("      StepResult::Select(vec![");
             out.push_str(&arm_parts.join(", "));
             out.push_str("])\n");
           }

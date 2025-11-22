@@ -148,12 +148,18 @@ pub enum StackEntry {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectArm {
+  Future { future_id: FutureLabel, bind: Option<String>, next: State },
+  Queue { queue_name: String, bind: String, next: State },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
   ScheduleTimer { ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
-  Select(Vec<State>),
+  Select(Vec<SelectArm>),
   // Await a message arrival on one of the queues.
   // Each arm is (queue_name, bind_var_name, next_state)
   AwaitQueue(Vec<(String, String, State)>),
@@ -771,11 +777,18 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
-    State::TestSelectQueueMainEntry => StepResult::AwaitQueue(vec![(
-      "counterStartQueue".to_string(),
-      "counter".to_string(),
-      State::TestSelectQueueMainStartWork,
-    )]),
+    State::TestSelectQueueMainEntry => StepResult::Select(vec![
+      SelectArm::Queue {
+        queue_name: "counterStartQueue".to_string(),
+        bind: "counter".to_string(),
+        next: State::TestSelectQueueMainStartWork,
+      },
+      SelectArm::Future {
+        future_id: FutureLabel::new("testSelectQueue_future_1"),
+        bind: Some("counter".to_string()),
+        next: State::TestSelectQueueMainStartWork,
+      },
+    ]),
     State::TestSelectQueueMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       if counter == 3u64 {

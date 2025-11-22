@@ -44,6 +44,13 @@ pub fn sample_ir() -> IR {
                       queue_name: "counterStartQueue".to_string(),
                       message_var: "counter".to_string(),
                       next: StepId::new("start_work"),
+                    },
+                    AwaitSpec::Future { 
+                      // doesn't matter how this future ended up here for tests
+                      // in real life this future should be created or passed somehow
+                      bind: Some("counter".to_string()),
+                      ret_to: StepId::new("start_work"),
+                      future_id: FutureLabel::new("testSelectQueue_future_1"),
                     }
                   ] },
                 ),

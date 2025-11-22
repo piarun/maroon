@@ -2,27 +2,45 @@ use crate::{
   fiber::{Fiber, RunResult},
   trace::TraceEvent,
 };
-use dsl::ir::FiberType;
-use generated::maroon_assembler::{BookSnapshot, GlobalHeap, Heap, Level, StackEntry, State, StepResult, Trade, Value};
+use dsl::ir::{FiberType, FutureLabel};
+use generated::maroon_assembler::{
+  BookSnapshot, GlobalHeap, Heap, Level, SelectArm, StackEntry, State, StepResult, Trade, Value,
+};
 
 #[test]
 fn test_select_resume_mechanism() {
   let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 0);
   let run_result = some_t.run();
   assert_eq!(
-    RunResult::AwaitQueue {
-      arms: vec![("counterStartQueue".to_string(), "counter".to_string(), State::TestSelectQueueMainStartWork)],
-    },
+    RunResult::Select(vec![
+      SelectArm::Queue {
+        queue_name: "counterStartQueue".to_string(),
+        bind: "counter".to_string(),
+        next: State::TestSelectQueueMainStartWork,
+      },
+      SelectArm::Future {
+        future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
+        bind: Some("counter".to_string()),
+        next: State::TestSelectQueueMainStartWork
+      }
+    ]),
     run_result
   );
   assert_eq!(
     vec![TraceEvent {
       state: State::TestSelectQueueMainEntry,
-      result: StepResult::AwaitQueue(vec![(
-        "counterStartQueue".to_string(),
-        "counter".to_string(),
-        State::TestSelectQueueMainStartWork
-      ),]),
+      result: StepResult::Select(vec![
+        SelectArm::Queue {
+          queue_name: "counterStartQueue".to_string(),
+          bind: "counter".to_string(),
+          next: State::TestSelectQueueMainStartWork,
+        },
+        SelectArm::Future {
+          future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
+          bind: Some("counter".to_string()),
+          next: State::TestSelectQueueMainStartWork
+        }
+      ]),
     }],
     some_t.trace_sink
   );
@@ -39,11 +57,18 @@ fn test_select_resume_mechanism() {
     vec![
       TraceEvent {
         state: State::TestSelectQueueMainEntry,
-        result: StepResult::AwaitQueue(vec![(
-          "counterStartQueue".to_string(),
-          "counter".to_string(),
-          State::TestSelectQueueMainStartWork
-        ),]),
+        result: StepResult::Select(vec![
+          SelectArm::Queue {
+            queue_name: "counterStartQueue".to_string(),
+            bind: "counter".to_string(),
+            next: State::TestSelectQueueMainStartWork,
+          },
+          SelectArm::Future {
+            future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
+            bind: Some("counter".to_string()),
+            next: State::TestSelectQueueMainStartWork
+          }
+        ]),
       },
       TraceEvent {
         state: State::TestSelectQueueMainStartWork,
