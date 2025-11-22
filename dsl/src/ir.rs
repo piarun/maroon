@@ -122,10 +122,8 @@ pub enum Opcode {
 }
 
 #[derive(Debug, Clone)]
-pub struct AwaitSpec {
-  pub bind: Option<String>,
-  pub ret_to: StepId,
-  pub future_id: FutureLabel,
+pub enum AwaitSpec {
+  Future { bind: Option<String>, ret_to: StepId, future_id: FutureLabel },
 }
 
 #[derive(Debug, Clone)]

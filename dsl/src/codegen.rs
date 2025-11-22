@@ -863,17 +863,21 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(spec) => {
-              // Pause current task until future resolves; push continuation state on stack when resuming.
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-              match &spec.bind {
-                Some(name) => out.push_str(&format!(
-                  "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                  spec.future_id.0, name, next_v
-                )),
-                None => out.push_str(&format!(
-                  "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
-                  spec.future_id.0, next_v
-                )),
+              // Pause current task until a future resolves; push continuation state when resuming.
+              match spec {
+                AwaitSpec::Future { bind, ret_to, future_id } => {
+                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                  match bind {
+                    Some(name) => out.push_str(&format!(
+                      "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                      future_id.0, name, next_v
+                    )),
+                    None => out.push_str(&format!(
+                      "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                      future_id.0, next_v
+                    )),
+                  }
+                }
               }
             }
             Step::Call { target, args, ret_to, bind } => {
@@ -1090,17 +1094,21 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(spec) => {
-            // Pause current task until future resolves; push continuation state on stack when resuming.
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &spec.ret_to.0]);
-            match &spec.bind {
-              Some(name) => out.push_str(&format!(
-                "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                spec.future_id.0, name, next_v
-              )),
-              None => out.push_str(&format!(
-                "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
-                spec.future_id.0, next_v
-              )),
+            // Pause current task until a future resolves; push continuation state when resuming.
+            match spec {
+              AwaitSpec::Future { bind, ret_to, future_id } => {
+                let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                match bind {
+                  Some(name) => out.push_str(&format!(
+                    "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                    future_id.0, name, next_v
+                  )),
+                  None => out.push_str(&format!(
+                    "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                    future_id.0, next_v
+                  )),
+                }
+              }
             }
           }
           Step::Call { target, args, ret_to, bind } => {
