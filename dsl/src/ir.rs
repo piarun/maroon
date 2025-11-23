@@ -114,6 +114,27 @@ pub enum Step {
   // suspends fiber until a message is available
   // if several messages are available at the same time - runtime will pick the first matching arm
   Select { arms: Vec<AwaitSpec> },
+
+  // set values to async primitives: queue, future, ...?
+  // doesnt stop Fiber from execution
+  SetValues { values: Vec<SetPrimitive>, next: StepId },
+}
+
+#[derive(Debug, Clone)]
+pub enum SetPrimitive {
+  QueueMessage {
+    queue_name: String,
+    /// name of local variable from which value should be copied and sent to the queue
+    var_name: String,
+  },
+
+  /// `f_var_name` - variable where future is located
+  /// - the one that should be updated with the new value
+  Future {
+    f_var_name: String,
+    /// name of local variable from which value should be copied and set to Future
+    var_name: String,
+  },
 }
 
 #[derive(Debug, Clone)]

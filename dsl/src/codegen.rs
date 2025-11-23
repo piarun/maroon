@@ -199,26 +199,26 @@ pub fn generate_rust_types(ir: &IR) -> String {
           }
         }
       }
-      // Identify direct-return RustBlock next steps to suppress from State enum
-      use std::collections::BTreeSet as __BTS;
-      let mut suppressed: __BTS<String> = __BTS::new();
-      for (_sid, st) in &func.steps {
-        if let Step::RustBlock { binds, next, .. } = st {
-          if binds.len() == 1 {
-            if let Some((_, Step::Return { value })) = func.steps.iter().find(|(nsid, _)| nsid.0 == next.0) {
-              if let RetValue::Var(vn) = value {
-                if vn == &binds[0] {
-                  suppressed.insert(next.0.clone());
-                }
+      // State enum: include entry + all steps except direct-return suppressed ones
+      let mut steps: Vec<String> = Vec::new();
+      steps.push(func.entry.0.clone());
+      for (step_id, step) in &func.steps {
+        // Additional safety: suppress direct-return targets even if set calc fails
+        let mut suppress_this = suppressed.contains(&step_id.0);
+        if !suppress_this {
+          if let Step::Return { value } = step {
+            if let RetValue::Var(vn) = value {
+              let has_direct_rb = func.steps.iter().any(|(_sid2, st2)| match st2 {
+                Step::RustBlock { binds, next, .. } => binds.len() == 1 && &binds[0] == vn && next.0 == step_id.0,
+                _ => false,
+              });
+              if has_direct_rb {
+                suppress_this = true;
               }
             }
           }
         }
-      }
-      let mut steps: Vec<String> = Vec::new();
-      steps.push(func.entry.0.clone());
-      for (step_id, _step) in &func.steps {
-        if !suppressed.contains(&step_id.0) {
+        if !suppress_this {
           steps.push(step_id.0.clone());
         }
       }
@@ -282,6 +282,12 @@ pub enum SelectArm {
   Queue { queue_name: String, bind: String, next: State },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SetPrimitiveValue {
+  QueueMessage { queue_name: String, value: Value },
+  Future { id: String, value: Value },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
@@ -297,6 +303,8 @@ pub enum StepResult {
   Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  // Broadcast updates to async primitives (queues/futures) and continue to `next`.
+  SetValues { values: Vec<SetPrimitiveValue>, next: State },
 }",
   );
 
@@ -694,12 +702,27 @@ pub fn func_args_count(e: &State) -> usize {
       let mut steps_sorted: Vec<&(StepId, Step)> = func.steps.iter().collect();
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
-      for (step_id, _) in steps_sorted {
+      for (step_id, step) in steps_sorted {
         // Skip entry here since it's already added explicitly above
         if step_id.0 == func.entry.0 {
           continue;
         }
-        if !suppressed.contains(&step_id.0) {
+        // Additional safety: suppress direct-return targets
+        let mut skip = suppressed.contains(&step_id.0);
+        if !skip {
+          if let Step::Return { value } = step {
+            if let RetValue::Var(vn) = value {
+              let has_direct_rb = func.steps.iter().any(|(_sid2, st2)| match st2 {
+                Step::RustBlock { binds, next, .. } => binds.len() == 1 && &binds[0] == vn && next.0 == step_id.0,
+                _ => false,
+              });
+              if has_direct_rb {
+                skip = true;
+              }
+            }
+          }
+        }
+        if !skip {
           let v = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
           out.push_str(&format!("    State::{} => {},\n", v, n));
         }
@@ -779,6 +802,19 @@ fn generate_global_step(ir: &IR) -> String {
                 collect_vars_from_expr(&e, &mut referenced);
               }
             }
+            Step::SetValues { values, .. } => {
+              for v in values {
+                match v {
+                  crate::ir::SetPrimitive::QueueMessage { var_name, .. } => {
+                    referenced.insert(var_name.clone());
+                  }
+                  crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
+                    referenced.insert(f_var_name.clone());
+                    referenced.insert(var_name.clone());
+                  }
+                }
+              }
+            }
             Step::Await(_) => {}
             Step::Select { .. } => {}
             Step::Call { args, .. } => {
@@ -823,6 +859,38 @@ fn generate_global_step(ir: &IR) -> String {
                 "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
                 ms.0, next_v, future_id.0
               ));
+            }
+            Step::SetValues { values, next } => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              let mut vparts: Vec<String> = Vec::new();
+              for v in values {
+                match v {
+                  crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
+                    let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
+                    let vname = type_variant_name(vty);
+                    let local_ident = camel_ident(var_name);
+                    vparts.push(format!(
+                      "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
+                      queue_name, vname, local_ident
+                    ));
+                  }
+                  crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
+                    let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
+                    let vname = type_variant_name(vty);
+                    let local_ident = camel_ident(var_name);
+                    let f_ident = camel_ident(f_var_name);
+                    vparts.push(format!(
+                      "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
+                      f_ident, vname, local_ident
+                    ));
+                  }
+                }
+              }
+              out.push_str("      StepResult::SetValues { values: vec![");
+              out.push_str(&vparts.join(", "));
+              out.push_str("], next: State::");
+              out.push_str(&next_v);
+              out.push_str(" }\n");
             }
             Step::Select { arms } => {
               // Build structured Select arms supporting Future and Queue
@@ -1013,7 +1081,22 @@ fn generate_global_step(ir: &IR) -> String {
       let mut steps_sorted: Vec<(&StepId, &Step)> = func.steps.iter().map(|(id, st)| (id, st)).collect();
       steps_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
       for (step_id, step) in steps_sorted {
-        if suppressed.contains(&step_id.0) {
+        // Skip suppressed direct-return next steps
+        let mut skip_step = suppressed.contains(&step_id.0);
+        if !skip_step {
+          if let Step::Return { value } = step {
+            if let RetValue::Var(vn) = value {
+              let has_direct_rb = func.steps.iter().any(|(_sid2, st2)| match st2 {
+                Step::RustBlock { binds, next, .. } => binds.len() == 1 && &binds[0] == vn && next.0 == step_id.0,
+                _ => false,
+              });
+              if has_direct_rb {
+                skip_step = true;
+              }
+            }
+          }
+        }
+        if skip_step {
           continue;
         }
         let state_variant = variant_name(&[fiber_name.0.as_str(), func_name, &step_id.0]);
@@ -1026,6 +1109,19 @@ fn generate_global_step(ir: &IR) -> String {
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
+            }
+          }
+          Step::SetValues { values, .. } => {
+            for v in values {
+              match v {
+                crate::ir::SetPrimitive::QueueMessage { var_name, .. } => {
+                  referenced.insert(var_name.clone());
+                }
+                crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
+                  referenced.insert(f_var_name.clone());
+                  referenced.insert(var_name.clone());
+                }
+              }
             }
           }
           Step::Await(_) => {}
@@ -1075,6 +1171,38 @@ fn generate_global_step(ir: &IR) -> String {
               "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
               ms.0, next_v, future_id.0
             ));
+          }
+          Step::SetValues { values, next } => {
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+            let mut vparts: Vec<String> = Vec::new();
+            for v in values {
+              match v {
+                crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
+                  let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
+                  let vname = type_variant_name(vty);
+                  let local_ident = camel_ident(var_name);
+                  vparts.push(format!(
+                    "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
+                    queue_name, vname, local_ident
+                  ));
+                }
+                crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
+                  let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
+                  let vname = type_variant_name(vty);
+                  let local_ident = camel_ident(var_name);
+                  let f_ident = camel_ident(f_var_name);
+                  vparts.push(format!(
+                    "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
+                    f_ident, vname, local_ident
+                  ));
+                }
+              }
+            }
+            out.push_str("      StepResult::SetValues { values: vec![");
+            out.push_str(&vparts.join(", "));
+            out.push_str("], next: State::");
+            out.push_str(&next_v);
+            out.push_str(" }\n");
           }
           Step::Select { arms } => {
             // Build structured Select arms supporting Future and Queue
@@ -1258,7 +1386,7 @@ fn generate_global_step(ir: &IR) -> String {
     }
   }
 
-  out.push_str("  }\n}\n");
+  out.push_str("    _ => StepResult::Todo(\"uncovered-state\".to_string()),\n  }\n}\n");
   out
 }
 

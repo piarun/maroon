@@ -2,7 +2,8 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  Heap, SelectArm, StackEntry, State, StepResult, Value, func_args_count, get_prepare_fn, get_result_fn, global_step,
+  Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count, get_prepare_fn,
+  get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -46,6 +47,8 @@ pub enum RunResult {
   ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
   // Select arms matching IR: can await either futures or queue messages
   Select(Vec<SelectArm>),
+  // Broadcast primitive updates to runtime; fiber has already queued next state
+  SetValues(Vec<SetPrimitiveValue>),
 }
 
 impl std::fmt::Display for Fiber {
@@ -303,6 +306,10 @@ impl Fiber {
         }
         StepResult::Select(arms) => {
           return RunResult::Select(arms);
+        }
+        StepResult::SetValues { values, next } => {
+          self.stack.push(StackEntry::State(next));
+          return RunResult::SetValues(values);
         }
         StepResult::Done | StepResult::Todo(_) => {
           // No-op control signals for now; continue stepping if any state remains

@@ -154,6 +154,12 @@ pub enum SelectArm {
   Queue { queue_name: String, bind: String, next: State },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SetPrimitiveValue {
+  QueueMessage { queue_name: String, value: Value },
+  Future { id: String, value: Value },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
@@ -169,6 +175,8 @@ pub enum StepResult {
   Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  // Broadcast updates to async primitives (queues/futures) and continue to `next`.
+  SetValues { values: Vec<SetPrimitiveValue>, next: State },
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {

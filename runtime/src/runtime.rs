@@ -290,6 +290,7 @@ limiter:
             self.active_fibers.push_front(fiber);
           }
           RunResult::Select(_states) => {}
+          RunResult::SetValues(_values) => {}
         }
       }
 
