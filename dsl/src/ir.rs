@@ -80,6 +80,10 @@ pub struct InVar(pub &'static str, pub Type);
 #[derive(Debug, Clone)]
 pub struct LocalVar(pub &'static str, pub Type);
 
+/// this reference should be used in ir specification where I want to reference LocalVar existed in the current stack frame
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LocalVarRef(pub &'static str);
+
 #[derive(Debug, Clone)]
 pub enum Step {
   ScheduleTimer {
@@ -105,7 +109,7 @@ pub enum Step {
   Call {
     target: FuncRef,
     args: Vec<Expr>,
-    bind: Option<String>,
+    bind: Option<LocalVarRef>,
     ret_to: StepId,
   },
   Return {
@@ -129,7 +133,7 @@ pub enum Step {
   /// `code` is the Rust body that computes and returns the values.
   ///     All function params and locals are available in scope for this block.
   RustBlock {
-    binds: Vec<String>,
+    binds: Vec<LocalVarRef>,
     code: String,
     next: StepId,
   },
@@ -159,17 +163,17 @@ pub enum SetPrimitive {
   QueueMessage {
     /// `f_var_queue_name` - variable where queue name is located
     /// - the one that should be updated with the new value
-    f_var_queue_name: String,
-    /// name of local variable from which value should be copied and sent to the queue
-    var_name: String,
+    f_var_queue_name: LocalVarRef,
+    /// ref to a variable from which value should be copied and sent to the queue
+    var_name: LocalVarRef,
   },
 
   Future {
-    /// `f_var_name` - variable where future is located
+    /// `f_var_name` - variable where future id is located
     /// - the one that should be updated with the new value
-    f_var_name: String,
-    /// name of local variable from which value should be copied and set to Future
-    var_name: String,
+    f_var_name: LocalVarRef,
+    /// ref to a local variable from which value should be copied and set to Future
+    var_name: LocalVarRef,
   },
 }
 
@@ -181,7 +185,7 @@ pub enum Opcode {
 #[derive(Debug, Clone)]
 pub enum AwaitSpec {
   Future {
-    bind: Option<String>,
+    bind: Option<LocalVarRef>,
     ret_to: StepId,
     future_id: FutureLabel,
   },
@@ -193,7 +197,7 @@ pub enum AwaitSpec {
     queue_name: String,
     /// variable name - where message from the queue will be put
     /// TODO: check types of messages that they match
-    message_var: String,
+    message_var: LocalVarRef,
     /// next step after await is resolved in this arm
     next: StepId,
   },
@@ -203,7 +207,7 @@ pub enum AwaitSpec {
 pub enum Expr {
   UInt64(u64),
   Str(String),
-  Var(String),
+  Var(LocalVarRef),
   Equal(Box<Expr>, Box<Expr>),
   Greater(Box<Expr>, Box<Expr>),
   Less(Box<Expr>, Box<Expr>),
@@ -216,7 +220,7 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub enum RetValue {
   /// Return a variable by name
-  Var(String),
+  Var(LocalVarRef),
   /// Return a literal
   UInt64(u64),
   Str(String),

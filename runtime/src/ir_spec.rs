@@ -42,13 +42,13 @@ pub fn sample_ir() -> IR {
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
                       queue_name: "counterStartQueue".to_string(),
-                      message_var: "counter".to_string(),
+                      message_var: LocalVarRef("counter"),
                       next: StepId::new("start_work"),
                     },
                     AwaitSpec::Future {
                       // doesn't matter how this future ended up here for tests
                       // in real life this future should be created or passed somehow
-                      bind: Some("responseFromFut".to_string()),
+                      bind: Some(LocalVarRef("responseFromFut")),
                       ret_to: StepId::new("inc_from_fut"),
                       future_id: FutureLabel::new("testSelectQueue_future_1"),
                     }
@@ -57,15 +57,15 @@ pub fn sample_ir() -> IR {
                 (
                   // added this artificial step to see the difference in path in tests
                   StepId::new("inc_from_fut"),
-                  Step::RustBlock { binds: vec!["counter".to_string()], code: "responseFromFut - 1".to_string(), next: StepId::new("compare") },
+                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "responseFromFut - 1".to_string(), next: StepId::new("compare") },
                 ),
                 (
                   StepId::new("start_work"),
-                  Step::RustBlock { binds: vec!["counter".to_string()], code: "counter + 1".to_string(), next: StepId::new("compare") },
+                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "counter + 1".to_string(), next: StepId::new("compare") },
                 ),
                 (
                   StepId::new("compare"),
-                  Step::If { cond: Expr::Equal(Box::new(Expr::Var("counter".to_string())), Box::new(Expr::UInt64(3))), then_: StepId::new("return"), else_: StepId::new("start_work") },
+                  Step::If { cond: Expr::Equal(Box::new(Expr::Var(LocalVarRef("counter"))), Box::new(Expr::UInt64(3))), then_: StepId::new("return"), else_: StepId::new("start_work") },
                 ),
                 (
                   StepId::new("return"),
@@ -101,14 +101,14 @@ pub fn sample_ir() -> IR {
                     AwaitSpec::Queue{
                       // here I just hardcode queue message name. Later I'll add `constructor passing variables` and remove this hardcode
                       queue_name: "testTasks".to_string(),
-                      message_var: "f_task".to_string(),
+                      message_var: LocalVarRef("f_task"),
                       next: StepId::new("increment"),
                     },
                   ] },
                 ),
                 (
                   StepId::new("increment"),
-                  Step::RustBlock { binds: vec!["f_task".to_string(), "f_respQueueName".to_string(), "f_respFutureId".to_string()], code: r#"
+                  Step::RustBlock { binds: vec![LocalVarRef("f_task"), LocalVarRef("f_respQueueName"), LocalVarRef("f_respFutureId")], code: r#"
                     let mut t_m = fTask;
                     t_m.inStrValue += 1;
                     (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
@@ -119,8 +119,8 @@ pub fn sample_ir() -> IR {
                   StepId::new("return_result"),
                   Step::SetValues {
                     values: vec![
-                      SetPrimitive::Future { f_var_name: "f_respFutureId".to_string(), var_name: "f_task".to_string() },
-                      SetPrimitive::QueueMessage { f_var_queue_name: "f_respQueueName".to_string(), var_name: "f_task".to_string() },
+                      SetPrimitive::Future { f_var_name: LocalVarRef("f_respFutureId"), var_name: LocalVarRef("f_task") },
+                      SetPrimitive::QueueMessage { f_var_queue_name: LocalVarRef("f_respQueueName"), var_name: LocalVarRef("f_task") },
                     ],
                     next: StepId::new("return"),
                   },
@@ -162,12 +162,12 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["sum".to_string()],
+                      binds: vec![LocalVarRef("sum")],
                       code: "a+b".to_string(),
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
                 ],
               },
             ),
@@ -182,7 +182,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["sub".to_string()],
+                      binds: vec![LocalVarRef("sub")],
                       code: r#"
 let out = a - b;
 out
@@ -191,7 +191,7 @@ out
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("sub".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sub")) }),
                 ],
               },
             ),
@@ -206,12 +206,12 @@ out
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["mult".to_string()],
+                      binds: vec![LocalVarRef("mult")],
                       code: "a*b".to_string(),
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("mult".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("mult")) }),
                 ],
               },
             ),
@@ -226,12 +226,12 @@ out
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["div".to_string()],
+                      binds: vec![LocalVarRef("div")],
                       code: "a/b".to_string(),
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("div".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("div")) }),
                 ],
               },
             ),
@@ -251,7 +251,7 @@ out
                   (
                     StepId::new("entry"),
                     Step::If {
-                      cond: Expr::Equal(Box::new(Expr::Var("n".to_string())), Box::new(Expr::UInt64(1))),
+                      cond: Expr::Equal(Box::new(Expr::Var(LocalVarRef("n"))), Box::new(Expr::UInt64(1))),
                       then_: StepId::new("return_1"),
                       else_: StepId::new("subtract"),
                     },
@@ -261,8 +261,8 @@ out
                     StepId::new("subtract"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var("n".to_string()), Expr::UInt64(1)],
-                      bind: Some("subtract_res".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("n")), Expr::UInt64(1)],
+                      bind: Some(LocalVarRef("subtract_res")),
                       ret_to: StepId::new("factorial_call"),
                     },
                   ),
@@ -270,8 +270,8 @@ out
                     StepId::new("factorial_call"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
-                      args: vec![Expr::Var("subtract_res".to_string())],
-                      bind: Some("fac_call_res".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("subtract_res"))],
+                      bind: Some(LocalVarRef("fac_call_res")),
                       ret_to: StepId::new("multiply"),
                     },
                   ),
@@ -279,12 +279,12 @@ out
                     StepId::new("multiply"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "mult".to_string() },
-                      args: vec![Expr::Var("n".to_string()), Expr::Var("fac_call_res".to_string())],
-                      bind: Some("result".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("n")), Expr::Var(LocalVarRef("fac_call_res"))],
+                      bind: Some(LocalVarRef("result")),
                       ret_to: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -300,8 +300,8 @@ out
                     StepId::new("entry"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
-                      args: vec![Expr::Var("a".to_string()), Expr::Var("b".to_string())],
-                      bind: Some("sumAB".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("a")), Expr::Var(LocalVarRef("b"))],
+                      bind: Some(LocalVarRef("sumAB")),
                       ret_to: StepId::new("sub_sum"),
                     },
                   ),
@@ -309,12 +309,12 @@ out
                     StepId::new("sub_sum"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var("sumAB".to_string()), Expr::Var("c".to_string())],
-                      bind: Some("subABC".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("sumAB")), Expr::Var(LocalVarRef("c"))],
+                      bind: Some(LocalVarRef("subABC")),
                       ret_to: StepId::new("finalize"),
                     },
                   ),
-                  (StepId::new("finalize"), Step::Return { value: RetValue::Var("subABC".to_string()) }),
+                  (StepId::new("finalize"), Step::Return { value: RetValue::Var(LocalVarRef("subABC")) }),
                 ],
               },
             ),
@@ -335,8 +335,8 @@ out
                     StepId::new("entry"),
                     Step::If {
                       cond: Expr::Greater(
-                        Box::new(Expr::Var("left".to_string())),
-                        Box::new(Expr::Var("right".to_string())),
+                        Box::new(Expr::Var(LocalVarRef("left"))),
+                        Box::new(Expr::Var(LocalVarRef("right"))),
                       ),
                       then_: StepId::new("return_None"),
                       else_: StepId::new("calculate_div"),
@@ -346,7 +346,7 @@ out
                   (
                     StepId::new("calculate_div"),
                     Step::RustBlock {
-                      binds: vec!["div".to_string(), "v_by_index_div".to_string()],
+                      binds: vec![LocalVarRef("div"), LocalVarRef("v_by_index_div")],
                       code: r#"
                     let o_div = (left + right) / 2;
                     let s = &heap.global;
@@ -360,8 +360,8 @@ out
                     StepId::new("return_if_equal"),
                     Step::If {
                       cond: Expr::Equal(
-                        Box::new(Expr::Var("v_by_index_div".to_string())),
-                        Box::new(Expr::Var("e".to_string())),
+                        Box::new(Expr::Var(LocalVarRef("v_by_index_div"))),
+                        Box::new(Expr::Var(LocalVarRef("e"))),
                       ),
                       then_: StepId::new("return_found"),
                       else_: StepId::new("cmp_less"),
@@ -369,14 +369,14 @@ out
                   ),
                   (
                     StepId::new("return_found"),
-                    Step::Return { value: RetValue::Some(Box::new(RetValue::Var("div".to_string()))) },
+                    Step::Return { value: RetValue::Some(Box::new(RetValue::Var(LocalVarRef("div")))) },
                   ),
                   (
                     StepId::new("cmp_less"),
                     Step::If {
                       cond: Expr::Less(
-                        Box::new(Expr::Var("v_by_index_div".to_string())),
-                        Box::new(Expr::Var("e".to_string())),
+                        Box::new(Expr::Var(LocalVarRef("v_by_index_div"))),
+                        Box::new(Expr::Var(LocalVarRef("e"))),
                       ),
                       then_: StepId::new("go_right"),
                       else_: StepId::new("go_left_check_overflow"),
@@ -386,15 +386,15 @@ out
                     StepId::new("go_right"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
-                      args: vec![Expr::Var("div".to_string()), Expr::UInt64(1)],
-                      bind: Some("left".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
+                      bind: Some(LocalVarRef("left")),
                       ret_to: StepId::new("recursive_call"),
                     },
                   ),
                   (
                     StepId::new("go_left_check_overflow"),
                     Step::If {
-                      cond: Expr::Less(Box::new(Expr::Var("div".to_string())), Box::new(Expr::UInt64(0))),
+                      cond: Expr::Less(Box::new(Expr::Var(LocalVarRef("div"))), Box::new(Expr::UInt64(0))),
                       then_: StepId::new("return_None"),
                       else_: StepId::new("go_left"),
                     },
@@ -403,8 +403,8 @@ out
                     StepId::new("go_left"),
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var("div".to_string()), Expr::UInt64(1)],
-                      bind: Some("right".to_string()),
+                      args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
+                      bind: Some(LocalVarRef("right")),
                       ret_to: StepId::new("recursive_call"),
                     },
                   ),
@@ -413,15 +413,15 @@ out
                     Step::Call {
                       target: FuncRef { fiber: "global".to_string(), func: "binary_search".to_string() },
                       args: vec![
-                        Expr::Var("e".to_string()),
-                        Expr::Var("left".to_string()),
-                        Expr::Var("right".to_string()),
+                        Expr::Var(LocalVarRef("e")),
+                        Expr::Var(LocalVarRef("left")),
+                        Expr::Var(LocalVarRef("right")),
                       ],
-                      bind: Some("fac_call_res".to_string()),
+                      bind: Some(LocalVarRef("fac_call_res")),
                       ret_to: StepId::new("return_result"),
                     },
                   ),
-                  (StepId::new("return_result"), Step::Return { value: RetValue::Var("fac_call_res".to_string()) }),
+                  (StepId::new("return_result"), Step::Return { value: RetValue::Var(LocalVarRef("fac_call_res")) }),
                 ],
               },
             ),
@@ -460,8 +460,8 @@ out
                       fiber: "global".to_string(),
                       message: "add".to_string(),
                       args: vec![
-                        ("a".to_string(), Expr::Var("a".to_string())),
-                        ("b".to_string(), Expr::Var("b".to_string())),
+                        ("a".to_string(), Expr::Var(LocalVarRef("a"))),
+                        ("b".to_string(), Expr::Var(LocalVarRef("b"))),
                       ],
                       next: StepId::new("await"),
                       future_id: FutureLabel::new("async_add_future_1"),
@@ -470,12 +470,12 @@ out
                   (
                     StepId::new("await"),
                     Step::Await(AwaitSpec::Future {
-                      bind: Some("sum".to_string()),
+                      bind: Some(LocalVarRef("sum")),
                       ret_to: StepId::new("return"),
                       future_id: FutureLabel::new("async_add_future_1"),
                     }),
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("sum".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
                 ],
               },
             ),
@@ -506,12 +506,12 @@ out
                   (
                     StepId::new("calc"),
                     Step::RustBlock {
-                      binds: vec!["pow".to_string()],
+                      binds: vec![LocalVarRef("pow")],
                       code: "a.pow(b as u32)".to_string(),
                       next: StepId::new("return".to_string()),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("pow".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("pow")) }),
                 ],
               },
             ),
@@ -561,7 +561,7 @@ out
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 let mut remaining = qty;
@@ -621,7 +621,7 @@ trades
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -636,7 +636,7 @@ trades
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 let mut remaining = qty;
@@ -690,7 +690,7 @@ trades
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -705,7 +705,7 @@ trades
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 let mut ok = 0u64;
@@ -726,7 +726,7 @@ ok
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -741,7 +741,7 @@ ok
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 loop {
@@ -754,7 +754,7 @@ loop {
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -769,7 +769,7 @@ loop {
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 loop {
@@ -783,7 +783,7 @@ loop {
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),
@@ -798,7 +798,7 @@ loop {
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec!["result".to_string()],
+                      binds: vec![LocalVarRef("result")],
                       code: r#"
 let ob = &mut heap.orderBook;
 
@@ -846,7 +846,7 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var("result".to_string()) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
                 ],
               },
             ),

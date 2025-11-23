@@ -483,7 +483,7 @@ fn collect_vars_from_expr(
   match expr {
     Expr::UInt64(_) | Expr::Str(_) => {}
     Expr::Var(name) => {
-      acc.insert(name.clone());
+      acc.insert(name.0.to_string());
     }
     Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
       collect_vars_from_expr(a, acc);
@@ -530,7 +530,7 @@ fn render_expr_code(
 ) -> String {
   match expr {
     Expr::UInt64(x) => format!("{}u64", x),
-    Expr::Var(name) => camel_ident(name),
+    Expr::Var(name) => camel_ident(name.0),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
@@ -557,7 +557,7 @@ fn render_ret_value(
   match rv {
     RetValue::UInt64(x) => format!("{}u64", x),
     RetValue::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
-    RetValue::Var(name) => camel_ident(name),
+    RetValue::Var(name) => camel_ident(name.0),
     RetValue::Some(inner) => {
       if let Type::Option(inner_ty) = expected_ty {
         let inner_code = render_ret_value(inner, inner_ty, _func);
@@ -595,7 +595,7 @@ fn render_call_step(
   target: &FuncRef,
   args: &Vec<Expr>,
   ret_to: &StepId,
-  bind: &Option<String>,
+  bind: &Option<LocalVarRef>,
 ) -> String {
   let mut s = String::new();
   let ret_state = variant_name(&[current_fiber, current_func_name, &ret_to.0]);
@@ -607,9 +607,9 @@ fn render_call_step(
       let params_len = current_func.in_vars.len();
       let locals_len = current_func.locals.len();
       let total_vars = params_len + locals_len;
-      let var_index = if let Some(pi) = current_func.in_vars.iter().position(|p| p.0 == var_name.as_str()) {
+      let var_index = if let Some(pi) = current_func.in_vars.iter().position(|p| p.0 == var_name.0) {
         Some(pi)
-      } else if let Some(li) = current_func.locals.iter().position(|l| l.0 == var_name.as_str()) {
+      } else if let Some(li) = current_func.locals.iter().position(|l| l.0 == var_name.0) {
         Some(params_len + li)
       } else {
         None
@@ -659,7 +659,7 @@ fn collect_vars_from_retvalue(
 ) {
   match rv {
     RetValue::Var(name) => {
-      acc.insert(name.clone());
+      acc.insert(name.0.to_string());
     }
     RetValue::UInt64(_) | RetValue::Str(_) => {}
     RetValue::Some(inner) => collect_vars_from_retvalue(inner, acc),
@@ -822,12 +822,12 @@ fn generate_global_step(ir: &IR) -> String {
               for v in values {
                 match v {
                   crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
-                    referenced.insert(f_var_queue_name.clone());
-                    referenced.insert(var_name.clone());
+                    referenced.insert(f_var_queue_name.0.to_string());
+                    referenced.insert(var_name.0.to_string());
                   }
                   crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
-                    referenced.insert(f_var_name.clone());
-                    referenced.insert(var_name.clone());
+                    referenced.insert(f_var_name.0.to_string());
+                    referenced.insert(var_name.0.to_string());
                   }
                 }
               }
@@ -883,26 +883,26 @@ fn generate_global_step(ir: &IR) -> String {
               for v in values {
                 match v {
                   crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
-                    let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
+                    let vty = var_type_of(func, var_name.0).expect("unknown var in SetValues::QueueMessage");
                     let vname = type_variant_name(vty);
-                    let mut local_ident = camel_ident(var_name);
+                    let mut local_ident = camel_ident(var_name.0);
                     if !is_copy_type(vty) {
                       local_ident = format!("{}.clone()", local_ident);
                     }
-                    let q_ident = camel_ident(f_var_queue_name);
+                    let q_ident = camel_ident(f_var_queue_name.0);
                     vparts.push(format!(
                       "SetPrimitiveValue::QueueMessage {{ queue_name: {}.clone(), value: Value::{}({}) }}",
                       q_ident, vname, local_ident
                     ));
                   }
                   crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
-                    let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
+                    let vty = var_type_of(func, var_name.0).expect("unknown var in SetValues::Future");
                     let vname = type_variant_name(vty);
-                    let mut local_ident = camel_ident(var_name);
+                    let mut local_ident = camel_ident(var_name.0);
                     if !is_copy_type(vty) {
                       local_ident = format!("{}.clone()", local_ident);
                     }
-                    let f_ident = camel_ident(f_var_name);
+                    let f_ident = camel_ident(f_var_name.0);
                     vparts.push(format!(
                       "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
                       f_ident, vname, local_ident
@@ -925,21 +925,21 @@ fn generate_global_step(ir: &IR) -> String {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
                     arm_parts.push(format!(
                       "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                      queue_name, message_var, next_v
+                      queue_name, message_var.0, next_v
                     ));
                   }
                   AwaitSpec::Future { bind, ret_to, future_id } => {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
                     match bind {
-                      Some(name) => arm_parts.push(format!(
-                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
-                        future_id.0, name, next_v
-                      )),
-                      None => arm_parts.push(format!(
-                        "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
-                        future_id.0, next_v
-                      )),
-                    }
+                    Some(name) => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
+                      future_id.0, name.0, next_v
+                    )),
+                    None => arm_parts.push(format!(
+                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
+                      future_id.0, next_v
+                    )),
+                  }
                   }
                 }
               }
@@ -957,7 +957,7 @@ fn generate_global_step(ir: &IR) -> String {
                     let vname = type_variant_name(&param.1);
                     let mut expr_code = render_expr_code(aexpr, func);
                     if let Expr::Var(var_name) = aexpr {
-                      if let Some(src_ty) = var_type_of(func, var_name) {
+                      if let Some(src_ty) = var_type_of(func, var_name.0) {
                         if !is_copy_type(src_ty) {
                           expr_code = format!("({}).clone()", expr_code);
                         }
@@ -989,7 +989,7 @@ fn generate_global_step(ir: &IR) -> String {
                   match bind {
                     Some(name) => out.push_str(&format!(
                       "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                      future_id.0, name, next_v
+                      future_id.0, name.0, next_v
                     )),
                     None => out.push_str(&format!(
                       "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
@@ -1037,7 +1037,7 @@ fn generate_global_step(ir: &IR) -> String {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               let mut bind_types: Vec<&Type> = Vec::new();
               for b in binds {
-                bind_types.push(var_type_of(func, b).expect("bind var type"));
+                bind_types.push(var_type_of(func, b.0).expect("bind var type"));
               }
               if bind_types.len() == 1 {
                 // Optimization: if next step is `Return { value: Var(binds[0]) }`, return directly
@@ -1059,9 +1059,9 @@ fn generate_global_step(ir: &IR) -> String {
                   // Single bind: assign directly into the current frame using offset
                   let ty_name = type_variant_name(bind_types[0]);
                   let bname = binds.get(0).unwrap();
-                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.0) {
                     format!("{}", pi)
-                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.0) {
                     format!("{}", func.in_vars.len() + li)
                   } else {
                     "0".to_string()
@@ -1088,9 +1088,9 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str("          StackEntry::FrameAssign(vec![\n");
                 for (i, b) in binds.iter().enumerate() {
                   let ty_name = type_variant_name(bind_types[i]);
-                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+                  let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.0) {
                     format!("{}", pi)
-                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.0) {
                     format!("{}", func.in_vars.len() + li)
                   } else {
                     "0".to_string()
@@ -1146,12 +1146,12 @@ fn generate_global_step(ir: &IR) -> String {
             for v in values {
               match v {
                 crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
-                  referenced.insert(f_var_queue_name.clone());
-                  referenced.insert(var_name.clone());
+                  referenced.insert(f_var_queue_name.0.to_string());
+                  referenced.insert(var_name.0.to_string());
                 }
                 crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
-                  referenced.insert(f_var_name.clone());
-                  referenced.insert(var_name.clone());
+                  referenced.insert(f_var_name.0.to_string());
+                  referenced.insert(var_name.0.to_string());
                 }
               }
             }
@@ -1210,22 +1210,22 @@ fn generate_global_step(ir: &IR) -> String {
             for v in values {
               match v {
                 crate::ir::SetPrimitive::QueueMessage { f_var_queue_name: queue_name, var_name } => {
-                  let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
+                  let vty = var_type_of(func, var_name.0).expect("unknown var in SetValues::QueueMessage");
                   let vname = type_variant_name(vty);
-                  let mut local_ident = camel_ident(var_name);
+                  let mut local_ident = camel_ident(var_name.0);
                   local_ident = format!("{}.clone()", local_ident);
-                  let q_ident = camel_ident(queue_name);
+                  let q_ident = camel_ident(queue_name.0);
                   vparts.push(format!(
                     "SetPrimitiveValue::QueueMessage {{ queue_name: {}.clone(), value: Value::{}({}) }}",
                     q_ident, vname, local_ident
                   ));
                 }
                 crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
-                  let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
+                  let vty = var_type_of(func, var_name.0).expect("unknown var in SetValues::Future");
                   let vname = type_variant_name(vty);
-                  let mut local_ident = camel_ident(var_name);
+                  let mut local_ident = camel_ident(var_name.0);
                   local_ident = format!("{}.clone()", local_ident);
-                  let f_ident = camel_ident(f_var_name);
+                  let f_ident = camel_ident(f_var_name.0);
                   vparts.push(format!(
                     "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
                     f_ident, vname, local_ident
@@ -1248,7 +1248,7 @@ fn generate_global_step(ir: &IR) -> String {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
                   arm_parts.push(format!(
                     "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                    queue_name, message_var, next_v
+                    queue_name, message_var.0, next_v
                   ));
                 }
                 AwaitSpec::Future { bind, ret_to, future_id } => {
@@ -1256,7 +1256,7 @@ fn generate_global_step(ir: &IR) -> String {
                   match bind {
                     Some(name) => arm_parts.push(format!(
                       "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
-                      future_id.0, name, next_v
+                      future_id.0, name.0, next_v
                     )),
                     None => arm_parts.push(format!(
                       "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
@@ -1279,7 +1279,7 @@ fn generate_global_step(ir: &IR) -> String {
                   let vname = type_variant_name(&param.1);
                   let mut expr_code = render_expr_code(aexpr, func);
                   if let Expr::Var(var_name) = aexpr {
-                    if let Some(src_ty) = var_type_of(func, var_name) {
+                    if let Some(src_ty) = var_type_of(func, var_name.0) {
                       if !is_copy_type(src_ty) {
                         expr_code = format!("({}).clone()", expr_code);
                       }
@@ -1311,7 +1311,7 @@ fn generate_global_step(ir: &IR) -> String {
                 match bind {
                   Some(name) => out.push_str(&format!(
                     "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                    future_id.0, name, next_v
+                    future_id.0, name.0, next_v
                   )),
                   None => out.push_str(&format!(
                     "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
@@ -1359,7 +1359,7 @@ fn generate_global_step(ir: &IR) -> String {
             // Types by bind order
             let mut bind_types: Vec<&Type> = Vec::new();
             for b in binds {
-              bind_types.push(var_type_of(func, b).expect("bind var type"));
+              bind_types.push(var_type_of(func, b.0).expect("bind var type"));
             }
             if bind_types.len() == 1 {
               // Optimization: if next step is Return of the bound var, just return it
@@ -1381,9 +1381,9 @@ fn generate_global_step(ir: &IR) -> String {
                 // Single bind: assign directly into the current frame using offset
                 let ty_name = type_variant_name(bind_types[0]);
                 let bname = binds.get(0).unwrap();
-                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.as_str()) {
+                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == bname.0) {
                   format!("{}", pi)
-                } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.as_str()) {
+                } else if let Some(li) = func.locals.iter().position(|l| l.0 == bname.0) {
                   format!("{}", func.in_vars.len() + li)
                 } else {
                   "0".to_string()
@@ -1409,9 +1409,9 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str("          StackEntry::FrameAssign(vec![\n");
               for (i, b) in binds.iter().enumerate() {
                 let ty_name = type_variant_name(bind_types[i]);
-                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.as_str()) {
+                let pos_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == b.0) {
                   format!("{}", pi)
-                } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.as_str()) {
+                } else if let Some(li) = func.locals.iter().position(|l| l.0 == b.0) {
                   format!("{}", func.in_vars.len() + li)
                 } else {
                   "0".to_string()
