@@ -1,5 +1,22 @@
 use crate::ir::*;
 
+fn is_copy_type(t: &Type) -> bool {
+  match t {
+    Type::UInt64 => true,
+    Type::Void => true,
+    Type::Option(inner) => is_copy_type(inner),
+    // Be conservative by default
+    Type::String
+    | Type::MaxQueue(_)
+    | Type::MinQueue(_)
+    | Type::Map(_, _)
+    | Type::Array(_)
+    | Type::Struct(_, _, _)
+    | Type::Custom(_) => false,
+  }
+}
+
+
 fn type_variant_name(t: &Type) -> String {
   match t {
     Type::UInt64 => "U64".into(),
@@ -868,7 +885,8 @@ fn generate_global_step(ir: &IR) -> String {
                   crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
                     let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
                     let vname = type_variant_name(vty);
-                    let local_ident = camel_ident(var_name);
+                    let mut local_ident = camel_ident(var_name);
+                    if !is_copy_type(vty) { local_ident = format!("{}.clone()", local_ident); }
                     vparts.push(format!(
                       "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
                       queue_name, vname, local_ident
@@ -877,7 +895,8 @@ fn generate_global_step(ir: &IR) -> String {
                   crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
                     let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
                     let vname = type_variant_name(vty);
-                    let local_ident = camel_ident(var_name);
+                    let mut local_ident = camel_ident(var_name);
+                    if !is_copy_type(vty) { local_ident = format!("{}.clone()", local_ident); }
                     let f_ident = camel_ident(f_var_name);
                     vparts.push(format!(
                       "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
@@ -931,7 +950,12 @@ fn generate_global_step(ir: &IR) -> String {
                 for (aname, aexpr) in args.iter() {
                   if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
                     let vname = type_variant_name(&param.1);
-                    let expr_code = render_expr_code(aexpr, func);
+                    let mut expr_code = render_expr_code(aexpr, func);
+                    if let Expr::Var(var_name) = aexpr {
+                      if let Some(src_ty) = var_type_of(func, var_name) {
+                        if !is_copy_type(src_ty) { expr_code = format!("({}).clone()", expr_code); }
+                      }
+                    }
                     arg_elems.push(format!("Value::{}({})", vname, expr_code));
                   }
                 }
@@ -1180,7 +1204,8 @@ fn generate_global_step(ir: &IR) -> String {
                 crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
                   let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
                   let vname = type_variant_name(vty);
-                  let local_ident = camel_ident(var_name);
+                  let mut local_ident = camel_ident(var_name);
+                  local_ident = format!("{}.clone()", local_ident);
                   vparts.push(format!(
                     "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
                     queue_name, vname, local_ident
@@ -1189,7 +1214,8 @@ fn generate_global_step(ir: &IR) -> String {
                 crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
                   let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
                   let vname = type_variant_name(vty);
-                  let local_ident = camel_ident(var_name);
+                  let mut local_ident = camel_ident(var_name);
+                  local_ident = format!("{}.clone()", local_ident);
                   let f_ident = camel_ident(f_var_name);
                   vparts.push(format!(
                     "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
@@ -1242,7 +1268,14 @@ fn generate_global_step(ir: &IR) -> String {
               for (aname, aexpr) in args.iter() {
                 if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
                   let vname = type_variant_name(&param.1);
-                  let expr_code = render_expr_code(aexpr, func);
+                  let mut expr_code = render_expr_code(aexpr, func);
+                  if let Expr::Var(var_name) = aexpr {
+                    if let Some(src_ty) = var_type_of(func, var_name) {
+                      if !is_copy_type(src_ty) {
+                        expr_code = format!("({}).clone()", expr_code);
+                      }
+                    }
+                  }
                   arg_elems.push(format!("Value::{}({})", vname, expr_code));
                 }
               }
