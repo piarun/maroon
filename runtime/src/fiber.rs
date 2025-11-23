@@ -12,8 +12,8 @@ use crate::trace::TraceEvent;
 pub struct Fiber {
   pub stack: Vec<StackEntry>,
   pub heap: Heap,
-  // holds an information for which function this task was created for
-  // used for preparing the stack before run and for getting the result
+  /// holds an information for which function this task was created for
+  /// used for preparing the stack before run and for getting the result
   pub function_key: String,
 
   pub f_type: FiberType,
@@ -29,25 +29,33 @@ pub struct Fiber {
 
 #[derive(Clone, Debug, Default)]
 pub struct RunContext {
-  // not None if there is binded task that is awaiting finishing this future_id
-  // TODO: not sure it's a good way to put that kind of information inside the task
-  //    why task should know if it's binded to smth or not?
+  /// not None if there is binded task that is awaiting finishing this future_id
+  /// TODO: not sure it's a good way to put that kind of information inside the task
+  ///    why task should know if it's binded to smth or not?
   pub future_id: Option<FutureId>,
 
-  // global_id from TaskBlueprint
+  /// global_id from TaskBlueprint
   pub global_id: Option<UniqueU64BlobId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunResult {
   Done(Value),
-  // futureId, varBind
+  /// futureId, varBind
   Await(FutureId, Option<String>),
-  AsyncCall { f_type: FiberType, func: String, args: Vec<Value>, future_id: FutureId },
-  ScheduleTimer { ms: LogicalTimeAbsoluteMs, future_id: FutureId },
-  // Select arms matching IR: can await either futures or queue messages
+  AsyncCall {
+    f_type: FiberType,
+    func: String,
+    args: Vec<Value>,
+    future_id: FutureId,
+  },
+  ScheduleTimer {
+    ms: LogicalTimeAbsoluteMs,
+    future_id: FutureId,
+  },
+  /// Select arms matching IR: can await either futures or queue messages
   Select(Vec<SelectArm>),
-  // Broadcast primitive updates to runtime; fiber has already queued next state
+  /// Broadcast primitive updates to runtime; fiber has already queued next state
   SetValues(Vec<SetPrimitiveValue>),
 }
 
@@ -60,7 +68,7 @@ impl std::fmt::Display for Fiber {
   }
 }
 
-// Runtime-only Future identifier. Unique per-fiber using suffixing policy.
+/// Runtime-only Future identifier. Unique per-fiber using suffixing policy.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FutureId(pub String);
 impl std::fmt::Display for FutureId {
@@ -105,7 +113,7 @@ impl Fiber {
     }
   }
 
-  // Create an empty fiber with a default heap and no loaded task.
+  /// Create an empty fiber with a default heap and no loaded task.
   /// TODO: remove it as it creates unusable fiber in a new paradigm
   pub fn new_empty(
     f_type: FiberType,
@@ -139,10 +147,10 @@ impl Fiber {
     }
   }
 
-  // load a task into this fiber, clearing the current stack but preserving the heap
-  //
-  // TODO: should I check and if stack is not empty - panic?
-  // That might identify potential problems or unxepectedly left variables
+  /// load a task into this fiber, clearing the current stack but preserving the heap
+  ///
+  /// TODO: should I check and if stack is not empty - panic?
+  /// That might identify potential problems or unxepectedly left variables
   pub fn load_task(
     &mut self,
     func_name: impl Into<String>,
@@ -166,7 +174,7 @@ impl Fiber {
     }
   }
 
-  // Assigns a value to the first matching named value entry from the back (top) of the stack.
+  /// Assigns a value to the first matching named value entry from the back (top) of the stack.
   pub fn assign_local(
     &mut self,
     name: String,
@@ -181,7 +189,7 @@ impl Fiber {
     }
   }
 
-  // Assign a local and push the next state onto the stack (used for queue-await resume paths)
+  /// Assign a local and push the next state onto the stack (used for queue-await resume paths)
   pub fn assign_local_and_push_next(
     &mut self,
     name: String,
@@ -192,7 +200,7 @@ impl Fiber {
     self.stack.push(StackEntry::State(next));
   }
 
-  // Runs until finished and gets the resutl or until parked for awaiting async results
+  /// Runs until finished and gets the resutl or until parked for awaiting async results
   pub fn run(&mut self) -> RunResult {
     loop {
       let head_opt = self.stack.pop();
