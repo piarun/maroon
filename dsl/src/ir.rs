@@ -123,14 +123,16 @@ pub enum Step {
 #[derive(Debug, Clone)]
 pub enum SetPrimitive {
   QueueMessage {
-    queue_name: String,
+    /// `f_var_queue_name` - variable where queue name is located
+    /// - the one that should be updated with the new value
+    f_var_queue_name: String,
     /// name of local variable from which value should be copied and sent to the queue
     var_name: String,
   },
 
-  /// `f_var_name` - variable where future is located
-  /// - the one that should be updated with the new value
   Future {
+    /// `f_var_name` - variable where future is located
+    /// - the one that should be updated with the new value
     f_var_name: String,
     /// name of local variable from which value should be copied and set to Future
     var_name: String,

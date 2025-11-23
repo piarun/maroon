@@ -16,7 +16,6 @@ fn is_copy_type(t: &Type) -> bool {
   }
 }
 
-
 fn type_variant_name(t: &Type) -> String {
   match t {
     Type::UInt64 => "U64".into(),
@@ -822,7 +821,8 @@ fn generate_global_step(ir: &IR) -> String {
             Step::SetValues { values, .. } => {
               for v in values {
                 match v {
-                  crate::ir::SetPrimitive::QueueMessage { var_name, .. } => {
+                  crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
+                    referenced.insert(f_var_queue_name.clone());
                     referenced.insert(var_name.clone());
                   }
                   crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
@@ -882,21 +882,26 @@ fn generate_global_step(ir: &IR) -> String {
               let mut vparts: Vec<String> = Vec::new();
               for v in values {
                 match v {
-                  crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
+                  crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
                     let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
                     let vname = type_variant_name(vty);
                     let mut local_ident = camel_ident(var_name);
-                    if !is_copy_type(vty) { local_ident = format!("{}.clone()", local_ident); }
+                    if !is_copy_type(vty) {
+                      local_ident = format!("{}.clone()", local_ident);
+                    }
+                    let q_ident = camel_ident(f_var_queue_name);
                     vparts.push(format!(
-                      "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
-                      queue_name, vname, local_ident
+                      "SetPrimitiveValue::QueueMessage {{ queue_name: {}.clone(), value: Value::{}({}) }}",
+                      q_ident, vname, local_ident
                     ));
                   }
                   crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
                     let vty = var_type_of(func, var_name).expect("unknown var in SetValues::Future");
                     let vname = type_variant_name(vty);
                     let mut local_ident = camel_ident(var_name);
-                    if !is_copy_type(vty) { local_ident = format!("{}.clone()", local_ident); }
+                    if !is_copy_type(vty) {
+                      local_ident = format!("{}.clone()", local_ident);
+                    }
                     let f_ident = camel_ident(f_var_name);
                     vparts.push(format!(
                       "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
@@ -953,7 +958,9 @@ fn generate_global_step(ir: &IR) -> String {
                     let mut expr_code = render_expr_code(aexpr, func);
                     if let Expr::Var(var_name) = aexpr {
                       if let Some(src_ty) = var_type_of(func, var_name) {
-                        if !is_copy_type(src_ty) { expr_code = format!("({}).clone()", expr_code); }
+                        if !is_copy_type(src_ty) {
+                          expr_code = format!("({}).clone()", expr_code);
+                        }
                       }
                     }
                     arg_elems.push(format!("Value::{}({})", vname, expr_code));
@@ -1138,7 +1145,8 @@ fn generate_global_step(ir: &IR) -> String {
           Step::SetValues { values, .. } => {
             for v in values {
               match v {
-                crate::ir::SetPrimitive::QueueMessage { var_name, .. } => {
+                crate::ir::SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
+                  referenced.insert(f_var_queue_name.clone());
                   referenced.insert(var_name.clone());
                 }
                 crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
@@ -1201,14 +1209,15 @@ fn generate_global_step(ir: &IR) -> String {
             let mut vparts: Vec<String> = Vec::new();
             for v in values {
               match v {
-                crate::ir::SetPrimitive::QueueMessage { queue_name, var_name } => {
+                crate::ir::SetPrimitive::QueueMessage { f_var_queue_name: queue_name, var_name } => {
                   let vty = var_type_of(func, var_name).expect("unknown var in SetValues::QueueMessage");
                   let vname = type_variant_name(vty);
                   let mut local_ident = camel_ident(var_name);
                   local_ident = format!("{}.clone()", local_ident);
+                  let q_ident = camel_ident(queue_name);
                   vparts.push(format!(
-                    "SetPrimitiveValue::QueueMessage {{ queue_name: \"{}\".to_string(), value: Value::{}({}) }}",
-                    queue_name, vname, local_ident
+                    "SetPrimitiveValue::QueueMessage {{ queue_name: {}.clone(), value: Value::{}({}) }}",
+                    q_ident, vname, local_ident
                   ));
                 }
                 crate::ir::SetPrimitive::Future { f_var_name, var_name } => {
