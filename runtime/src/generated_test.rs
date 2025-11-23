@@ -48,6 +48,51 @@ fn test_future_response() {
     ]),
     second_result
   );
+
+  // make sure that fiber can successfully continue and finish
+  let final_run = fiber.run();
+  assert_eq!(RunResult::Done(Value::Unit(())), final_run);
+
+  // verify full trace
+  let expected_trace = vec![
+    TraceEvent {
+      state: State::TestTaskExecutorIncrementerMainEntry,
+      result: StepResult::Select(vec![SelectArm::Queue {
+        queue_name: "testTasks".to_string(),
+        bind: "f_task".to_string(),
+        next: State::TestTaskExecutorIncrementerMainIncrement,
+      }]),
+    },
+    TraceEvent {
+      state: State::TestTaskExecutorIncrementerMainIncrement,
+      result: StepResult::Next(vec![
+        StackEntry::FrameAssign(vec![
+          (0, Value::TestIncrementTask(TestIncrementTask { inStrValue: 11, ..input_task.clone() })),
+          (2, Value::String("my_test_queue_name".to_string())),
+          (1, Value::String("my_test_future_id".to_string())),
+        ]),
+        StackEntry::State(State::TestTaskExecutorIncrementerMainReturnResult),
+      ]),
+    },
+    TraceEvent {
+      state: State::TestTaskExecutorIncrementerMainReturnResult,
+      result: StepResult::SetValues {
+        values: vec![
+          SetPrimitiveValue::Future {
+            id: "my_test_future_id".to_string(),
+            value: Value::TestIncrementTask(TestIncrementTask { inStrValue: 11, ..input_task.clone() }),
+          },
+          SetPrimitiveValue::QueueMessage {
+            queue_name: "my_test_queue_name".to_string(),
+            value: Value::TestIncrementTask(TestIncrementTask { inStrValue: 11, ..input_task.clone() }),
+          },
+        ],
+        next: State::TestTaskExecutorIncrementerMainReturn,
+      },
+    },
+    TraceEvent { state: State::TestTaskExecutorIncrementerMainReturn, result: StepResult::ReturnVoid },
+  ];
+  assert_eq!(expected_trace, fiber.trace_sink);
 }
 
 #[test]
