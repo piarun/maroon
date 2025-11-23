@@ -18,7 +18,7 @@ use libp2p::{
 };
 use libp2p_request_response::{Message as RequestResponseMessage, ProtocolSupport};
 use log::{debug, error, info};
-use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent, Response};
+use protocol::gm_request_response::{self, Behaviour as GMBehaviour, Event as GMEvent};
 use protocol::meta_exchange::{
   self, Behaviour as MetaExchangeBehaviour, Event as MEEvent, Response as MEResponse, Role,
 };

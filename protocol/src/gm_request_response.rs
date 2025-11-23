@@ -1,4 +1,4 @@
-use crate::{node2gw::TxUpdate, transaction::Transaction};
+use crate::transaction::Transaction;
 use libp2p::swarm::StreamProtocol;
 use libp2p_request_response::{
   self as request_response, Event as RequestResponseEvent, ProtocolSupport,
