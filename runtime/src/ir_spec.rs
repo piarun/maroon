@@ -77,6 +77,64 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
+        FiberType::new("testTaskExecutorIncrementer"),
+        Fiber {
+          fibers_limit: 0,
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{in_vars: vec![],out: Type::Void, 
+                locals: vec![
+                  // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
+                  // I also want to explicitly verify names conversion, because right now it jumps between snake and camel case, which should be fixed for sure
+                  LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())), 
+                  LocalVar("f_respFutureId", Type::String),
+                  LocalVar("f_respQueueName", Type::String),
+                ], 
+                entry: StepId::new("entry"),
+                steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::Select { arms: vec![
+                    AwaitSpec::Queue{
+                      // here I just hardcode queue message name. Later I'll add `constructor passing variables` and remove this hardcode
+                      queue_name: "testTasks".to_string(),
+                      message_var: "f_task".to_string(),
+                      next: StepId::new("increment"),
+                    },
+                  ] },
+                ),
+                (
+                  StepId::new("increment"),
+                  Step::RustBlock { binds: vec!["f_task".to_string(), "f_respQueueName".to_string(), "f_respFutureId".to_string()], code: r#"
+                    let mut t_m = fTask;
+                    t_m.inStrValue += 1;
+                    (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+                  "#.
+                  to_string(), next: StepId::new("return_result") },
+                ),
+                (
+                  StepId::new("return_result"),
+                  Step::SetValues { 
+                    values: vec![
+                      SetPrimitive::Future { f_var_name: "f_respFutureId".to_string(), var_name: "f_task".to_string() },
+                      SetPrimitive::QueueMessage { f_var_queue_name: "f_respQueueName".to_string(), var_name: "f_task".to_string() },
+                    ], 
+                    next: StepId::new("return"),
+                  },
+                ),
+                (
+                  StepId::new("return"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
+        }
+      ),
+      (
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
@@ -831,6 +889,16 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         vec![
           StructField { name: "bids".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
           StructField { name: "asks".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
+        ],
+        String::new(),
+      ),
+      Type::Struct(
+        "TestIncrementTask".to_string(),
+        vec![
+          // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
+          StructField { name: "in_str_value".to_string(), ty: Type::UInt64 },
+          StructField { name: "in_str_resp_future_id".to_string(), ty: Type::String },
+          StructField { name: "in_str_resp_queue_name".to_string(), ty: Type::String },
         ],
         String::new(),
       ),

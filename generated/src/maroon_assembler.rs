@@ -39,6 +39,13 @@ pub struct BookSnapshot {
   pub asks: Vec<Level>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestIncrementTask {
+  pub inStrValue: u64,
+  pub inStrRespFutureId: String,
+  pub inStrRespQueueName: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
@@ -69,12 +76,16 @@ pub struct RootHeap {}
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestTaskExecutorIncrementerHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
   pub orderBook: OrderBookHeap,
   pub root: RootHeap,
   pub testSelectQueue: TestSelectQueueHeap,
+  pub testTaskExecutorIncrementer: TestTaskExecutorIncrementerHeap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,6 +137,10 @@ pub enum State {
   TestSelectQueueMainIncFromFut,
   TestSelectQueueMainReturn,
   TestSelectQueueMainStartWork,
+  TestTaskExecutorIncrementerMainEntry,
+  TestTaskExecutorIncrementerMainIncrement,
+  TestTaskExecutorIncrementerMainReturn,
+  TestTaskExecutorIncrementerMainReturnResult,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +148,8 @@ pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
   OptionU64(Option<u64>),
+  String(String),
+  TestIncrementTask(TestIncrementTask),
   U64(u64),
   Unit(()),
 }
@@ -154,6 +171,12 @@ pub enum SelectArm {
   Queue { queue_name: String, bind: String, next: State },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SetPrimitiveValue {
+  QueueMessage { queue_name: String, value: Value },
+  Future { id: String, value: Value },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StepResult {
   Done,
@@ -169,6 +192,8 @@ pub enum StepResult {
   Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  // Broadcast updates to async primitives (queues/futures) and continue to `next`.
+  SetValues { values: Vec<SetPrimitiveValue>, next: State },
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
@@ -217,6 +242,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestSelectQueueMainIncFromFut => 2,
     State::TestSelectQueueMainReturn => 2,
     State::TestSelectQueueMainStartWork => 2,
+    State::TestTaskExecutorIncrementerMainEntry => 3,
+    State::TestTaskExecutorIncrementerMainIncrement => 3,
+    State::TestTaskExecutorIncrementerMainReturn => 3,
+    State::TestTaskExecutorIncrementerMainReturnResult => 3,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -821,6 +850,55 @@ pub fn global_step(
         ])
       }
     }
+    State::TestTaskExecutorIncrementerMainEntry => StepResult::Select(vec![SelectArm::Queue {
+      queue_name: "testTasks".to_string(),
+      bind: "f_task".to_string(),
+      next: State::TestTaskExecutorIncrementerMainIncrement,
+    }]),
+    State::TestTaskExecutorIncrementerMainIncrement => {
+      let fRespfutureid: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fTask: TestIncrementTask =
+        if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = {
+          let mut t_m = fTask;
+          t_m.inStrValue += 1;
+          (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+        };
+        let (o0, o1, o2) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![
+            (0, Value::TestIncrementTask(o0)),
+            (2, Value::String(o1)),
+            (1, Value::String(o2)),
+          ]),
+          StackEntry::State(State::TestTaskExecutorIncrementerMainReturnResult),
+        ])
+      }
+    }
+    State::TestTaskExecutorIncrementerMainReturn => StepResult::ReturnVoid,
+    State::TestTaskExecutorIncrementerMainReturnResult => {
+      let fRespfutureid: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fTask: TestIncrementTask =
+        if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![
+          SetPrimitiveValue::Future { id: fRespfutureid.clone(), value: Value::TestIncrementTask(fTask.clone()) },
+          SetPrimitiveValue::QueueMessage {
+            queue_name: fRespqueuename.clone(),
+            value: Value::TestIncrementTask(fTask.clone()),
+          },
+        ],
+        next: State::TestTaskExecutorIncrementerMainReturn,
+      }
+    }
+    _ => StepResult::Todo("uncovered-state".to_string()),
   }
 }
 
@@ -1438,6 +1516,31 @@ fn testSelectQueue_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(testSelectQueue_result_main(stack))
 }
 
+pub fn testTaskExecutorIncrementer_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("f_task".to_string(), Value::TestIncrementTask(TestIncrementTask::default())));
+  stack.push(StackEntry::Value("f_respFutureId".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("f_respQueueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::State(State::TestTaskExecutorIncrementerMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testTaskExecutorIncrementer_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testTaskExecutorIncrementer_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testTaskExecutorIncrementer_prepare_main();
+  stack
+}
+
+fn testTaskExecutorIncrementer_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testTaskExecutorIncrementer_result_main(stack))
+}
+
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
     "application.async_foo" => application_prepare_asyncFoo_from_values,
@@ -1460,6 +1563,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
     "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
+    "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
   }
 }
@@ -1486,6 +1590,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
     "testSelectQueue.main" => testSelectQueue_result_main_value,
+    "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
   }
 }
