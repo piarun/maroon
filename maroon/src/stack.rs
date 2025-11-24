@@ -7,10 +7,7 @@ use common::logical_clock::MonotonicTimer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use epoch_coordinator::etcd::EtcdEpochCoordinator;
-use epoch_coordinator::interface::{
-  ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates,
-  Interface as EpochCoordinatorInterface, create_interface_pair as create_epoch_coordinator_interface_pair,
-};
+use epoch_coordinator::interface::create_interface_pair as create_epoch_coordinator_interface_pair;
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, info};

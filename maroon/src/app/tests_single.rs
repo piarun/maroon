@@ -7,10 +7,7 @@ use common::invoker_handler::create_invoker_handler_pair;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
 use epoch_coordinator::epoch::Epoch;
-use epoch_coordinator::interface::{
-  ControllerInterface as EpochCoordinatorControllerInterface, EpochRequest, EpochUpdates,
-  Interface as EpochCoordinatorInterface, create_interface_pair as create_epoch_coordinator_interface_pair,
-};
+use epoch_coordinator::interface::{EpochUpdates, create_interface_pair as create_epoch_coordinator_interface_pair};
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use protocol::node2gw::TxUpdate;
@@ -312,7 +309,7 @@ async fn app_executes_after_epoch_confirmed() {
 
   let rnd_peer = PeerId::random();
   // imitate new epoch came
-  epoch_coordinator_interface.sender.send(EpochUpdates::New(Epoch::next(
+  _ = epoch_coordinator_interface.sender.send(EpochUpdates::New(Epoch::next(
     rnd_peer,
     vec![U64BlobIdClosedInterval::new(0, 1)],
     None,

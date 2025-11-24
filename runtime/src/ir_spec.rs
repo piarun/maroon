@@ -27,7 +27,7 @@ pub fn sample_ir() -> IR {
       ),
       (
         // fiber for testing select mechanism
-        // awaits a new start counter value and then starts count 
+        // awaits a new start counter value and then starts count
         FiberType::new("testSelectQueue"),
         Fiber {
           fibers_limit: 0,
@@ -45,7 +45,7 @@ pub fn sample_ir() -> IR {
                       message_var: "counter".to_string(),
                       next: StepId::new("start_work"),
                     },
-                    AwaitSpec::Future { 
+                    AwaitSpec::Future {
                       // doesn't matter how this future ended up here for tests
                       // in real life this future should be created or passed somehow
                       bind: Some("responseFromFut".to_string()),
@@ -85,14 +85,14 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, 
+              Func{in_vars: vec![],out: Type::Void,
                 locals: vec![
                   // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
                   // I also want to explicitly verify names conversion, because right now it jumps between snake and camel case, which should be fixed for sure
-                  LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())), 
+                  LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())),
                   LocalVar("f_respFutureId", Type::String),
                   LocalVar("f_respQueueName", Type::String),
-                ], 
+                ],
                 entry: StepId::new("entry"),
                 steps: vec![
                 (
@@ -117,11 +117,11 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("return_result"),
-                  Step::SetValues { 
+                  Step::SetValues {
                     values: vec![
                       SetPrimitive::Future { f_var_name: "f_respFutureId".to_string(), var_name: "f_task".to_string() },
                       SetPrimitive::QueueMessage { f_var_queue_name: "f_respQueueName".to_string(), var_name: "f_task".to_string() },
-                    ], 
+                    ],
                     next: StepId::new("return"),
                   },
                 ),
