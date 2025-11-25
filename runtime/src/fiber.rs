@@ -25,9 +25,6 @@ pub struct Fiber {
   /// right now - pairs (state, result), later maybe more
   /// TODO: make it optional, so if I don't want - I won't include it
   pub trace_sink: Vec<TraceEvent>,
-
-  /// debug outputs
-  pub dbg_out: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -113,7 +110,6 @@ impl Fiber {
       function_key: f_name,
       context: RunContext::default(),
       trace_sink: vec![],
-      dbg_out: String::new(),
     }
   }
 
@@ -131,7 +127,6 @@ impl Fiber {
       function_key: String::new(),
       context: RunContext::default(),
       trace_sink: vec![],
-      dbg_out: String::new(),
     }
   }
 
@@ -149,7 +144,6 @@ impl Fiber {
       function_key: String::new(),
       context: RunContext::default(),
       trace_sink: vec![],
-      dbg_out: String::new(),
     }
   }
 
@@ -206,8 +200,11 @@ impl Fiber {
     self.stack.push(StackEntry::State(next));
   }
 
-  /// Runs until finished and gets the resutl or until parked for awaiting async results
-  pub fn run(&mut self) -> RunResult {
+  /// Runs until finished and gets the result or until parked for awaiting async results
+  pub fn run(
+    &mut self,
+    sink: &mut dyn std::fmt::Write,
+  ) -> RunResult {
     loop {
       let head_opt = self.stack.pop();
       if head_opt.is_none() {
@@ -240,13 +237,12 @@ impl Fiber {
 
       match result {
         StepResult::Debug(msg, next) => {
-          if !self.dbg_out.is_empty() { self.dbg_out.push('\n'); }
-          self.dbg_out.push_str(msg);
+          let _ = sink.write_str(msg);
+          let _ = sink.write_char('\n');
           self.stack.push(StackEntry::State(next));
         }
         StepResult::DebugPrintVars(next) => {
           // Render current frame vars as `name=value` joined by commas, in order.
-          if !self.dbg_out.is_empty() { self.dbg_out.push('\n'); }
           let mut parts: Vec<String> = Vec::new();
           for se in &self.stack[start..] {
             if let StackEntry::Value(name, val) = se {
@@ -260,7 +256,8 @@ impl Fiber {
               parts.push(format!("{}={}", name, v));
             }
           }
-          self.dbg_out.push_str(&parts.join("\n"));
+          let _ = sink.write_str(&parts.join("\n"));
+          let _ = sink.write_char('\n');
           self.stack.push(StackEntry::State(next));
         }
         StepResult::Return(val) => {
