@@ -25,6 +25,9 @@ pub struct Fiber {
   /// right now - pairs (state, result), later maybe more
   /// TODO: make it optional, so if I don't want - I won't include it
   pub trace_sink: Vec<TraceEvent>,
+
+  /// debug outputs
+  pub dbg_out: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -110,6 +113,7 @@ impl Fiber {
       function_key: f_name,
       context: RunContext::default(),
       trace_sink: vec![],
+      dbg_out: String::new(),
     }
   }
 
@@ -127,6 +131,7 @@ impl Fiber {
       function_key: String::new(),
       context: RunContext::default(),
       trace_sink: vec![],
+      dbg_out: String::new(),
     }
   }
 
@@ -144,6 +149,7 @@ impl Fiber {
       function_key: String::new(),
       context: RunContext::default(),
       trace_sink: vec![],
+      dbg_out: String::new(),
     }
   }
 
@@ -233,6 +239,30 @@ impl Fiber {
       self.trace_sink.push(TraceEvent { state: state_cp, result: result.clone() });
 
       match result {
+        StepResult::Debug(msg, next) => {
+          if !self.dbg_out.is_empty() { self.dbg_out.push('\n'); }
+          self.dbg_out.push_str(msg);
+          self.stack.push(StackEntry::State(next));
+        }
+        StepResult::DebugPrintVars(next) => {
+          // Render current frame vars as `name=value` joined by commas, in order.
+          if !self.dbg_out.is_empty() { self.dbg_out.push('\n'); }
+          let mut parts: Vec<String> = Vec::new();
+          for se in &self.stack[start..] {
+            if let StackEntry::Value(name, val) = se {
+              let v = match val {
+                Value::U64(x) => x.to_string(),
+                Value::String(s) => s.clone(),
+                Value::Unit(_) => "()".to_string(),
+                // Fallback: JSON-ish using debug so tests can assert against stable strings
+                _ => format!("{:?}", val),
+              };
+              parts.push(format!("{}={}", name, v));
+            }
+          }
+          self.dbg_out.push_str(&parts.join(","));
+          self.stack.push(StackEntry::State(next));
+        }
         StepResult::Return(val) => {
           // Drop used arguments
           self.stack.truncate(start);

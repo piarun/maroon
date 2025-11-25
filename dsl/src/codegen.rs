@@ -321,6 +321,11 @@ pub enum StepResult {
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
   SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  // Debug
+  // Print a string message and continue to the provided next state.
+  Debug(&'static str, State),
+  // Print all current-frame vars in order and continue to next state.
+  DebugPrintVars(State),
 }",
   );
 
@@ -812,6 +817,8 @@ fn generate_global_step(ir: &IR) -> String {
           // Collect referenced vars for this entry step
           let mut referenced: BTreeSet<String> = BTreeSet::new();
           match entry_step {
+            Step::Debug(_, _) => {}
+            Step::DebugPrintVars(_) => {}
             Step::ScheduleTimer { .. } => {}
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
@@ -870,6 +877,14 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           match entry_step {
+            Step::Debug(msg, next) => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+            }
+            Step::DebugPrintVars(next) => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
+            }
             Step::ScheduleTimer { ms, next, future_id } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!(
@@ -1136,6 +1151,8 @@ fn generate_global_step(ir: &IR) -> String {
         }
         let mut referenced: BTreeSet<String> = BTreeSet::new();
         match step {
+          Step::Debug(_, _) => {}
+          Step::DebugPrintVars(_) => {}
           Step::ScheduleTimer { .. } => {}
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
@@ -1197,6 +1214,14 @@ fn generate_global_step(ir: &IR) -> String {
           }
         }
         match step {
+          Step::Debug(msg, next) => {
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+            out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+          }
+          Step::DebugPrintVars(next) => {
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+            out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
+          }
           Step::ScheduleTimer { ms, next, future_id } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!(

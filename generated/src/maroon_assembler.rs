@@ -194,6 +194,11 @@ pub enum StepResult {
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
   SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  // Debug
+  // Print a string message and continue to the provided next state.
+  Debug(&'static str, State),
+  // Print all current-frame vars in order and continue to next state.
+  DebugPrintVars(State),
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
