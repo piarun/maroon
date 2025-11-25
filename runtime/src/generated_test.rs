@@ -55,9 +55,13 @@ fn test_future_response() {
 
   assert_eq!(
     r#"start function
-f_task=TestIncrementTask(TestIncrementTask { inStrValue: 0, inStrRespFutureId: "", inStrRespQueueName: "" }),f_respFutureId=,f_respQueueName=
+f_task=TestIncrementTask(TestIncrementTask { inStrValue: 0, inStrRespFutureId: "", inStrRespQueueName: "" })
+f_respFutureId=
+f_respQueueName=
 after increment
-f_task=TestIncrementTask(TestIncrementTask { inStrValue: 11, inStrRespFutureId: "my_test_future_id", inStrRespQueueName: "my_test_queue_name" }),f_respFutureId=my_test_future_id,f_respQueueName=my_test_queue_name"#,
+f_task=TestIncrementTask(TestIncrementTask { inStrValue: 11, inStrRespFutureId: "my_test_future_id", inStrRespQueueName: "my_test_queue_name" })
+f_respFutureId=my_test_future_id
+f_respQueueName=my_test_queue_name"#,
     fiber.dbg_out
   );
 }

@@ -260,7 +260,7 @@ impl Fiber {
               parts.push(format!("{}={}", name, v));
             }
           }
-          self.dbg_out.push_str(&parts.join(","));
+          self.dbg_out.push_str(&parts.join("\n"));
           self.stack.push(StackEntry::State(next));
         }
         StepResult::Return(val) => {
