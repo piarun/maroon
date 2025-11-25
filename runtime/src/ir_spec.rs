@@ -15,7 +15,7 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![], steps: vec![
                 (
                   StepId::new("entry"),
                   Step::ReturnVoid,
@@ -36,7 +36,7 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], entry: StepId::new("entry"),steps: vec![
+              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], steps: vec![
                 (
                   StepId::new("entry"),
                   Step::Select { arms: vec![
@@ -93,7 +93,6 @@ pub fn sample_ir() -> IR {
                   LocalVar("f_respFutureId", Type::String),
                   LocalVar("f_respQueueName", Type::String),
                 ],
-                entry: StepId::new("entry"),
                 steps: vec![
                 (
                   StepId::new("entry"),
@@ -147,7 +146,6 @@ pub fn sample_ir() -> IR {
                 in_vars: vec![],
                 out: Type::Void,
                 locals:vec![],
-                entry: StepId::new("entry"),
                 steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             ),
@@ -157,7 +155,6 @@ pub fn sample_ir() -> IR {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("sum", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -177,7 +174,6 @@ pub fn sample_ir() -> IR {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("sub", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -201,7 +197,6 @@ out
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("mult", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -221,7 +216,6 @@ out
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("div", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -246,7 +240,6 @@ out
                   LocalVar("subtract_res", Type::UInt64),
                   LocalVar("result", Type::UInt64),
                 ],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -294,7 +287,6 @@ out
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64), InVar("c", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("sumAB", Type::UInt64), LocalVar("subABC", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -329,7 +321,6 @@ out
                   LocalVar("v_by_index_div", Type::UInt64),
                   LocalVar("fac_call_res", Type::Option(Box::new(Type::UInt64))),
                 ],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -442,7 +433,6 @@ out
                 in_vars: vec![],
                 out: Type::Void,
                 locals:vec![],
-                entry: StepId::new("entry"),
                 steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             ),
@@ -452,7 +442,6 @@ out
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("sum", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -485,7 +474,6 @@ out
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
                 locals: vec![LocalVar("pow", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -546,17 +534,15 @@ out
                 in_vars: vec![],
                 out: Type::Void,
                 locals:vec![],
-                entry: StepId::new("entry"),
                 steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
-            ),
-            (
-              "add_buy".to_string(),
-              Func {
+           ),
+           (
+             "add_buy".to_string(),
+             Func {
                 in_vars: vec![InVar("id", Type::UInt64), InVar("price", Type::UInt64), InVar("qty", Type::UInt64)],
                 out: Type::Array(Box::new(Type::Custom("Trade".to_string()))),
                 locals: vec![LocalVar("result", Type::Array(Box::new(Type::Custom("Trade".to_string()))))],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -631,7 +617,6 @@ trades
                 in_vars: vec![InVar("id", Type::UInt64), InVar("price", Type::UInt64), InVar("qty", Type::UInt64)],
                 out: Type::Array(Box::new(Type::Custom("Trade".to_string()))),
                 locals: vec![LocalVar("result", Type::Array(Box::new(Type::Custom("Trade".to_string()))))],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -700,7 +685,6 @@ trades
                 in_vars: vec![InVar("id", Type::UInt64)],
                 out: Type::UInt64, // 1 if canceled, 0 otherwise
                 locals: vec![LocalVar("result", Type::UInt64)],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -736,7 +720,6 @@ ok
                 in_vars: vec![],
                 out: Type::Option(Box::new(Type::UInt64)),
                 locals: vec![LocalVar("result", Type::Option(Box::new(Type::UInt64)))],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -764,7 +747,6 @@ loop {
                 in_vars: vec![],
                 out: Type::Option(Box::new(Type::UInt64)),
                 locals: vec![LocalVar("result", Type::Option(Box::new(Type::UInt64)))],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),
@@ -793,7 +775,6 @@ loop {
                 in_vars: vec![InVar("n", Type::UInt64)],
                 out: Type::Custom("BookSnapshot".to_string()),
                 locals: vec![LocalVar("result", Type::Custom("BookSnapshot".to_string()))],
-                entry: StepId::new("entry"),
                 steps: vec![
                   (
                     StepId::new("entry"),

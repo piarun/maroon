@@ -217,7 +217,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
       }
       // State enum: include entry + all steps except direct-return suppressed ones
       let mut steps: Vec<String> = Vec::new();
-      steps.push(func.entry.0.clone());
+      steps.push("entry".to_string());
       for (step_id, step) in &func.steps {
         // Additional safety: suppress direct-return targets even if set calc fails
         let mut suppress_this = suppressed.contains(&step_id.0);
@@ -406,7 +406,7 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
       }
 
       // 4) Push entry state
-      let entry_state = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
+      let entry_state = variant_name(&[fiber_name.0.as_str(), func_name, "entry"]);
       out.push_str(&format!("  stack.push(StackEntry::State(State::{}));\n", entry_state));
 
       // 5) Initialize heap with defaults for this fiber
@@ -644,7 +644,7 @@ fn render_call_step(
       let def_expr = default_value_expr(lty);
       s.push_str(&format!("        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n", lname, vname, def_expr));
     }
-    let callee_entry = variant_name(&[&target.fiber, &target.func, &callee.entry.0]);
+    let callee_entry = variant_name(&[&target.fiber, &target.func, "entry"]);
     s.push_str(&format!("        StackEntry::State(State::{}),\n", callee_entry));
     s.push_str("      ])\n");
   } else {
@@ -695,7 +695,7 @@ pub fn func_args_count(e: &State) -> usize {
     for (func_name, func) in funcs_sorted {
       let n = func.in_vars.len() + func.locals.len();
       // Always include the function's entry state
-      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
+      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, "entry"]);
       out.push_str(&format!("    State::{} => {},\n", entry_variant, n));
 
       // Identify direct-return RustBlock next steps to suppress from func_args_count
@@ -720,7 +720,7 @@ pub fn func_args_count(e: &State) -> usize {
 
       for (step_id, step) in steps_sorted {
         // Skip entry here since it's already added explicitly above
-        if step_id.0 == func.entry.0 {
+        if step_id.0 == "entry" {
           continue;
         }
         // Additional safety: suppress direct-return targets
@@ -786,7 +786,7 @@ fn generate_global_step(ir: &IR) -> String {
       }
       use std::collections::BTreeSet;
       let mut seen: BTreeSet<String> = BTreeSet::new();
-      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, &func.entry.0]);
+      let entry_variant = variant_name(&[fiber_name.0.as_str(), func_name, "entry"]);
       if seen.insert(entry_variant.clone()) {
         out.push_str(&format!("    State::{entry_variant} => {{\n"));
 
@@ -808,7 +808,7 @@ fn generate_global_step(ir: &IR) -> String {
         }
 
         // If the entry step is explicitly defined in IR, emit its logic here; otherwise, fallback.
-        if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == func.entry.0) {
+        if let Some((_, entry_step)) = func.steps.iter().find(|(sid, _)| sid.0 == "entry") {
           // Collect referenced vars for this entry step
           let mut referenced: BTreeSet<String> = BTreeSet::new();
           match entry_step {
@@ -1461,7 +1461,6 @@ mod tests {
                 in_vars: vec![InVar("key", Type::String)],
                 out: Type::Option(Box::new(Type::Custom("User".into()))),
                 locals: vec![],
-                entry: StepId::new("entry"),
                 steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             )]),
