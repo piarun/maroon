@@ -242,22 +242,28 @@ impl Fiber {
           self.stack.push(StackEntry::State(next));
         }
         StepResult::DebugPrintVars(next) => {
-          // Render current frame vars as `name=value` joined by commas, in order.
-          let mut parts: Vec<String> = Vec::new();
           for se in &self.stack[start..] {
             if let StackEntry::Value(name, val) = se {
-              let v = match val {
-                Value::U64(x) => x.to_string(),
-                Value::String(s) => s.clone(),
-                Value::Unit(_) => "()".to_string(),
-                // Fallback: JSON-ish using debug so tests can assert against stable strings
-                _ => format!("{:?}", val),
-              };
-              parts.push(format!("{}={}", name, v));
+              let _ = sink.write_str(name);
+              let _ = sink.write_char('=');
+              match val {
+                Value::U64(x) => {
+                  let _ = sink.write_fmt(format_args!("{}", x));
+                }
+                Value::String(s) => {
+                  let _ = sink.write_str(s);
+                }
+                Value::Unit(_) => {
+                  let _ = sink.write_str("()");
+                }
+                _ => {
+                  // Fallback to Debug formatting for other types
+                  let _ = sink.write_fmt(format_args!("{:?}", val));
+                }
+              }
+              let _ = sink.write_char('\n');
             }
           }
-          let _ = sink.write_str(&parts.join("\n"));
-          let _ = sink.write_char('\n');
           self.stack.push(StackEntry::State(next));
         }
         StepResult::Return(val) => {
