@@ -70,7 +70,6 @@ pub struct Func {
   pub in_vars: Vec<InVar>,
   pub out: Type,
   pub locals: Vec<LocalVar>,
-  pub entry: StepId,
   pub steps: Vec<(StepId, Step)>,
 }
 
@@ -79,6 +78,10 @@ pub struct InVar(pub &'static str, pub Type);
 
 #[derive(Debug, Clone)]
 pub struct LocalVar(pub &'static str, pub Type);
+
+/// this reference should be used in ir specification where I want to reference LocalVar existed in the current stack frame
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LocalVarRef(pub &'static str);
 
 #[derive(Debug, Clone)]
 pub enum Step {
@@ -105,7 +108,7 @@ pub enum Step {
   Call {
     target: FuncRef,
     args: Vec<Expr>,
-    bind: Option<String>,
+    bind: Option<LocalVarRef>,
     ret_to: StepId,
   },
   Return {
@@ -129,7 +132,7 @@ pub enum Step {
   /// `code` is the Rust body that computes and returns the values.
   ///     All function params and locals are available in scope for this block.
   RustBlock {
-    binds: Vec<String>,
+    binds: Vec<LocalVarRef>,
     code: String,
     next: StepId,
   },
@@ -159,17 +162,17 @@ pub enum SetPrimitive {
   QueueMessage {
     /// `f_var_queue_name` - variable where queue name is located
     /// - the one that should be updated with the new value
-    f_var_queue_name: String,
-    /// name of local variable from which value should be copied and sent to the queue
-    var_name: String,
+    f_var_queue_name: LocalVarRef,
+    /// ref to a variable from which value should be copied and sent to the queue
+    var_name: LocalVarRef,
   },
 
   Future {
-    /// `f_var_name` - variable where future is located
+    /// `f_var_name` - variable where future id is located
     /// - the one that should be updated with the new value
-    f_var_name: String,
-    /// name of local variable from which value should be copied and set to Future
-    var_name: String,
+    f_var_name: LocalVarRef,
+    /// ref to a local variable from which value should be copied and set to Future
+    var_name: LocalVarRef,
   },
 }
 
@@ -181,7 +184,7 @@ pub enum Opcode {
 #[derive(Debug, Clone)]
 pub enum AwaitSpec {
   Future {
-    bind: Option<String>,
+    bind: Option<LocalVarRef>,
     ret_to: StepId,
     future_id: FutureLabel,
   },
@@ -193,7 +196,7 @@ pub enum AwaitSpec {
     queue_name: String,
     /// variable name - where message from the queue will be put
     /// TODO: check types of messages that they match
-    message_var: String,
+    message_var: LocalVarRef,
     /// next step after await is resolved in this arm
     next: StepId,
   },
@@ -203,7 +206,7 @@ pub enum AwaitSpec {
 pub enum Expr {
   UInt64(u64),
   Str(String),
-  Var(String),
+  Var(LocalVarRef),
   Equal(Box<Expr>, Box<Expr>),
   Greater(Box<Expr>, Box<Expr>),
   Less(Box<Expr>, Box<Expr>),
@@ -216,7 +219,7 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub enum RetValue {
   /// Return a variable by name
-  Var(String),
+  Var(LocalVarRef),
   /// Return a literal
   UInt64(u64),
   Str(String),
@@ -272,6 +275,11 @@ impl IR {
             break;
           }
         }
+
+        if let Some(correct) = uses_correct_variables(func.1) {
+          explanation.push_str(&correct);
+        }
+
         if *func.0 == "main".to_string() {
           has_main_function = true;
 
@@ -292,5 +300,167 @@ impl IR {
       explanation.push_str("no 'root' fiber\n");
     }
     (explanation.len() == 0, explanation)
+  }
+}
+
+fn uses_correct_variables(f: &Func) -> Option<String> {
+  let mut explanation = String::new();
+  let mut vars_map = HashMap::<String, Type>::new();
+  // include parameters as in-scope vars
+  for p in &f.in_vars {
+    if let Some(previous) = vars_map.insert(p.0.to_string(), p.1.clone()) {
+      explanation.push_str(&format!("duplicate var name {} for types: {:?} and {:?}\n", p.0, p.1, previous));
+    }
+  }
+  for v in &f.locals {
+    if let Some(previous) = vars_map.insert(v.0.to_string(), v.1.clone()) {
+      explanation.push_str(&format!("duplicate var name {} for types: {:?} and {:?}\n", v.0, v.1, previous));
+    }
+  }
+
+  for (id, step) in &f.steps {
+    match step {
+      Step::ScheduleTimer { .. } => {}
+      Step::SendToFiber { args, .. } => {
+        for (_name, expr) in args {
+          collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+        }
+      }
+      Step::Await(spec) => match spec {
+        AwaitSpec::Future { bind, ret_to: _, future_id: _ } => {
+          if let Some(var_ref) = bind {
+            if !vars_map.contains_key(var_ref.0) {
+              explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_ref.0));
+            }
+          }
+        }
+        AwaitSpec::Queue { queue_name: _, message_var, next: _ } => {
+          if !vars_map.contains_key(message_var.0) {
+            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
+          }
+        }
+      },
+      Step::Call { args, bind, .. } => {
+        for expr in args {
+          collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+        }
+        if let Some(LocalVarRef(name)) = bind {
+          if !vars_map.contains_key::<str>(name) {
+            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, name));
+          }
+        }
+      }
+      Step::Return { value } => {
+        collect_vars_from_ret_value(value, &vars_map, &mut explanation, id);
+      }
+      Step::ReturnVoid => {}
+      Step::If { cond, .. } => {
+        collect_vars_from_expr(cond, &vars_map, &mut explanation, id);
+      }
+      Step::Let { local, expr, .. } => {
+        if !vars_map.contains_key::<str>(local.as_str()) {
+          explanation.push_str(&format!("{:?} references {} that is not defined\n", id, local));
+        }
+        collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+      }
+      Step::RustBlock { binds, .. } => {
+        for b in binds {
+          if !vars_map.contains_key::<str>(b.0) {
+            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0));
+          }
+        }
+      }
+      Step::Select { arms } => {
+        for arm in arms {
+          match arm {
+            AwaitSpec::Future { bind, .. } => {
+              if let Some(var_ref) = bind {
+                if !vars_map.contains_key::<str>(var_ref.0) {
+                  explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_ref.0));
+                }
+              }
+            }
+            AwaitSpec::Queue { message_var, .. } => {
+              if !vars_map.contains_key::<str>(message_var.0) {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
+              }
+            }
+          }
+        }
+      }
+      Step::SetValues { values, .. } => {
+        for v in values {
+          match v {
+            SetPrimitive::QueueMessage { f_var_queue_name, var_name } => {
+              if !vars_map.contains_key::<str>(f_var_queue_name.0) {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_queue_name.0));
+              }
+              if !vars_map.contains_key::<str>(var_name.0) {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+              }
+            }
+            SetPrimitive::Future { f_var_name, var_name } => {
+              if !vars_map.contains_key::<str>(f_var_name.0) {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_name.0));
+              }
+              if !vars_map.contains_key::<str>(var_name.0) {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if explanation.len() > 0 {
+    return Some(explanation);
+  }
+
+  return None;
+}
+
+fn collect_vars_from_expr(
+  expr: &Expr,
+  vars: &HashMap<String, Type>,
+  explanation: &mut String,
+  id: &StepId,
+) {
+  match expr {
+    Expr::Var(LocalVarRef(name)) => {
+      if !vars.contains_key::<str>(*name) {
+        explanation.push_str(&format!("{:?} references {} that is not defined\n", id, name));
+      }
+    }
+    Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
+      collect_vars_from_expr(a, vars, explanation, id);
+      collect_vars_from_expr(b, vars, explanation, id);
+    }
+    Expr::IsSome(inner) | Expr::Unwrap(inner) => collect_vars_from_expr(inner, vars, explanation, id),
+    Expr::GetField(base, _field) => collect_vars_from_expr(base, vars, explanation, id),
+    Expr::StructUpdate { base, updates } => {
+      collect_vars_from_expr(base, vars, explanation, id);
+      for (_fname, e) in updates {
+        collect_vars_from_expr(e, vars, explanation, id);
+      }
+    }
+    Expr::UInt64(_) | Expr::Str(_) => {}
+  }
+}
+
+fn collect_vars_from_ret_value(
+  rv: &RetValue,
+  vars: &HashMap<String, Type>,
+  explanation: &mut String,
+  id: &StepId,
+) {
+  match rv {
+    RetValue::Var(LocalVarRef(name)) => {
+      if !vars.contains_key::<str>(*name) {
+        explanation.push_str(&format!("{:?} references {} that is not defined\n", id, name));
+      }
+    }
+    RetValue::Some(inner) => collect_vars_from_ret_value(inner, vars, explanation, id),
+    RetValue::UInt64(_) | RetValue::Str(_) | RetValue::None => {}
   }
 }
