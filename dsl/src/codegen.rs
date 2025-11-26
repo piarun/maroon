@@ -266,6 +266,10 @@ pub fn generate_rust_types(ir: &IR) -> String {
   use std::collections::BTreeMap;
   let mut used_types: BTreeMap<String, Type> = BTreeMap::new();
   for (_, fiber) in fibers_sorted.iter() {
+    // include init_vars types so Value can carry them
+    for InVar(_, ty) in &fiber.init_vars {
+      used_types.insert(type_variant_name(ty), ty.clone());
+    }
     for (_, func) in fiber.funcs.iter() {
       for p in &func.in_vars {
         let ty = &p.1;
@@ -350,6 +354,9 @@ pub enum StepResult {
 
   // Emit helpers to prepare initial stack/heap and extract result
   out.push_str(&generate_prepare_and_result_helpers(ir));
+
+  // Emit helpers to initialize Heap from fiber init_vars
+  out.push_str(&generate_heap_init_helpers(ir));
 
   out
 }
@@ -489,6 +496,67 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
     out.push_str(&arm);
   }
   out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
+
+  out
+}
+
+fn generate_heap_init_helpers(ir: &IR) -> String {
+  let mut out = String::new();
+
+  // alias
+  out.push_str("pub type HeapInitFn = fn(Vec<Value>) -> Heap;\n\n");
+
+  // For each fiber, emit a typed prepare function and a Vec<Value> wrapper
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+
+  // registry arms
+  let mut init_arms: Vec<String> = Vec::new();
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let fname = camel_ident(&fiber_name.0);
+    let prepare_fn_name = format!("{}_prepare_heap", fname);
+
+    // typed signature params by init_vars
+    let mut params: Vec<String> = Vec::new();
+    for InVar(n, t) in &fiber.init_vars {
+      params.push(format!("{}: {}", camel_ident(n), rust_type(t)));
+    }
+
+    out.push_str(&format!("pub fn {}({}) -> Heap {{\n", prepare_fn_name, params.join(", ")));
+    out.push_str("  let mut heap = Heap::default();\n");
+    if !fiber.init_vars.is_empty() {
+      let heap_field = camel_ident(&fiber_name.0);
+      for InVar(n, _) in &fiber.init_vars {
+        out.push_str(&format!("  heap.{}.in_vars.{} = {};\n", heap_field, camel_ident(n), camel_ident(n)));
+      }
+    }
+    out.push_str("  heap\n}\n\n");
+
+    // wrapper from Vec<Value>
+    let wrapper_name = format!("{}_prepare_heap_from_values", fname);
+    out.push_str(&format!("fn {}(args: Vec<Value>) -> Heap {{\n", wrapper_name));
+    for (idx, InVar(n, t)) in fiber.init_vars.iter().enumerate() {
+      let vname = type_variant_name(t);
+      let rty = rust_type(t);
+      out.push_str(&format!(
+        "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid init var for {}\") }};\n",
+        camel_ident(n), rty, vname, idx, fiber_name.0
+      ));
+    }
+    let call_params = fiber.init_vars.iter().map(|iv| camel_ident(iv.0)).collect::<Vec<_>>().join(", ");
+    out.push_str(&format!("  {}({})\n}}\n\n", prepare_fn_name, call_params));
+
+    init_arms.push(format!("    \"{}\" => {}_prepare_heap_from_values,\n", fiber_name.0, fname));
+  }
+
+  // registry function
+  out.push_str("pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {\n  match fiber.0.as_str() {\n");
+  init_arms.sort();
+  for arm in init_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => |_| Heap::default(),\n  }\n}\n\n");
 
   out
 }

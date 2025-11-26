@@ -10,7 +10,9 @@ use generated::maroon_assembler::{
 
 #[test]
 fn test_future_response() {
-  let mut fiber = Fiber::new(FiberType::new("testTaskExecutorIncrementer"), 0);
+  // Pass init_vars via constructor
+  let mut fiber =
+    Fiber::new(FiberType::new("testTaskExecutorIncrementer"), 0, &vec![Value::String("testTasks".to_string())]);
   let mut dbg = String::new();
   let run_result = fiber.run(&mut dbg);
 
@@ -72,7 +74,7 @@ f_tasksQueueName=testTasks
 
 #[test]
 fn test_select_resume_mechanism() {
-  let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 0);
+  let mut some_t = Fiber::new(FiberType::new("testSelectQueue"), 0, &vec![]);
   let mut dbg = String::new();
   let run_result = some_t.run(&mut dbg);
   let expected_selects_on_first_step = vec![
@@ -98,7 +100,10 @@ fn test_select_resume_mechanism() {
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },
-      TraceEvent { state: State::TestSelectQueueMainSelectCounter, result: StepResult::Select(expected_selects_on_first_step.clone()) },
+      TraceEvent {
+        state: State::TestSelectQueueMainSelectCounter,
+        result: StepResult::Select(expected_selects_on_first_step.clone())
+      },
     ],
     some_t.trace_sink
   );
@@ -172,7 +177,10 @@ fn test_select_resume_mechanism() {
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },
-      TraceEvent { state: State::TestSelectQueueMainSelectCounter, result: StepResult::Select(expected_selects_on_first_step.clone()) }
+      TraceEvent {
+        state: State::TestSelectQueueMainSelectCounter,
+        result: StepResult::Select(expected_selects_on_first_step.clone()),
+      },
     ];
     expected_queue_trace.extend(expected_inc_and_compare_tail.clone());
     assert_eq!(expected_queue_trace, queue_response.trace_sink);
@@ -185,7 +193,10 @@ fn test_select_resume_mechanism() {
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },
-      TraceEvent { state: State::TestSelectQueueMainSelectCounter, result: StepResult::Select(expected_selects_on_first_step) },
+      TraceEvent {
+        state: State::TestSelectQueueMainSelectCounter,
+        result: StepResult::Select(expected_selects_on_first_step),
+      },
       TraceEvent {
         state: State::TestSelectQueueMainIncFromFut,
         result: StepResult::Next(vec![

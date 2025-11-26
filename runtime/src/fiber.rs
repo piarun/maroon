@@ -2,8 +2,8 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count, get_prepare_fn,
-  get_result_fn, global_step,
+  Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count, get_heap_init_fn,
+  get_prepare_fn, get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -98,15 +98,20 @@ impl Fiber {
   pub fn new(
     f_type: FiberType,
     unique_id: u64,
+    init_vars: &Vec<Value>,
   ) -> Fiber {
     let f_name = format!("{}.{}", f_type, "main");
     let f = get_prepare_fn(f_name.as_str());
+    let heap = {
+      let hif = get_heap_init_fn(&f_type);
+      hif(init_vars.clone())
+    };
 
     Fiber {
       f_type,
       unique_id,
       stack: f(vec![]),
-      heap: Heap::default(),
+      heap: heap,
       function_key: f_name,
       context: RunContext::default(),
       trace_sink: vec![],

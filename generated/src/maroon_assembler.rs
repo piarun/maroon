@@ -943,10 +943,7 @@ pub fn global_step(
       let fTasksqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
       {
-        let out = {
-          heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = "testTasks".to_string();
-          heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()
-        };
+        let out = { heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone() };
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(3, Value::String(out))]),
           StackEntry::State(State::TestTaskExecutorIncrementerMainDebugVars),
@@ -1668,5 +1665,79 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "testSelectQueue.main" => testSelectQueue_result_main_value,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
+  }
+}
+
+pub type HeapInitFn = fn(Vec<Value>) -> Heap;
+
+pub fn application_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn application_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  application_prepare_heap()
+}
+
+pub fn global_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn global_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  global_prepare_heap()
+}
+
+pub fn orderBook_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn orderBook_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  orderBook_prepare_heap()
+}
+
+pub fn root_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn root_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  root_prepare_heap()
+}
+
+pub fn testSelectQueue_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testSelectQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testSelectQueue_prepare_heap()
+}
+
+pub fn testTaskExecutorIncrementer_prepare_heap(inTaskqueuename: String) -> Heap {
+  let mut heap = Heap::default();
+  heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = inTaskqueuename;
+  heap
+}
+
+fn testTaskExecutorIncrementer_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  let inTaskqueuename: String = if let Value::String(x) = &args[0] {
+    x.clone()
+  } else {
+    unreachable!("invalid init var for testTaskExecutorIncrementer")
+  };
+  testTaskExecutorIncrementer_prepare_heap(inTaskqueuename)
+}
+
+pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
+  match fiber.0.as_str() {
+    "application" => application_prepare_heap_from_values,
+    "global" => global_prepare_heap_from_values,
+    "order_book" => orderBook_prepare_heap_from_values,
+    "root" => root_prepare_heap_from_values,
+    "testSelectQueue" => testSelectQueue_prepare_heap_from_values,
+    "testTaskExecutorIncrementer" => testTaskExecutorIncrementer_prepare_heap_from_values,
+    _ => |_| Heap::default(),
   }
 }

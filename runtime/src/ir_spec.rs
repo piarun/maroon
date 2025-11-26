@@ -40,7 +40,7 @@ pub fn sample_ir() -> IR {
               "main".to_string(),
               Func{
                 in_vars: vec![],
-                out: Type::Void, 
+                out: Type::Void,
                 locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String)], 
                 steps: vec![
                 (
@@ -114,12 +114,9 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("init_queue_name"),
-                  Step::RustBlock { 
+                  Step::RustBlock {
                     binds: vec![LocalVarRef("f_tasksQueueName")], 
-                    code: r#"
-                    heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = "testTasks".to_string();
-                    heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()
-                    "#.to_string(), 
+                    code: "heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()".to_string(), 
                     next: StepId::new("debug_vars"),
                   }
                 ),
