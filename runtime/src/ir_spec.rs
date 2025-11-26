@@ -90,7 +90,9 @@ pub fn sample_ir() -> IR {
         FiberType::new("testTaskExecutorIncrementer"),
         Fiber {
           fibers_limit: 0,
-          init_vars: vec![],
+          init_vars: vec![
+            InVar("in_taskQueueName", Type::String),
+          ],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -112,7 +114,14 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("init_queue_name"),
-                  Step::Let { local: "f_tasksQueueName".to_string(), expr: Expr::Str("testTasks".to_string()), next: StepId::new("debug_vars") },
+                  Step::RustBlock { 
+                    binds: vec![LocalVarRef("f_tasksQueueName")], 
+                    code: r#"
+                    heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = "testTasks".to_string();
+                    heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()
+                    "#.to_string(), 
+                    next: StepId::new("debug_vars"),
+                  }
                 ),
                 (
                   StepId::new("debug_vars"),

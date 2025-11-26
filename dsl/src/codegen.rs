@@ -180,7 +180,21 @@ pub fn generate_rust_types(ir: &IR) -> String {
     for (name, ty) in heap_fields {
       out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(ty)));
     }
+    if !fiber.init_vars.is_empty() {
+      let invars_struct = variant_name(&[fiber_name.0.as_str(), "InVars"]);
+      out.push_str(&format!("  pub in_vars: {},\n", invars_struct));
+    }
     out.push_str("}\n\n");
+    if !fiber.init_vars.is_empty() {
+      let invars_struct = variant_name(&[fiber_name.0.as_str(), "InVars"]);
+      out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", invars_struct));
+      let mut init_vars_sorted = fiber.init_vars.clone();
+      init_vars_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+      for InVar(name, ty) in init_vars_sorted {
+        out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(&ty)));
+      }
+      out.push_str("}\n\n");
+    }
     heap_structs.push((camel_ident(&fiber_name.0), heap_struct));
   }
   // Unified Heap as a struct with all fiber heaps accessible at once

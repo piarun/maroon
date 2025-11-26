@@ -76,7 +76,14 @@ pub struct RootHeap {}
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
-pub struct TestTaskExecutorIncrementerHeap {}
+pub struct TestTaskExecutorIncrementerHeap {
+  pub in_vars: TestTaskExecutorIncrementerInVars,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestTaskExecutorIncrementerInVars {
+  pub inTaskqueuename: String,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
@@ -926,10 +933,26 @@ pub fn global_step(
         ])
       }
     }
-    State::TestTaskExecutorIncrementerMainInitQueueName => StepResult::Next(vec![
-      StackEntry::FrameAssign(vec![(3, Value::String("testTasks".to_string()))]),
-      StackEntry::State(State::TestTaskExecutorIncrementerMainDebugVars),
-    ]),
+    State::TestTaskExecutorIncrementerMainInitQueueName => {
+      let fRespfutureid: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fTask: TestIncrementTask =
+        if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fTasksqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      {
+        let out = {
+          heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = "testTasks".to_string();
+          heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()
+        };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::String(out))]),
+          StackEntry::State(State::TestTaskExecutorIncrementerMainDebugVars),
+        ])
+      }
+    }
     State::TestTaskExecutorIncrementerMainReturn => StepResult::ReturnVoid,
     State::TestTaskExecutorIncrementerMainReturnResult => {
       let fRespfutureid: String =
