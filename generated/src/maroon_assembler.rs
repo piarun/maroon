@@ -137,6 +137,10 @@ pub enum State {
   TestSelectQueueMainIncFromFut,
   TestSelectQueueMainReturn,
   TestSelectQueueMainStartWork,
+  TestTaskExecutorIncrementerMainAwait,
+  TestTaskExecutorIncrementerMainDebug2,
+  TestTaskExecutorIncrementerMainDebugVars,
+  TestTaskExecutorIncrementerMainDebugVars2,
   TestTaskExecutorIncrementerMainEntry,
   TestTaskExecutorIncrementerMainIncrement,
   TestTaskExecutorIncrementerMainReturn,
@@ -194,6 +198,11 @@ pub enum StepResult {
   SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
   SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  // Debug
+  // Print a string message and continue to the provided next state.
+  Debug(&'static str, State),
+  // Print all current-frame vars in order and continue to next state.
+  DebugPrintVars(State),
 }
 pub fn func_args_count(e: &State) -> usize {
   match e {
@@ -243,6 +252,10 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestSelectQueueMainReturn => 2,
     State::TestSelectQueueMainStartWork => 2,
     State::TestTaskExecutorIncrementerMainEntry => 3,
+    State::TestTaskExecutorIncrementerMainAwait => 3,
+    State::TestTaskExecutorIncrementerMainDebug2 => 3,
+    State::TestTaskExecutorIncrementerMainDebugVars => 3,
+    State::TestTaskExecutorIncrementerMainDebugVars2 => 3,
     State::TestTaskExecutorIncrementerMainIncrement => 3,
     State::TestTaskExecutorIncrementerMainReturn => 3,
     State::TestTaskExecutorIncrementerMainReturnResult => 3,
@@ -850,11 +863,23 @@ pub fn global_step(
         ])
       }
     }
-    State::TestTaskExecutorIncrementerMainEntry => StepResult::Select(vec![SelectArm::Queue {
+    State::TestTaskExecutorIncrementerMainEntry => {
+      StepResult::Debug("start function", State::TestTaskExecutorIncrementerMainDebugVars)
+    }
+    State::TestTaskExecutorIncrementerMainAwait => StepResult::Select(vec![SelectArm::Queue {
       queue_name: "testTasks".to_string(),
       bind: "f_task".to_string(),
       next: State::TestTaskExecutorIncrementerMainIncrement,
     }]),
+    State::TestTaskExecutorIncrementerMainDebug2 => {
+      StepResult::Debug("after increment", State::TestTaskExecutorIncrementerMainDebugVars2)
+    }
+    State::TestTaskExecutorIncrementerMainDebugVars => {
+      StepResult::DebugPrintVars(State::TestTaskExecutorIncrementerMainAwait)
+    }
+    State::TestTaskExecutorIncrementerMainDebugVars2 => {
+      StepResult::DebugPrintVars(State::TestTaskExecutorIncrementerMainReturnResult)
+    }
     State::TestTaskExecutorIncrementerMainIncrement => {
       let fRespfutureid: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -875,7 +900,7 @@ pub fn global_step(
             (2, Value::String(o1)),
             (1, Value::String(o2)),
           ]),
-          StackEntry::State(State::TestTaskExecutorIncrementerMainReturnResult),
+          StackEntry::State(State::TestTaskExecutorIncrementerMainDebug2),
         ])
       }
     }

@@ -96,6 +96,14 @@ pub fn sample_ir() -> IR {
                 steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::Debug("start function", StepId::new("debug_vars")),
+                ),
+                (
+                  StepId::new("debug_vars"),
+                  Step::DebugPrintVars(StepId::new("await")),
+                ),
+                (
+                  StepId::new("await"),
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
                       // here I just hardcode queue message name. Later I'll add `constructor passing variables` and remove this hardcode
@@ -112,7 +120,15 @@ pub fn sample_ir() -> IR {
                     t_m.inStrValue += 1;
                     (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
                   "#.
-                  to_string(), next: StepId::new("return_result") },
+                  to_string(), next: StepId::new("debug2") },
+                ),
+                (
+                  StepId::new("debug2"),
+                  Step::Debug("after increment", StepId::new("debug_vars2")),
+                ),
+                (
+                  StepId::new("debug_vars2"),
+                  Step::DebugPrintVars(StepId::new("return_result")),
                 ),
                 (
                   StepId::new("return_result"),

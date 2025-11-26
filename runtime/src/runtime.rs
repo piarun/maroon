@@ -109,6 +109,9 @@ pub struct Runtime<T: Timer> {
 
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
+
+  // Shared debug output sink used by all fibers, written sequentially during execution
+  pub dbg_out: String,
 }
 
 struct FiberBox {
@@ -143,6 +146,7 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
+      dbg_out: String::new(),
 
       interface,
     }
@@ -235,7 +239,7 @@ limiter:
 
       // work on active fibers(state-machine iterations moves)
       while let Some(mut fiber) = self.active_fibers.pop_front() {
-        match fiber.run() {
+        match fiber.run(&mut self.dbg_out) {
           RunResult::Done(result) => {
             println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 

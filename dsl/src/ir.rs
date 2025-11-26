@@ -155,6 +155,15 @@ pub enum Step {
     values: Vec<SetPrimitive>,
     next: StepId,
   },
+
+  /// DEBUG section
+  /// Prints smth to dbgOut
+
+  /// Prints debug string and then continues to `next` step.
+  Debug(&'static str, StepId),
+  /// Prints all vars (in the current stack frame) values in the order of
+  /// definition in the function, then continues to `next` step.
+  DebugPrintVars(StepId),
 }
 
 #[derive(Debug, Clone)]
@@ -320,6 +329,8 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
 
   for (id, step) in &f.steps {
     match step {
+      Step::Debug(_, _) => {}
+      Step::DebugPrintVars(_) => {}
       Step::ScheduleTimer { .. } => {}
       Step::SendToFiber { args, .. } => {
         for (_name, expr) in args {

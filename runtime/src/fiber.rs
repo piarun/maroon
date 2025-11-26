@@ -200,8 +200,11 @@ impl Fiber {
     self.stack.push(StackEntry::State(next));
   }
 
-  /// Runs until finished and gets the resutl or until parked for awaiting async results
-  pub fn run(&mut self) -> RunResult {
+  /// Runs until finished and gets the result or until parked for awaiting async results
+  pub fn run(
+    &mut self,
+    sink: &mut dyn std::fmt::Write,
+  ) -> RunResult {
     loop {
       let head_opt = self.stack.pop();
       if head_opt.is_none() {
@@ -233,6 +236,36 @@ impl Fiber {
       self.trace_sink.push(TraceEvent { state: state_cp, result: result.clone() });
 
       match result {
+        StepResult::Debug(msg, next) => {
+          let _ = sink.write_str(msg);
+          let _ = sink.write_char('\n');
+          self.stack.push(StackEntry::State(next));
+        }
+        StepResult::DebugPrintVars(next) => {
+          for se in &self.stack[start..] {
+            if let StackEntry::Value(name, val) = se {
+              let _ = sink.write_str(name);
+              let _ = sink.write_char('=');
+              match val {
+                Value::U64(x) => {
+                  let _ = sink.write_fmt(format_args!("{}", x));
+                }
+                Value::String(s) => {
+                  let _ = sink.write_str(s);
+                }
+                Value::Unit(_) => {
+                  let _ = sink.write_str("()");
+                }
+                _ => {
+                  // Fallback to Debug formatting for other types
+                  let _ = sink.write_fmt(format_args!("{:?}", val));
+                }
+              }
+              let _ = sink.write_char('\n');
+            }
+          }
+          self.stack.push(StackEntry::State(next));
+        }
         StepResult::Return(val) => {
           // Drop used arguments
           self.stack.truncate(start);
