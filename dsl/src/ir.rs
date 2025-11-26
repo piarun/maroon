@@ -59,6 +59,8 @@ pub struct Fiber {
   pub heap: HashMap<String, Type>,
   /// input queue messages that fiber accepts
   pub in_messages: Vec<MessageSpec>,
+  pub init_vars: Vec<InVar>,
+
   pub funcs: HashMap<String, Func>,
 }
 

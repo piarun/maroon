@@ -10,6 +10,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("root"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -31,6 +32,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("testSelectQueue"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -80,6 +82,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("testTaskExecutorIncrementer"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -153,6 +156,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
+          init_vars: vec![],
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -439,6 +443,7 @@ out
         FiberType::new("application"),
         Fiber {
           fibers_limit: 2,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
           // (StepId::new("await_in_message"), Step::Await(())),
@@ -526,6 +531,7 @@ out
         FiberType::new("order_book"),
         Fiber {
           fibers_limit: 1,
+          init_vars: vec![],
           heap: HashMap::from([
             ("bids_prices".to_string(), Type::MaxQueue(Box::new(Type::UInt64))),
             ("asks_prices".to_string(), Type::MinQueue(Box::new(Type::UInt64))),

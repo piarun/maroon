@@ -1480,6 +1480,7 @@ mod tests {
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
             in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
+            init_vars: vec![],
             funcs: HashMap::from([(
               "get".into(),
               Func {
@@ -1493,7 +1494,13 @@ mod tests {
         ),
         (
           FiberType::new("global"),
-          Fiber { fibers_limit: 1, heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() },
+          Fiber {
+            fibers_limit: 1,
+            heap: HashMap::new(),
+            in_messages: vec![],
+            init_vars: vec![],
+            funcs: HashMap::new(),
+          },
         ),
       ]),
     };
