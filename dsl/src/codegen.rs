@@ -536,6 +536,7 @@ fn render_expr_code(
   match expr {
     Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name.0),
+    Expr::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
@@ -840,7 +841,13 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(_) => {}
-            Step::Select { .. } => {}
+            Step::Select { arms } => {
+              for arm in arms {
+                if let AwaitSpec::Queue { queue_name, .. } = arm {
+                  referenced.insert(queue_name.0.to_string());
+                }
+              }
+            }
             Step::Call { args, .. } => {
               for e in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -938,9 +945,10 @@ fn generate_global_step(ir: &IR) -> String {
                 match arm {
                   AwaitSpec::Queue { queue_name, message_var, next } => {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                    let q_ident = camel_ident(queue_name.0);
                     arm_parts.push(format!(
-                      "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                      queue_name, message_var.0, next_v
+                      "SelectArm::Queue {{ queue_name: {}.clone(), bind: \"{}\".to_string(), next: State::{} }}",
+                      q_ident, message_var.0, next_v
                     ));
                   }
                   AwaitSpec::Future { bind, ret_to, future_id } => {
@@ -1036,14 +1044,19 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::Let { local, expr, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              // Set a local by pushing a value of the underlying type. Runtime will bind it.
+              // Assign into an existing local slot via FrameAssign at the correct offset
               let lty = var_type_of(func, local).expect("unknown local var in Let");
               let vname = type_variant_name(lty);
               let expr_code = render_expr_code(&expr, func);
+              let pos_expr = if let Some(li) = func.locals.iter().position(|l| l.0 == local.as_str()) {
+                format!("{}", func.in_vars.len() + li)
+              } else {
+                "0".to_string()
+              };
               out.push_str("      StepResult::Next(vec![\n");
               out.push_str(&format!(
-                "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-                local, vname, expr_code
+                "        StackEntry::FrameAssign(vec![( {}, Value::{}({}) )]),\n",
+                pos_expr, vname, expr_code
               ));
               out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
               out.push_str("      ])\n");
@@ -1174,7 +1187,13 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(_) => {}
-          Step::Select { .. } => {}
+          Step::Select { arms } => {
+            for arm in arms {
+              if let AwaitSpec::Queue { queue_name, .. } = arm {
+                referenced.insert(queue_name.0.to_string());
+              }
+            }
+          }
           Step::Call { args, .. } => {
             for e in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1271,9 +1290,10 @@ fn generate_global_step(ir: &IR) -> String {
               match arm {
                 AwaitSpec::Queue { queue_name, message_var, next } => {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                  let q_ident = camel_ident(queue_name.0);
                   arm_parts.push(format!(
-                    "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                    queue_name, message_var.0, next_v
+                    "SelectArm::Queue {{ queue_name: {}.clone(), bind: \"{}\".to_string(), next: State::{} }}",
+                    q_ident, message_var.0, next_v
                   ));
                 }
                 AwaitSpec::Future { bind, ret_to, future_id } => {
@@ -1371,10 +1391,15 @@ fn generate_global_step(ir: &IR) -> String {
             let lty = var_type_of(func, local).expect("unknown local var in Let");
             let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
+            let pos_expr = if let Some(li) = func.locals.iter().position(|l| l.0 == local.as_str()) {
+              format!("{}", func.in_vars.len() + li)
+            } else {
+              "0".to_string()
+            };
             out.push_str("      StepResult::Next(vec![\n");
             out.push_str(&format!(
-              "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-              local, vname, expr_code
+              "        StackEntry::FrameAssign(vec![( {}, Value::{}({}) )]),\n",
+              pos_expr, vname, expr_code
             ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");

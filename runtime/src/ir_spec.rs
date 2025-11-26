@@ -38,12 +38,20 @@ pub fn sample_ir() -> IR {
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], steps: vec![
+              Func{
+                in_vars: vec![],
+                out: Type::Void, 
+                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String)], 
+                steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::Let { local: "counterStartQueueName".to_string(), expr: Expr::Str("counterStartQueue".to_string()), next: StepId::new("select_counter") },
+                ),
+                (
+                  StepId::new("select_counter"),
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
-                      queue_name: "counterStartQueue".to_string(),
+                      queue_name: LocalVarRef("counterStartQueueName"),
                       message_var: LocalVarRef("counter"),
                       next: StepId::new("start_work"),
                     },
@@ -95,11 +103,16 @@ pub fn sample_ir() -> IR {
                   LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())),
                   LocalVar("f_respFutureId", Type::String),
                   LocalVar("f_respQueueName", Type::String),
+                  LocalVar("f_tasksQueueName", Type::String),
                 ],
                 steps: vec![
                 (
                   StepId::new("entry"),
-                  Step::Debug("start function", StepId::new("debug_vars")),
+                  Step::Debug("start function", StepId::new("init_queue_name")),
+                ),
+                (
+                  StepId::new("init_queue_name"),
+                  Step::Let { local: "f_tasksQueueName".to_string(), expr: Expr::Str("testTasks".to_string()), next: StepId::new("debug_vars") },
                 ),
                 (
                   StepId::new("debug_vars"),
@@ -109,8 +122,7 @@ pub fn sample_ir() -> IR {
                   StepId::new("await"),
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
-                      // here I just hardcode queue message name. Later I'll add `constructor passing variables` and remove this hardcode
-                      queue_name: "testTasks".to_string(),
+                      queue_name: LocalVarRef("f_tasksQueueName"),
                       message_var: LocalVarRef("f_task"),
                       next: StepId::new("increment"),
                     },
