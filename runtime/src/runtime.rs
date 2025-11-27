@@ -6,6 +6,7 @@ use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
 use generated::maroon_assembler::Value;
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,8 +111,11 @@ pub struct Runtime<T: Timer> {
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
 
-  // Shared debug output sink used by all fibers, written sequentially during execution
-  pub dbg_out: String,
+
+  /// Shared debug output sink used by all fibers, safe to share with tests
+  /// I don't think it's a good way of doing it longterm,
+  ///  but I don't see obvious problems and limitations right now that would justify more advanced solution
+  dbg_out: Arc<Mutex<String>>,
 }
 
 struct FiberBox {
@@ -146,10 +150,16 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
-      dbg_out: String::new(),
+
+      dbg_out: Arc::new(Mutex::new(String::new())),
 
       interface,
     }
+  }
+
+  /// Returns a clone of the debug output handle for external readers (e.g., tests).
+  pub fn debug_handle(&self) -> Arc<Mutex<String>> {
+    self.dbg_out.clone()
   }
 
   pub fn dump(&self) {
@@ -246,7 +256,9 @@ limiter:
 
       // work on active fibers(state-machine iterations moves)
       while let Some(mut fiber) = self.active_fibers.pop_front() {
-        match fiber.run(&mut self.dbg_out) {
+        // Accumulate debug output locally, then append with a single lock
+        let mut local_dbg = String::new();
+        match fiber.run(&mut local_dbg) {
           RunResult::Done(result) => {
             println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 
@@ -302,6 +314,11 @@ limiter:
           }
           RunResult::Select(_states) => {}
           RunResult::SetValues(_values) => {}
+        }
+        if !local_dbg.is_empty() {
+          if let Ok(mut g) = self.dbg_out.lock() {
+            g.push_str(&local_dbg);
+          }
         }
       }
 
@@ -521,6 +538,21 @@ mod tests {
       a2b_runtime.receiver,
     )
     .await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn simple_runtime_start_with_root_work_and_end() {
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let debug_out = rt.debug_handle();
+    tokio::spawn(async move {
+      rt.run("testTaskExecutorIncrementer".to_string()).await;
+    });
+
+    let result = debug_out.lock();
+    assert_eq!("", result.expect("should be object").as_str());
   }
 
   async fn compare_channel_data_with_exp<T: PartialEq + Debug>(
