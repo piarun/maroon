@@ -222,7 +222,14 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
-  pub async fn run(&mut self) {
+  pub async fn run(
+    &mut self,
+    root_type: String,
+  ) {
+    let root = Fiber::new(FiberType(root_type), 0, &vec![]);
+    self.next_fiber_id = 1;
+    self.active_fibers.push_back(root);
+
     'main_loop: loop {
       let now = self.timer.from_start();
 
@@ -395,7 +402,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     _ = a2b_runtime.send((
@@ -431,7 +438,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     _ = a2b_runtime.send((
@@ -454,7 +461,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     // Cases to cover:
