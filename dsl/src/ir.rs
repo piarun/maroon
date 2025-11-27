@@ -59,6 +59,8 @@ pub struct Fiber {
   pub heap: HashMap<String, Type>,
   /// input queue messages that fiber accepts
   pub in_messages: Vec<MessageSpec>,
+  pub init_vars: Vec<InVar>,
+
   pub funcs: HashMap<String, Func>,
 }
 
@@ -195,14 +197,12 @@ pub enum AwaitSpec {
   Future {
     bind: Option<LocalVarRef>,
     ret_to: StepId,
+    // TODO: get futureid from variable, so use LocalVarRef instead of Label. remove label
     future_id: FutureLabel,
   },
   Queue {
-    /// TODO: make queue not name but type?
-    /// Or just check in validate step:
-    /// - this queue exists
-    /// - message type is the same as `message_var` type
-    queue_name: String,
+    /// variable ref where queue name is located
+    queue_name: LocalVarRef,
     /// variable name - where message from the queue will be put
     /// TODO: check types of messages that they match
     message_var: LocalVarRef,

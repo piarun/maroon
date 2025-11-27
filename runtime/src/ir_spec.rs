@@ -10,6 +10,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("root"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -31,17 +32,26 @@ pub fn sample_ir() -> IR {
         FiberType::new("testSelectQueue"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
-              Func{in_vars: vec![],out: Type::Void, locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64)], steps: vec![
+              Func{
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String)], 
+                steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::Let { local: "counterStartQueueName".to_string(), expr: Expr::Str("counterStartQueue".to_string()), next: StepId::new("select_counter") },
+                ),
+                (
+                  StepId::new("select_counter"),
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
-                      queue_name: "counterStartQueue".to_string(),
+                      queue_name: LocalVarRef("counterStartQueueName"),
                       message_var: LocalVarRef("counter"),
                       next: StepId::new("start_work"),
                     },
@@ -80,6 +90,9 @@ pub fn sample_ir() -> IR {
         FiberType::new("testTaskExecutorIncrementer"),
         Fiber {
           fibers_limit: 0,
+          init_vars: vec![
+            InVar("in_taskQueueName", Type::String),
+          ],
           heap: HashMap::new(),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -92,11 +105,20 @@ pub fn sample_ir() -> IR {
                   LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())),
                   LocalVar("f_respFutureId", Type::String),
                   LocalVar("f_respQueueName", Type::String),
+                  LocalVar("f_tasksQueueName", Type::String),
                 ],
                 steps: vec![
                 (
                   StepId::new("entry"),
-                  Step::Debug("start function", StepId::new("debug_vars")),
+                  Step::Debug("start function", StepId::new("init_queue_name")),
+                ),
+                (
+                  StepId::new("init_queue_name"),
+                  Step::RustBlock {
+                    binds: vec![LocalVarRef("f_tasksQueueName")], 
+                    code: "heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()".to_string(), 
+                    next: StepId::new("debug_vars"),
+                  }
                 ),
                 (
                   StepId::new("debug_vars"),
@@ -106,8 +128,7 @@ pub fn sample_ir() -> IR {
                   StepId::new("await"),
                   Step::Select { arms: vec![
                     AwaitSpec::Queue{
-                      // here I just hardcode queue message name. Later I'll add `constructor passing variables` and remove this hardcode
-                      queue_name: "testTasks".to_string(),
+                      queue_name: LocalVarRef("f_tasksQueueName"),
                       message_var: LocalVarRef("f_task"),
                       next: StepId::new("increment"),
                     },
@@ -153,6 +174,7 @@ pub fn sample_ir() -> IR {
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
+          init_vars: vec![],
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           in_messages: vec![],
           funcs: HashMap::from([
@@ -439,6 +461,7 @@ out
         FiberType::new("application"),
         Fiber {
           fibers_limit: 2,
+          init_vars: vec![],
           heap: HashMap::new(),
           in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
           // (StepId::new("await_in_message"), Step::Await(())),
@@ -526,6 +549,7 @@ out
         FiberType::new("order_book"),
         Fiber {
           fibers_limit: 1,
+          init_vars: vec![],
           heap: HashMap::from([
             ("bids_prices".to_string(), Type::MaxQueue(Box::new(Type::UInt64))),
             ("asks_prices".to_string(), Type::MinQueue(Box::new(Type::UInt64))),

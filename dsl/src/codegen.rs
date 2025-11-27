@@ -180,7 +180,21 @@ pub fn generate_rust_types(ir: &IR) -> String {
     for (name, ty) in heap_fields {
       out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(ty)));
     }
+    if !fiber.init_vars.is_empty() {
+      let invars_struct = variant_name(&[fiber_name.0.as_str(), "InVars"]);
+      out.push_str(&format!("  pub in_vars: {},\n", invars_struct));
+    }
     out.push_str("}\n\n");
+    if !fiber.init_vars.is_empty() {
+      let invars_struct = variant_name(&[fiber_name.0.as_str(), "InVars"]);
+      out.push_str(&format!("#[derive(Clone, Debug, Default)]\npub struct {} {{\n", invars_struct));
+      let mut init_vars_sorted = fiber.init_vars.clone();
+      init_vars_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+      for InVar(name, ty) in init_vars_sorted {
+        out.push_str(&format!("  pub {}: {},\n", camel_ident(name), rust_type(&ty)));
+      }
+      out.push_str("}\n\n");
+    }
     heap_structs.push((camel_ident(&fiber_name.0), heap_struct));
   }
   // Unified Heap as a struct with all fiber heaps accessible at once
@@ -252,6 +266,10 @@ pub fn generate_rust_types(ir: &IR) -> String {
   use std::collections::BTreeMap;
   let mut used_types: BTreeMap<String, Type> = BTreeMap::new();
   for (_, fiber) in fibers_sorted.iter() {
+    // include init_vars types so Value can carry them
+    for InVar(_, ty) in &fiber.init_vars {
+      used_types.insert(type_variant_name(ty), ty.clone());
+    }
     for (_, func) in fiber.funcs.iter() {
       for p in &func.in_vars {
         let ty = &p.1;
@@ -336,6 +354,9 @@ pub enum StepResult {
 
   // Emit helpers to prepare initial stack/heap and extract result
   out.push_str(&generate_prepare_and_result_helpers(ir));
+
+  // Emit helpers to initialize Heap from fiber init_vars
+  out.push_str(&generate_heap_init_helpers(ir));
 
   out
 }
@@ -479,6 +500,67 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   out
 }
 
+fn generate_heap_init_helpers(ir: &IR) -> String {
+  let mut out = String::new();
+
+  // alias
+  out.push_str("pub type HeapInitFn = fn(Vec<Value>) -> Heap;\n\n");
+
+  // For each fiber, emit a typed prepare function and a Vec<Value> wrapper
+  let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
+  fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+
+  // registry arms
+  let mut init_arms: Vec<String> = Vec::new();
+
+  for (fiber_name, fiber) in fibers_sorted.iter() {
+    let fname = camel_ident(&fiber_name.0);
+    let prepare_fn_name = format!("{}_prepare_heap", fname);
+
+    // typed signature params by init_vars
+    let mut params: Vec<String> = Vec::new();
+    for InVar(n, t) in &fiber.init_vars {
+      params.push(format!("{}: {}", camel_ident(n), rust_type(t)));
+    }
+
+    out.push_str(&format!("pub fn {}({}) -> Heap {{\n", prepare_fn_name, params.join(", ")));
+    out.push_str("  let mut heap = Heap::default();\n");
+    if !fiber.init_vars.is_empty() {
+      let heap_field = camel_ident(&fiber_name.0);
+      for InVar(n, _) in &fiber.init_vars {
+        out.push_str(&format!("  heap.{}.in_vars.{} = {};\n", heap_field, camel_ident(n), camel_ident(n)));
+      }
+    }
+    out.push_str("  heap\n}\n\n");
+
+    // wrapper from Vec<Value>
+    let wrapper_name = format!("{}_prepare_heap_from_values", fname);
+    out.push_str(&format!("fn {}(args: Vec<Value>) -> Heap {{\n", wrapper_name));
+    for (idx, InVar(n, t)) in fiber.init_vars.iter().enumerate() {
+      let vname = type_variant_name(t);
+      let rty = rust_type(t);
+      out.push_str(&format!(
+        "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid init var for {}\") }};\n",
+        camel_ident(n), rty, vname, idx, fiber_name.0
+      ));
+    }
+    let call_params = fiber.init_vars.iter().map(|iv| camel_ident(iv.0)).collect::<Vec<_>>().join(", ");
+    out.push_str(&format!("  {}({})\n}}\n\n", prepare_fn_name, call_params));
+
+    init_arms.push(format!("    \"{}\" => {}_prepare_heap_from_values,\n", fiber_name.0, fname));
+  }
+
+  // registry function
+  out.push_str("pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {\n  match fiber.0.as_str() {\n");
+  init_arms.sort();
+  for arm in init_arms {
+    out.push_str(&arm);
+  }
+  out.push_str("    _ => |_| Heap::default(),\n  }\n}\n\n");
+
+  out
+}
+
 use std::collections::BTreeSet;
 
 fn collect_vars_from_expr(
@@ -536,6 +618,7 @@ fn render_expr_code(
   match expr {
     Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name.0),
+    Expr::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
@@ -840,7 +923,13 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
             Step::Await(_) => {}
-            Step::Select { .. } => {}
+            Step::Select { arms } => {
+              for arm in arms {
+                if let AwaitSpec::Queue { queue_name, .. } = arm {
+                  referenced.insert(queue_name.0.to_string());
+                }
+              }
+            }
             Step::Call { args, .. } => {
               for e in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -938,9 +1027,10 @@ fn generate_global_step(ir: &IR) -> String {
                 match arm {
                   AwaitSpec::Queue { queue_name, message_var, next } => {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                    let q_ident = camel_ident(queue_name.0);
                     arm_parts.push(format!(
-                      "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                      queue_name, message_var.0, next_v
+                      "SelectArm::Queue {{ queue_name: {}.clone(), bind: \"{}\".to_string(), next: State::{} }}",
+                      q_ident, message_var.0, next_v
                     ));
                   }
                   AwaitSpec::Future { bind, ret_to, future_id } => {
@@ -1036,14 +1126,19 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::Let { local, expr, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              // Set a local by pushing a value of the underlying type. Runtime will bind it.
+              // Assign into an existing local slot via FrameAssign at the correct offset
               let lty = var_type_of(func, local).expect("unknown local var in Let");
               let vname = type_variant_name(lty);
               let expr_code = render_expr_code(&expr, func);
+              let pos_expr = if let Some(li) = func.locals.iter().position(|l| l.0 == local.as_str()) {
+                format!("{}", func.in_vars.len() + li)
+              } else {
+                "0".to_string()
+              };
               out.push_str("      StepResult::Next(vec![\n");
               out.push_str(&format!(
-                "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-                local, vname, expr_code
+                "        StackEntry::FrameAssign(vec![( {}, Value::{}({}) )]),\n",
+                pos_expr, vname, expr_code
               ));
               out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
               out.push_str("      ])\n");
@@ -1174,7 +1269,13 @@ fn generate_global_step(ir: &IR) -> String {
             }
           }
           Step::Await(_) => {}
-          Step::Select { .. } => {}
+          Step::Select { arms } => {
+            for arm in arms {
+              if let AwaitSpec::Queue { queue_name, .. } = arm {
+                referenced.insert(queue_name.0.to_string());
+              }
+            }
+          }
           Step::Call { args, .. } => {
             for e in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1271,9 +1372,10 @@ fn generate_global_step(ir: &IR) -> String {
               match arm {
                 AwaitSpec::Queue { queue_name, message_var, next } => {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+                  let q_ident = camel_ident(queue_name.0);
                   arm_parts.push(format!(
-                    "SelectArm::Queue {{ queue_name: \"{}\".to_string(), bind: \"{}\".to_string(), next: State::{} }}",
-                    queue_name, message_var.0, next_v
+                    "SelectArm::Queue {{ queue_name: {}.clone(), bind: \"{}\".to_string(), next: State::{} }}",
+                    q_ident, message_var.0, next_v
                   ));
                 }
                 AwaitSpec::Future { bind, ret_to, future_id } => {
@@ -1371,10 +1473,15 @@ fn generate_global_step(ir: &IR) -> String {
             let lty = var_type_of(func, local).expect("unknown local var in Let");
             let vname = type_variant_name(lty);
             let expr_code = render_expr_code(&expr, func);
+            let pos_expr = if let Some(li) = func.locals.iter().position(|l| l.0 == local.as_str()) {
+              format!("{}", func.in_vars.len() + li)
+            } else {
+              "0".to_string()
+            };
             out.push_str("      StepResult::Next(vec![\n");
             out.push_str(&format!(
-              "        StackEntry::Value(\"{}\".to_string(), Value::{}({})),\n",
-              local, vname, expr_code
+              "        StackEntry::FrameAssign(vec![( {}, Value::{}({}) )]),\n",
+              pos_expr, vname, expr_code
             ));
             out.push_str(&format!("        StackEntry::State(State::{}),\n", next_v));
             out.push_str("      ])\n");
@@ -1480,6 +1587,7 @@ mod tests {
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
             in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
+            init_vars: vec![],
             funcs: HashMap::from([(
               "get".into(),
               Func {
@@ -1493,7 +1601,13 @@ mod tests {
         ),
         (
           FiberType::new("global"),
-          Fiber { fibers_limit: 1, heap: HashMap::new(), in_messages: vec![], funcs: HashMap::new() },
+          Fiber {
+            fibers_limit: 1,
+            heap: HashMap::new(),
+            in_messages: vec![],
+            init_vars: vec![],
+            funcs: HashMap::new(),
+          },
         ),
       ]),
     };

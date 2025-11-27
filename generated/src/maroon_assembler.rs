@@ -76,7 +76,14 @@ pub struct RootHeap {}
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
-pub struct TestTaskExecutorIncrementerHeap {}
+pub struct TestTaskExecutorIncrementerHeap {
+  pub in_vars: TestTaskExecutorIncrementerInVars,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestTaskExecutorIncrementerInVars {
+  pub inTaskqueuename: String,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
@@ -136,6 +143,7 @@ pub enum State {
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
   TestSelectQueueMainReturn,
+  TestSelectQueueMainSelectCounter,
   TestSelectQueueMainStartWork,
   TestTaskExecutorIncrementerMainAwait,
   TestTaskExecutorIncrementerMainDebug2,
@@ -143,6 +151,7 @@ pub enum State {
   TestTaskExecutorIncrementerMainDebugVars2,
   TestTaskExecutorIncrementerMainEntry,
   TestTaskExecutorIncrementerMainIncrement,
+  TestTaskExecutorIncrementerMainInitQueueName,
   TestTaskExecutorIncrementerMainReturn,
   TestTaskExecutorIncrementerMainReturnResult,
 }
@@ -246,19 +255,21 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
-    State::TestSelectQueueMainEntry => 2,
-    State::TestSelectQueueMainCompare => 2,
-    State::TestSelectQueueMainIncFromFut => 2,
-    State::TestSelectQueueMainReturn => 2,
-    State::TestSelectQueueMainStartWork => 2,
-    State::TestTaskExecutorIncrementerMainEntry => 3,
-    State::TestTaskExecutorIncrementerMainAwait => 3,
-    State::TestTaskExecutorIncrementerMainDebug2 => 3,
-    State::TestTaskExecutorIncrementerMainDebugVars => 3,
-    State::TestTaskExecutorIncrementerMainDebugVars2 => 3,
-    State::TestTaskExecutorIncrementerMainIncrement => 3,
-    State::TestTaskExecutorIncrementerMainReturn => 3,
-    State::TestTaskExecutorIncrementerMainReturnResult => 3,
+    State::TestSelectQueueMainEntry => 3,
+    State::TestSelectQueueMainCompare => 3,
+    State::TestSelectQueueMainIncFromFut => 3,
+    State::TestSelectQueueMainReturn => 3,
+    State::TestSelectQueueMainSelectCounter => 3,
+    State::TestSelectQueueMainStartWork => 3,
+    State::TestTaskExecutorIncrementerMainEntry => 4,
+    State::TestTaskExecutorIncrementerMainAwait => 4,
+    State::TestTaskExecutorIncrementerMainDebug2 => 4,
+    State::TestTaskExecutorIncrementerMainDebugVars => 4,
+    State::TestTaskExecutorIncrementerMainDebugVars2 => 4,
+    State::TestTaskExecutorIncrementerMainIncrement => 4,
+    State::TestTaskExecutorIncrementerMainInitQueueName => 4,
+    State::TestTaskExecutorIncrementerMainReturn => 4,
+    State::TestTaskExecutorIncrementerMainReturnResult => 4,
     State::Idle => 0,
     State::Completed => 0,
   }
@@ -818,17 +829,9 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
-    State::TestSelectQueueMainEntry => StepResult::Select(vec![
-      SelectArm::Queue {
-        queue_name: "counterStartQueue".to_string(),
-        bind: "counter".to_string(),
-        next: State::TestSelectQueueMainStartWork,
-      },
-      SelectArm::Future {
-        future_id: FutureLabel::new("testSelectQueue_future_1"),
-        bind: Some("responseFromFut".to_string()),
-        next: State::TestSelectQueueMainIncFromFut,
-      },
+    State::TestSelectQueueMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
+      StackEntry::State(State::TestSelectQueueMainSelectCounter),
     ]),
     State::TestSelectQueueMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -840,6 +843,8 @@ pub fn global_step(
     }
     State::TestSelectQueueMainIncFromFut => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let counterStartQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
@@ -851,8 +856,26 @@ pub fn global_step(
       }
     }
     State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
+    State::TestSelectQueueMainSelectCounter => {
+      let counterStartQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![
+        SelectArm::Queue {
+          queue_name: counterStartQueueName.clone(),
+          bind: "counter".to_string(),
+          next: State::TestSelectQueueMainStartWork,
+        },
+        SelectArm::Future {
+          future_id: FutureLabel::new("testSelectQueue_future_1"),
+          bind: Some("responseFromFut".to_string()),
+          next: State::TestSelectQueueMainIncFromFut,
+        },
+      ])
+    }
     State::TestSelectQueueMainStartWork => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let counterStartQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
@@ -864,13 +887,17 @@ pub fn global_step(
       }
     }
     State::TestTaskExecutorIncrementerMainEntry => {
-      StepResult::Debug("start function", State::TestTaskExecutorIncrementerMainDebugVars)
+      StepResult::Debug("start function", State::TestTaskExecutorIncrementerMainInitQueueName)
     }
-    State::TestTaskExecutorIncrementerMainAwait => StepResult::Select(vec![SelectArm::Queue {
-      queue_name: "testTasks".to_string(),
-      bind: "f_task".to_string(),
-      next: State::TestTaskExecutorIncrementerMainIncrement,
-    }]),
+    State::TestTaskExecutorIncrementerMainAwait => {
+      let fTasksqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::Queue {
+        queue_name: fTasksqueuename.clone(),
+        bind: "f_task".to_string(),
+        next: State::TestTaskExecutorIncrementerMainIncrement,
+      }])
+    }
     State::TestTaskExecutorIncrementerMainDebug2 => {
       StepResult::Debug("after increment", State::TestTaskExecutorIncrementerMainDebugVars2)
     }
@@ -887,6 +914,8 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
         if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fTasksqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
       {
         let out = {
           let mut t_m = fTask;
@@ -901,6 +930,23 @@ pub fn global_step(
             (1, Value::String(o2)),
           ]),
           StackEntry::State(State::TestTaskExecutorIncrementerMainDebug2),
+        ])
+      }
+    }
+    State::TestTaskExecutorIncrementerMainInitQueueName => {
+      let fRespfutureid: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fTask: TestIncrementTask =
+        if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let fTasksqueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      {
+        let out = { heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone() };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::String(out))]),
+          StackEntry::State(State::TestTaskExecutorIncrementerMainDebugVars),
         ])
       }
     }
@@ -1522,6 +1568,7 @@ pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("responseFromFut".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("counterStartQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)
@@ -1547,6 +1594,7 @@ pub fn testTaskExecutorIncrementer_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Value("f_task".to_string(), Value::TestIncrementTask(TestIncrementTask::default())));
   stack.push(StackEntry::Value("f_respFutureId".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("f_respQueueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("f_tasksQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::State(State::TestTaskExecutorIncrementerMainEntry));
   let heap = Heap::default();
   (stack, heap)
@@ -1617,5 +1665,79 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "testSelectQueue.main" => testSelectQueue_result_main_value,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
+  }
+}
+
+pub type HeapInitFn = fn(Vec<Value>) -> Heap;
+
+pub fn application_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn application_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  application_prepare_heap()
+}
+
+pub fn global_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn global_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  global_prepare_heap()
+}
+
+pub fn orderBook_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn orderBook_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  orderBook_prepare_heap()
+}
+
+pub fn root_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn root_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  root_prepare_heap()
+}
+
+pub fn testSelectQueue_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testSelectQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testSelectQueue_prepare_heap()
+}
+
+pub fn testTaskExecutorIncrementer_prepare_heap(inTaskqueuename: String) -> Heap {
+  let mut heap = Heap::default();
+  heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename = inTaskqueuename;
+  heap
+}
+
+fn testTaskExecutorIncrementer_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  let inTaskqueuename: String = if let Value::String(x) = &args[0] {
+    x.clone()
+  } else {
+    unreachable!("invalid init var for testTaskExecutorIncrementer")
+  };
+  testTaskExecutorIncrementer_prepare_heap(inTaskqueuename)
+}
+
+pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
+  match fiber.0.as_str() {
+    "application" => application_prepare_heap_from_values,
+    "global" => global_prepare_heap_from_values,
+    "order_book" => orderBook_prepare_heap_from_values,
+    "root" => root_prepare_heap_from_values,
+    "testSelectQueue" => testSelectQueue_prepare_heap_from_values,
+    "testTaskExecutorIncrementer" => testTaskExecutorIncrementer_prepare_heap_from_values,
+    _ => |_| Heap::default(),
   }
 }
