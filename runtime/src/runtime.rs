@@ -93,17 +93,21 @@ pub struct Runtime<T: Timer> {
   // fibers that can be executed
   active_fibers: VecDeque<Fiber>,
   // fibers that have some tasks, but can't be executed because they're awaiting something
+  // deprecating
   parked_fibers: HashMap<FutureId, FiberBox>,
 
   scheduled: BinaryHeap<ScheduledBlob>,
 
   // created but idle fibers
+  // deprecating
   fiber_pool: HashMap<FiberType, Vec<Fiber>>,
 
   // queue for in_messages that will be executed in the order when fiber is available
   // Vec - for predictable order
+  // deprecating
   fiber_in_message_queue: Vec<(FiberType, VecDeque<FiberInMessage>)>,
 
+  // deprecating
   fiber_limiter: HashMap<FiberType, u64>,
 
   timer: T,
