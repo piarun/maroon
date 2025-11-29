@@ -7,6 +7,7 @@ common = { path = "../common" }
 dsl = { path = "../dsl" }
 generated = { path = "../generated" }
 tokio = { workspace = true }
+slab = "0.4"
 
 [build-dependencies]
 common = { path = "../common" }
