@@ -903,6 +903,7 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
             Step::ScheduleTimer { .. } => {}
+            Step::Create { .. } => {}
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -969,6 +970,9 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Debug(msg, next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+            }
+            Step::Create { .. } => {
+              out.push_str("      StepResult::Todo(\"create-step\".to_string())\n");
             }
             Step::DebugPrintVars(next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1249,6 +1253,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
           Step::ScheduleTimer { .. } => {}
+          Step::Create { .. } => {}
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1318,6 +1323,9 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Debug(msg, next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+          }
+          Step::Create { .. } => {
+            out.push_str("      StepResult::Todo(\"create-step\".to_string())\n");
           }
           Step::DebugPrintVars(next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);

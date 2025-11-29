@@ -73,6 +73,9 @@ pub struct OrderBookHeap {
 pub struct RootHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestCreateQueueHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -91,6 +94,7 @@ pub struct Heap {
   pub global: GlobalHeap,
   pub orderBook: OrderBookHeap,
   pub root: RootHeap,
+  pub testCreateQueue: TestCreateQueueHeap,
   pub testSelectQueue: TestSelectQueueHeap,
   pub testTaskExecutorIncrementer: TestTaskExecutorIncrementerHeap,
 }
@@ -139,6 +143,13 @@ pub enum State {
   OrderBookMainEntry,
   OrderBookTopNDepthEntry,
   RootMainEntry,
+  TestCreateQueueMainAwaitOnQueue,
+  TestCreateQueueMainCleanUp,
+  TestCreateQueueMainCorrectCreation,
+  TestCreateQueueMainDebugVars,
+  TestCreateQueueMainEntry,
+  TestCreateQueueMainReturn,
+  TestCreateQueueMainWrongQueueCreation,
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
@@ -160,6 +171,7 @@ pub enum State {
 pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
+  OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
   TestIncrementTask(TestIncrementTask),
@@ -255,6 +267,13 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
+    State::TestCreateQueueMainEntry => 4,
+    State::TestCreateQueueMainAwaitOnQueue => 4,
+    State::TestCreateQueueMainCleanUp => 4,
+    State::TestCreateQueueMainCorrectCreation => 4,
+    State::TestCreateQueueMainDebugVars => 4,
+    State::TestCreateQueueMainReturn => 4,
+    State::TestCreateQueueMainWrongQueueCreation => 4,
     State::TestSelectQueueMainEntry => 3,
     State::TestSelectQueueMainCompare => 3,
     State::TestSelectQueueMainIncFromFut => 3,
@@ -829,6 +848,40 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
+    State::TestCreateQueueMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(1, Value::String("randomQueueName".to_string()))]),
+      StackEntry::State(State::TestCreateQueueMainWrongQueueCreation),
+    ]),
+    State::TestCreateQueueMainAwaitOnQueue => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::Queue {
+        queue_name: createdQueueName.clone(),
+        bind: "value".to_string(),
+        next: State::TestCreateQueueMainReturn,
+      }])
+    }
+    State::TestCreateQueueMainCleanUp => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fQueuecreationerror: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let value: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { (String::new(), None) };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(2, Value::String(o0)), (3, Value::OptionString(o1))]),
+          StackEntry::State(State::TestCreateQueueMainCorrectCreation),
+        ])
+      }
+    }
+    State::TestCreateQueueMainCorrectCreation => StepResult::Todo("create-step".to_string()),
+    State::TestCreateQueueMainDebugVars => StepResult::DebugPrintVars(State::TestCreateQueueMainCleanUp),
+    State::TestCreateQueueMainReturn => StepResult::ReturnVoid,
+    State::TestCreateQueueMainWrongQueueCreation => StepResult::Todo("create-step".to_string()),
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainSelectCounter),
@@ -1563,6 +1616,32 @@ fn root_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(root_result_main(stack))
 }
 
+pub fn testCreateQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("value".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("f_queueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("created_queue_name".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("f_queueCreationError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::State(State::TestCreateQueueMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testCreateQueue_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testCreateQueue_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testCreateQueue_prepare_main();
+  stack
+}
+
+fn testCreateQueue_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testCreateQueue_result_main(stack))
+}
+
 pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1635,6 +1714,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.main" => orderBook_prepare_main_from_values,
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
+    "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
     "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
@@ -1662,6 +1742,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.main" => orderBook_result_main_value,
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
+    "testCreateQueue.main" => testCreateQueue_result_main_value,
     "testSelectQueue.main" => testSelectQueue_result_main_value,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
@@ -1706,6 +1787,15 @@ fn root_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   root_prepare_heap()
 }
 
+pub fn testCreateQueue_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testCreateQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testCreateQueue_prepare_heap()
+}
+
 pub fn testSelectQueue_prepare_heap() -> Heap {
   let mut heap = Heap::default();
   heap
@@ -1736,6 +1826,7 @@ pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
     "global" => global_prepare_heap_from_values,
     "order_book" => orderBook_prepare_heap_from_values,
     "root" => root_prepare_heap_from_values,
+    "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
     "testSelectQueue" => testSelectQueue_prepare_heap_from_values,
     "testTaskExecutorIncrementer" => testTaskExecutorIncrementer_prepare_heap_from_values,
     _ => |_| Heap::default(),

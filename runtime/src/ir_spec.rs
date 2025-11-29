@@ -171,6 +171,80 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
+        // fiber for testing create queue mechanism
+        FiberType::new("testCreateQueue"),
+        Fiber {
+          fibers_limit: 0,
+          init_vars: vec![],
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("value", Type::UInt64), 
+                  LocalVar("f_queueName", Type::String),
+                  LocalVar("created_queue_name", Type::String),
+                  LocalVar("f_queueCreationError", Type::Option(Box::new(Type::String))),
+                ], 
+                steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::Let { local: "f_queueName".to_string(), expr: Expr::Str("randomQueueName".to_string()), next: StepId::new("wrong_queue_creation") },
+                ),
+                (
+                  StepId::new("wrong_queue_creation"),
+                  Step::Create { 
+                    primitives: vec![
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                    ], 
+                    success: SuccessCreateBranch { next: StepId::new("return"), id_binds: vec![LocalVarRef("created_queue_name"), LocalVarRef("created_queue_name")] }, 
+                    fail: FailCreateBranch { next: StepId::new("debug_vars"), error_binds: vec![LocalVarRef("f_queueCreationError"), LocalVarRef("f_queueCreationError")] }, 
+                  },
+                ),
+                (
+                  StepId::new("debug_vars"),
+                  Step::DebugPrintVars(StepId::new("clean_up")),
+                ),
+                (
+                  StepId::new("clean_up"),
+                  Step::RustBlock { 
+                    binds: vec![
+                      LocalVarRef("created_queue_name"),
+                      LocalVarRef("f_queueCreationError"),
+                    ], 
+                    code: r#"(String::new(), None)"#.to_string(), 
+                    next: StepId::new("correct_creation"), 
+                  },
+                ),
+                (
+                  StepId::new("correct_creation"),
+                  Step::Create { 
+                    primitives: vec![
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                    ], 
+                    success: SuccessCreateBranch { next: StepId::new("await_on_queue"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
+                    fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] }, 
+                  },
+                ),
+                (
+                  StepId::new("await_on_queue"),
+                  Step::Select { arms: vec![AwaitSpec::Queue { queue_name: LocalVarRef("created_queue_name"), message_var: LocalVarRef("value"), next: StepId::new("return") }] },
+                ),
+                (
+                  StepId::new("return"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
+        }
+      ),
+      (
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
