@@ -158,6 +158,15 @@ pub enum Step {
     next: StepId,
   },
 
+  /// creates runtime primitives atomically(all or none)
+  /// goes to success if all primitives are created
+  /// goes to fail if at least one primitive can't be created
+  Create {
+    primitives: Vec<RuntimePrimitive>,
+    success: SuccessCreateBranch,
+    fail: FailCreateBranch,
+  },
+
   /// DEBUG section
   /// Prints smth to dbgOut
 
@@ -166,6 +175,36 @@ pub enum Step {
   /// Prints all vars (in the current stack frame) values in the order of
   /// definition in the function, then continues to `next` step.
   DebugPrintVars(StepId),
+}
+
+#[derive(Debug, Clone)]
+pub struct SuccessCreateBranch {
+  /// where to go in case of success
+  pub next: StepId,
+  /// ids of created primitives will be put here in the same order as requested
+  /// LocalVars should have type String, as we use this type for queues/futures ids
+  pub id_binds: Vec<LocalVarRef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FailCreateBranch {
+  /// where to go in case of failure
+  pub next: StepId,
+  /// errors for creating primitives will be listed here in the same order as requested
+  /// error_binds should bind to Option<String> local variable
+  /// None - if no error for the given primitive
+  pub error_binds: Vec<LocalVarRef>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RuntimePrimitive {
+  Future,
+  /// `name` should be unique and should reference LocalVar typed as String
+  /// if `public` == true - new messages can come not from other fibers but from gateways as well
+  Queue {
+    name: LocalVarRef,
+    public: bool,
+  },
 }
 
 #[derive(Debug, Clone)]
