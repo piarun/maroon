@@ -3781,6 +3781,7 @@ dependencies = [
  "common",
  "dsl",
  "generated",
+ "slab",
  "tokio",
 ]
 
