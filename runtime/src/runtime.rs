@@ -1,10 +1,11 @@
 use crate::fiber::*;
+use crate::wait_registry::WaitRegistry;
 use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::Value;
+use generated::maroon_assembler::{SetPrimitiveValue, Value};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -115,11 +116,21 @@ pub struct Runtime<T: Timer> {
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
 
+  /// key - queue name
+  /// value - queue of messages that are awaiting to be processed
+  message_queues: HashMap<String, VecDeque<Value>>,
+  message_futures: HashMap<FutureId, Value>,
 
   /// Shared debug output sink used by all fibers, safe to share with tests
   /// I don't think it's a good way of doing it longterm,
   ///  but I don't see obvious problems and limitations right now that would justify more advanced solution
   dbg_out: Arc<Mutex<String>>,
+
+  /// Registry for fibers awaiting on multiple sources (queues/futures) via Select
+  wait_index: WaitRegistry,
+  /// parked fibers that are awaiting smth
+  /// key - fiber_id
+  awaiting_fibers: HashMap<u64, Fiber>,
 }
 
 struct FiberBox {
@@ -154,8 +165,14 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
+      awaiting_fibers: HashMap::new(),
+
+      message_queues: HashMap::new(),
+      message_futures: HashMap::new(),
 
       dbg_out: Arc::new(Mutex::new(String::new())),
+
+      wait_index: WaitRegistry::default(),
 
       interface,
     }
@@ -240,7 +257,9 @@ limiter:
     &mut self,
     root_type: String,
   ) {
-    let root = Fiber::new(FiberType(root_type), 0, &vec![]);
+    self.message_queues.insert("test_queue".to_string(), VecDeque::new());
+
+    let root = Fiber::new(FiberType(root_type), 0, &vec![Value::String("test_queue".to_string())]);
     self.next_fiber_id = 1;
     self.active_fibers.push_back(root);
 
@@ -316,8 +335,24 @@ limiter:
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);
           }
-          RunResult::Select(_states) => {}
-          RunResult::SetValues(_values) => {}
+          RunResult::Select(states) => {
+            self.wait_index.register_select(fiber.unique_id, states);
+            self.awaiting_fibers.insert(fiber.unique_id, fiber);
+          }
+          RunResult::SetValues(values) => {
+            for v in values {
+              match v {
+                SetPrimitiveValue::QueueMessage { queue_name, value } => {
+                  self.message_queues.entry(queue_name).or_default().push_back(value);
+                }
+                SetPrimitiveValue::Future { id, value } => {
+                  self.message_futures.insert(FutureId(id), value);
+                }
+              }
+            }
+            // continue immediately, no need to wait anything
+            self.active_fibers.push_front(fiber);
+          }
         }
         if !local_dbg.is_empty() {
           if let Ok(mut g) = self.dbg_out.lock() {
@@ -326,6 +361,11 @@ limiter:
         }
       }
 
+      // below are old parts that I'll delete soon
+      // but I'm keeping them for now to not make all the tests red immediately
+      // but I'll be slowly rewriting them to a new API
+      //
+      //
       // get in_message and put it into available Fiber(if there is one)
       // here I don't put all of them into work, but pick the first one and immediately start execution
       let to_push: Option<(FiberType, usize)> =
