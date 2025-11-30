@@ -16,12 +16,20 @@ use std::time::Duration;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
+  pub source: TaskBPSource,
 
-  pub fiber_type: FiberType,
-  // function key to provide an information which function should be executed, ex: `add` or `sub`...
-  pub function_key: String,
   // input parameters for the function
   pub init_values: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskBPSource {
+  FiberFunc {
+    fiber_type: FiberType,
+    // function key to provide an information which function should be executed, ex: `add` or `sub`...
+    function_key: String,
+  },
+  QueueName(String),
 }
 
 #[derive(Debug)]
@@ -481,29 +489,36 @@ limiter:
         }
 
         while let Some(blueprint) = current_queue.pop_front() {
-          if let Some(mut fiber) = self.get_fiber(&blueprint.fiber_type) {
-            fiber.load_task(
-              blueprint.function_key,
-              blueprint.init_values,
-              Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-            );
-            self.active_fibers.push_back(fiber);
+          match &blueprint.source {
+            TaskBPSource::FiberFunc { fiber_type, function_key } => {
+              if let Some(mut fiber) = self.get_fiber(&fiber_type) {
+                fiber.load_task(
+                  function_key.clone(),
+                  blueprint.init_values.clone(),
+                  Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
+                );
+                self.active_fibers.push_back(fiber);
 
-            if !current_queue.is_empty() {
-              self.active_tasks.push_front((time_stamp, current_queue));
+                if !current_queue.is_empty() {
+                  self.active_tasks.push_front((time_stamp, current_queue));
+                }
+                break 'process_active_tasks;
+              } else {
+                let ftype = fiber_type.clone();
+                self.push_fiber_in_message(
+                  &ftype,
+                  FiberInMessage {
+                    fiber_type: ftype.clone(),
+                    function_name: function_key.clone(),
+                    args: blueprint.init_values.clone(),
+                    context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
+                  },
+                );
+              }
             }
-            break 'process_active_tasks;
-          } else {
-            let ftype = blueprint.fiber_type.clone();
-            self.push_fiber_in_message(
-              &ftype,
-              FiberInMessage {
-                fiber_type: ftype.clone(),
-                function_name: blueprint.function_key,
-                args: blueprint.init_values,
-                context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-              },
-            );
+            TaskBPSource::QueueName(_q) => {
+              // not yet supported in active_tasks ingestion; ignore for now
+            }
           }
         }
       }
@@ -537,14 +552,12 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
           init_values: vec![Value::U64(4), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
           init_values: vec![Value::U64(0), Value::U64(8)],
         },
       ],
@@ -572,8 +585,7 @@ mod tests {
       LogicalTimeAbsoluteMs(10),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
+        source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
         init_values: vec![Value::U64(2), Value::U64(4)],
       }],
     ));
@@ -599,38 +611,32 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(9),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
           init_values: vec![Value::U64(2), Value::U64(4)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(10),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          fiber_type: FiberType::new("global"),
-          function_key: "add".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("global"), function_key: "add".to_string() },
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(11),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(12),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(13),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
+          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
       ],
