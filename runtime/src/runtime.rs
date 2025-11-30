@@ -5,8 +5,11 @@ use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::{SetPrimitiveValue, Value};
-use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
+use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value};
+use std::collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
+use std::hash::Hash;
+use std::os::linux::raw::stat;
+use std::primitive;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -115,6 +118,8 @@ pub struct Runtime<T: Timer> {
 
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
+  // monotonically increasing id for newly created futures (via Create)
+  next_created_future_id: u64,
 
   /// key - queue name
   /// value - queue of messages that are awaiting to be processed
@@ -165,6 +170,7 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
+      next_created_future_id: 0,
       awaiting_fibers: HashMap::new(),
 
       message_queues: HashMap::new(),
@@ -352,6 +358,66 @@ limiter:
             }
             // continue immediately, no need to wait anything
             self.active_fibers.push_front(fiber);
+          }
+          RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
+            let mut candidate_queues = HashSet::<String>::new();
+            let mut errors = Vec::<Option<String>>::with_capacity(primitives.len());
+            let mut ids = Vec::<String>::with_capacity(primitives.len());
+            let mut has_error = false;
+
+            // Validate and compute ids for all primitives first (atomic behavior)
+            for primitive in primitives.iter() {
+              match primitive {
+                CreatePrimitiveValue::Queue { name, public: _ } => {
+                  if self.message_queues.contains_key(name) || candidate_queues.contains(name) {
+                    errors.push(Some("already_exists".to_string()));
+                    ids.push(String::new());
+                    has_error = true;
+                  } else {
+                    errors.push(None);
+                    ids.push(name.clone());
+                    candidate_queues.insert(name.clone());
+                  }
+                }
+                CreatePrimitiveValue::Future => {
+                  let id = format!("rtf-{}", self.next_created_future_id);
+                  errors.push(None);
+                  ids.push(id);
+                }
+              }
+            }
+
+            if has_error {
+              // Bind per-primitive Option<String> errors and go to fail branch
+              for (idx, var_name) in fail_binds.iter().enumerate() {
+                let v = match errors.get(idx).cloned().unwrap_or(None) {
+                  Some(e) => Value::OptionString(Some(e)),
+                  None => Value::OptionString(None),
+                };
+                fiber.assign_local(var_name.clone(), v);
+              }
+              fiber.stack.push(StackEntry::State(fail_next));
+              self.active_fibers.push_front(fiber);
+            } else {
+              // Apply creations for all primitives since validation succeeded
+              for primitive in primitives.iter() {
+                match primitive {
+                  CreatePrimitiveValue::Queue { name, public: _ } => {
+                    self.message_queues.entry(name.clone()).or_insert_with(VecDeque::new);
+                  }
+                  CreatePrimitiveValue::Future => {
+                    self.next_created_future_id += 1;
+                  }
+                }
+              }
+              // Bind success ids into locals
+              for (idx, var_name) in success_binds.iter().enumerate() {
+                let id = ids.get(idx).cloned().unwrap_or_default();
+                fiber.assign_local(var_name.clone(), Value::String(id));
+              }
+              fiber.stack.push(StackEntry::State(success_next));
+              self.active_fibers.push_front(fiber);
+            }
           }
         }
         if !local_dbg.is_empty() {
@@ -592,11 +658,23 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
     let debug_out = rt.debug_handle();
     tokio::spawn(async move {
-      rt.run("testTaskExecutorIncrementer".to_string()).await;
+      rt.run("testCreateQueue".to_string()).await;
     });
 
+    tokio::time::sleep(Duration::from_secs(1)).await;
     let result = debug_out.lock();
-    assert_eq!("", result.expect("should be object").as_str());
+    assert_eq!(
+      r#"value=0
+f_queueName=randomQueueName
+created_queue_name=
+f_queueCreationError=OptionString(Some("already_exists"))
+value=0
+f_queueName=randomQueueName
+created_queue_name=randomQueueName
+f_queueCreationError=OptionString(None)
+"#,
+      result.expect("should be object").as_str()
+    );
   }
 
   async fn compare_channel_data_with_exp<T: PartialEq + Debug>(

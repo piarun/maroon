@@ -147,6 +147,8 @@ pub enum State {
   TestCreateQueueMainCleanUp,
   TestCreateQueueMainCorrectCreation,
   TestCreateQueueMainDebugVars,
+  TestCreateQueueMainDebugVars2,
+  TestCreateQueueMainDebugVars3,
   TestCreateQueueMainEntry,
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
@@ -197,6 +199,12 @@ pub enum SelectArm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreatePrimitiveValue {
+  Future,
+  Queue { name: String, public: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SetPrimitiveValue {
   QueueMessage { queue_name: String, value: Value },
   Future { id: String, value: Value },
@@ -206,9 +214,21 @@ pub enum SetPrimitiveValue {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer { ms: u64, next: State, future_id: FutureLabel },
+  ScheduleTimer {
+    ms: u64,
+    next: State,
+    future_id: FutureLabel,
+  },
   GoTo(State),
   Select(Vec<SelectArm>),
+  // Atomically create runtime primitives and branch based on outcome.
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -216,9 +236,18 @@ pub enum StepResult {
   // Await a future: (future_id, optional bind_var, next_state)
   Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  SendToFiber {
+    f_type: FiberType,
+    func: String,
+    args: Vec<Value>,
+    next: State,
+    future_id: FutureLabel,
+  },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
-  SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  SetValues {
+    values: Vec<SetPrimitiveValue>,
+    next: State,
+  },
   // Debug
   // Print a string message and continue to the provided next state.
   Debug(&'static str, State),
@@ -272,6 +301,8 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestCreateQueueMainCleanUp => 4,
     State::TestCreateQueueMainCorrectCreation => 4,
     State::TestCreateQueueMainDebugVars => 4,
+    State::TestCreateQueueMainDebugVars2 => 4,
+    State::TestCreateQueueMainDebugVars3 => 4,
     State::TestCreateQueueMainReturn => 4,
     State::TestCreateQueueMainWrongQueueCreation => 4,
     State::TestSelectQueueMainEntry => 3,
@@ -858,7 +889,7 @@ pub fn global_step(
       StepResult::Select(vec![SelectArm::Queue {
         queue_name: createdQueueName.clone(),
         bind: "value".to_string(),
-        next: State::TestCreateQueueMainReturn,
+        next: State::TestCreateQueueMainDebugVars3,
       }])
     }
     State::TestCreateQueueMainCleanUp => {
@@ -878,10 +909,36 @@ pub fn global_step(
         ])
       }
     }
-    State::TestCreateQueueMainCorrectCreation => StepResult::Todo("create-step".to_string()),
+    State::TestCreateQueueMainCorrectCreation => StepResult::Create {
+      primitives: vec![CreatePrimitiveValue::Queue {
+        name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+        public: true,
+      }],
+      success_next: State::TestCreateQueueMainDebugVars2,
+      success_binds: vec!["created_queue_name".to_string()],
+      fail_next: State::TestCreateQueueMainReturn,
+      fail_binds: vec!["f_queueCreationError".to_string()],
+    },
     State::TestCreateQueueMainDebugVars => StepResult::DebugPrintVars(State::TestCreateQueueMainCleanUp),
+    State::TestCreateQueueMainDebugVars2 => StepResult::DebugPrintVars(State::TestCreateQueueMainAwaitOnQueue),
+    State::TestCreateQueueMainDebugVars3 => StepResult::DebugPrintVars(State::TestCreateQueueMainReturn),
     State::TestCreateQueueMainReturn => StepResult::ReturnVoid,
-    State::TestCreateQueueMainWrongQueueCreation => StepResult::Todo("create-step".to_string()),
+    State::TestCreateQueueMainWrongQueueCreation => StepResult::Create {
+      primitives: vec![
+        CreatePrimitiveValue::Queue {
+          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+          public: true,
+        },
+        CreatePrimitiveValue::Queue {
+          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+          public: true,
+        },
+      ],
+      success_next: State::TestCreateQueueMainReturn,
+      success_binds: vec!["created_queue_name".to_string(), "created_queue_name".to_string()],
+      fail_next: State::TestCreateQueueMainDebugVars,
+      fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
+    },
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainSelectCounter),

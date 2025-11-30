@@ -317,6 +317,12 @@ pub enum SelectArm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreatePrimitiveValue {
+  Future,
+  Queue { name: String, public: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SetPrimitiveValue {
   QueueMessage { queue_name: String, value: Value },
   Future { id: String, value: Value },
@@ -329,6 +335,14 @@ pub enum StepResult {
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<SelectArm>),
+  // Atomically create runtime primitives and branch based on outcome.
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -923,6 +937,13 @@ fn generate_global_step(ir: &IR) -> String {
                 }
               }
             }
+            Step::Create { primitives, .. } => {
+              for p in primitives {
+                if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
+                  referenced.insert(name.0.to_string());
+                }
+              }
+            }
             Step::Await(_) => {}
             Step::Select { arms } => {
               for arm in arms {
@@ -971,8 +992,50 @@ fn generate_global_step(ir: &IR) -> String {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
             }
-            Step::Create { .. } => {
-              out.push_str("      StepResult::Todo(\"create-step\".to_string())\n");
+            Step::Create { primitives, success, fail } => {
+              let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
+              let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
+              // Build primitives vec
+              let mut parts: Vec<String> = Vec::new();
+              for p in primitives {
+                match p {
+                  crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
+                  crate::ir::RuntimePrimitive::Queue { name, public } => {
+                    let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == name.0) {
+                      format!("{}", pi)
+                    } else if let Some(li) = func.locals.iter().position(|l| l.0 == name.0) {
+                      format!("{}", func.in_vars.len() + li)
+                    } else {
+                      "0".to_string()
+                    };
+                    let q_expr = format!(
+                      "if let StackEntry::Value(_, Value::String(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                      idx_expr
+                    );
+                    parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
+                  }
+                }
+              }
+              // Build bind name vectors
+              let mut s_binds: Vec<String> = Vec::new();
+              for b in &success.id_binds {
+                s_binds.push(format!("\"{}\".to_string()", b.0));
+              }
+              let mut f_binds: Vec<String> = Vec::new();
+              for b in &fail.error_binds {
+                f_binds.push(format!("\"{}\".to_string()", b.0));
+              }
+              out.push_str("      StepResult::Create { primitives: vec![");
+              out.push_str(&parts.join(", "));
+              out.push_str("], success_next: State::");
+              out.push_str(&success_v);
+              out.push_str(", success_binds: vec![");
+              out.push_str(&s_binds.join(", "));
+              out.push_str("], fail_next: State::");
+              out.push_str(&fail_v);
+              out.push_str(", fail_binds: vec![");
+              out.push_str(&f_binds.join(", "));
+              out.push_str("] }\n");
             }
             Step::DebugPrintVars(next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1273,6 +1336,13 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
           }
+          Step::Create { primitives, .. } => {
+            for p in primitives {
+              if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
+                referenced.insert(name.0.to_string());
+              }
+            }
+          }
           Step::Await(_) => {}
           Step::Select { arms } => {
             for arm in arms {
@@ -1324,8 +1394,48 @@ fn generate_global_step(ir: &IR) -> String {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
           }
-          Step::Create { .. } => {
-            out.push_str("      StepResult::Todo(\"create-step\".to_string())\n");
+          Step::Create { primitives, success, fail } => {
+            let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
+            let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
+            let mut parts: Vec<String> = Vec::new();
+            for p in primitives {
+              match p {
+                crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
+                crate::ir::RuntimePrimitive::Queue { name, public } => {
+                  let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == name.0) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == name.0) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  let q_expr = format!(
+                    "if let StackEntry::Value(_, Value::String(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                    idx_expr
+                  );
+                  parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
+                }
+              }
+            }
+            let mut s_binds: Vec<String> = Vec::new();
+            for b in &success.id_binds {
+              s_binds.push(format!("\"{}\".to_string()", b.0));
+            }
+            let mut f_binds: Vec<String> = Vec::new();
+            for b in &fail.error_binds {
+              f_binds.push(format!("\"{}\".to_string()", b.0));
+            }
+            out.push_str("      StepResult::Create { primitives: vec![");
+            out.push_str(&parts.join(", "));
+            out.push_str("], success_next: State::");
+            out.push_str(&success_v);
+            out.push_str(", success_binds: vec![");
+            out.push_str(&s_binds.join(", "));
+            out.push_str("], fail_next: State::");
+            out.push_str(&fail_v);
+            out.push_str(", fail_binds: vec![");
+            out.push_str(&f_binds.join(", "));
+            out.push_str("] }\n");
           }
           Step::DebugPrintVars(next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);

@@ -227,13 +227,21 @@ pub fn sample_ir() -> IR {
                     primitives: vec![
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
                     ], 
-                    success: SuccessCreateBranch { next: StepId::new("await_on_queue"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
+                    success: SuccessCreateBranch { next: StepId::new("debug_vars_2"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
                     fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] }, 
                   },
                 ),
                 (
+                  StepId::new("debug_vars_2"),
+                  Step::DebugPrintVars(StepId::new("await_on_queue")),
+                ),
+                (
                   StepId::new("await_on_queue"),
-                  Step::Select { arms: vec![AwaitSpec::Queue { queue_name: LocalVarRef("created_queue_name"), message_var: LocalVarRef("value"), next: StepId::new("return") }] },
+                  Step::Select { arms: vec![AwaitSpec::Queue { queue_name: LocalVarRef("created_queue_name"), message_var: LocalVarRef("value"), next: StepId::new("debug_vars_3") }] },
+                ),
+                (
+                  StepId::new("debug_vars_3"),
+                  Step::DebugPrintVars(StepId::new("return")),
                 ),
                 (
                   StepId::new("return"),
