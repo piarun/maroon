@@ -552,12 +552,18 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+          },
           init_values: vec![Value::U64(4), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+          },
           init_values: vec![Value::U64(0), Value::U64(8)],
         },
       ],
@@ -585,7 +591,10 @@ mod tests {
       LogicalTimeAbsoluteMs(10),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+        source: TaskBPSource::FiberFunc {
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+        },
         init_values: vec![Value::U64(2), Value::U64(4)],
       }],
     ));
@@ -611,12 +620,18 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(9),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+          },
           init_values: vec![Value::U64(2), Value::U64(4)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(10),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+          },
           init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
@@ -626,17 +641,26 @@ mod tests {
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(11),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+          },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(12),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+          },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(13),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "sleep_and_pow".to_string() },
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+          },
           init_values: vec![Value::U64(2), Value::U64(7)],
         },
       ],
