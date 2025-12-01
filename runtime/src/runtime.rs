@@ -14,9 +14,6 @@ use std::time::Duration;
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
   pub source: TaskBPSource,
-
-  // input parameters for the function
-  pub init_values: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,8 +22,13 @@ pub enum TaskBPSource {
     fiber_type: FiberType,
     // function key to provide an information which function should be executed, ex: `add` or `sub`...
     function_key: String,
+    // input parameters for the function
+    init_values: Vec<Value>,
   },
-  QueueName(String),
+  Queue {
+    q_name: String,
+    value: Value,
+  },
 }
 
 #[derive(Debug)]
@@ -276,6 +278,7 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
+
   pub async fn run(
     &mut self,
     root_type: String,
@@ -308,7 +311,6 @@ limiter:
         match res {
           RunResult::Done(result) => {
             local_dbg.push_str(&format!("--- exit {}:{} ---\n", fiber.f_type, fiber.unique_id));
-            println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 
             let options = fiber.context.clone();
             // TODO: when fiber type won't be a string - remove this clone
@@ -477,7 +479,6 @@ limiter:
             fb.stack.push(StackEntry::State(awaiter_info.next));
           }
 
-          println!("AWAKENING FIBER");
           self.active_fibers.push_front(fb);
           if !m_queue.is_empty() {
             self.non_empty_queues.push_back(q_name);
@@ -544,12 +545,12 @@ limiter:
         }
 
         while let Some(blueprint) = current_queue.pop_front() {
-          match &blueprint.source {
-            TaskBPSource::FiberFunc { fiber_type, function_key } => {
+          match blueprint.source {
+            TaskBPSource::FiberFunc { fiber_type, function_key, init_values } => {
               if let Some(mut fiber) = self.get_fiber(&fiber_type) {
                 fiber.load_task(
                   function_key.clone(),
-                  blueprint.init_values.clone(),
+                  init_values.clone(),
                   Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
                 );
                 self.active_fibers.push_back(fiber);
@@ -559,26 +560,24 @@ limiter:
                 }
                 break 'process_active_tasks;
               } else {
-                let ftype = fiber_type.clone();
                 self.push_fiber_in_message(
-                  &ftype,
+                  &fiber_type,
                   FiberInMessage {
-                    fiber_type: ftype.clone(),
-                    function_name: function_key.clone(),
-                    args: blueprint.init_values.clone(),
+                    fiber_type: fiber_type.clone(),
+                    function_name: function_key,
+                    args: init_values,
                     context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
                   },
                 );
               }
             }
-            TaskBPSource::QueueName(q) => {
-              println!("GOT IN QUEUE MESSSSAGE");
-              if let Some(queue) = self.queue_messages.get_mut(q) {
+            TaskBPSource::Queue { q_name, value } => {
+              if let Some(queue) = self.queue_messages.get_mut(&q_name) {
                 let was_empty = queue.is_empty();
-                queue.push_back(Value::U64(10));
+                queue.push_back(value);
                 if was_empty {
                   // if it was empty => not in non_empty_queues => adding
-                  self.non_empty_queues.push_back(q.clone());
+                  self.non_empty_queues.push_back(q_name);
                 }
               }
             }
@@ -618,16 +617,16 @@ mod tests {
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
           },
-          init_values: vec![Value::U64(4), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(0), Value::U64(8)],
           },
-          init_values: vec![Value::U64(0), Value::U64(8)],
         },
       ],
     ));
@@ -657,8 +656,8 @@ mod tests {
         source: TaskBPSource::FiberFunc {
           fiber_type: FiberType::new("application"),
           function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(4)],
         },
-        init_values: vec![Value::U64(2), Value::U64(4)],
       }],
     ));
 
@@ -686,45 +685,48 @@ mod tests {
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(4)],
           },
-          init_values: vec![Value::U64(2), Value::U64(4)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(10),
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(8)],
           },
-          init_values: vec![Value::U64(2), Value::U64(8)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("global"), function_key: "add".to_string() },
-          init_values: vec![Value::U64(2), Value::U64(8)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("global"),
+            function_key: "add".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(8)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(11),
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
           },
-          init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(12),
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
           },
-          init_values: vec![Value::U64(2), Value::U64(7)],
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(13),
           source: TaskBPSource::FiberFunc {
             fiber_type: FiberType::new("application"),
             function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
           },
-          init_values: vec![Value::U64(2), Value::U64(7)],
         },
       ],
     ));
@@ -758,12 +760,14 @@ mod tests {
       LogicalTimeAbsoluteMs(0),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        source: TaskBPSource::QueueName("randomQueueName".to_string()),
-        init_values: vec![],
+        source: TaskBPSource::Queue { q_name: "randomQueueName".to_string(), value: Value::U64(10) },
       }],
     ));
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // compare_channel_data_with_exp(vec![], a2b_runtime.receiver).await;
+
     let result = debug_out.lock();
     assert_eq!(
       r#"--- start testCreateQueue:0 ---

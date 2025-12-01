@@ -1,4 +1,3 @@
-use dsl::ir::FutureLabel;
 use generated::maroon_assembler::{SelectArm, State};
 use slab::Slab;
 
@@ -269,6 +268,7 @@ impl WaitRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use dsl::ir::FutureLabel;
 
   #[test]
   fn fifo_two_fibers_on_same_queue() {

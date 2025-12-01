@@ -30,8 +30,8 @@ use protocol::{
   node2gw::TxUpdate,
   transaction::{Transaction, TxStatus},
 };
-use runtime::runtime::{TaskBPSource, TaskBlueprint};
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
+use runtime::runtime::{TaskBPSource, TaskBlueprint};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
@@ -233,8 +233,8 @@ impl<L: Linearizer> App<L> {
                 source: TaskBPSource::FiberFunc {
                   fiber_type: FiberType::new(tx.blueprint.fiber_type.0.clone()),
                   function_key: tx.blueprint.function_key.clone(),
+                  init_values: tx.blueprint.init_values.clone(),
                 },
-                init_values: tx.blueprint.init_values.clone(),
               });
             }
           }

@@ -909,36 +909,44 @@ pub fn global_step(
         ])
       }
     }
-    State::TestCreateQueueMainCorrectCreation => StepResult::Create {
-      primitives: vec![CreatePrimitiveValue::Queue {
-        name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
-        public: true,
-      }],
-      success_next: State::TestCreateQueueMainDebugVars2,
-      success_binds: vec!["created_queue_name".to_string()],
-      fail_next: State::TestCreateQueueMainReturn,
-      fail_binds: vec!["f_queueCreationError".to_string()],
-    },
+    State::TestCreateQueueMainCorrectCreation => {
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::Create {
+        primitives: vec![CreatePrimitiveValue::Queue {
+          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+          public: true,
+        }],
+        success_next: State::TestCreateQueueMainDebugVars2,
+        success_binds: vec!["created_queue_name".to_string()],
+        fail_next: State::TestCreateQueueMainReturn,
+        fail_binds: vec!["f_queueCreationError".to_string()],
+      }
+    }
     State::TestCreateQueueMainDebugVars => StepResult::DebugPrintVars(State::TestCreateQueueMainCleanUp),
     State::TestCreateQueueMainDebugVars2 => StepResult::DebugPrintVars(State::TestCreateQueueMainAwaitOnQueue),
     State::TestCreateQueueMainDebugVars3 => StepResult::DebugPrintVars(State::TestCreateQueueMainReturn),
     State::TestCreateQueueMainReturn => StepResult::ReturnVoid,
-    State::TestCreateQueueMainWrongQueueCreation => StepResult::Create {
-      primitives: vec![
-        CreatePrimitiveValue::Queue {
-          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
-          public: true,
-        },
-        CreatePrimitiveValue::Queue {
-          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
-          public: true,
-        },
-      ],
-      success_next: State::TestCreateQueueMainReturn,
-      success_binds: vec!["created_queue_name".to_string(), "created_queue_name".to_string()],
-      fail_next: State::TestCreateQueueMainDebugVars,
-      fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
-    },
+    State::TestCreateQueueMainWrongQueueCreation => {
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::Create {
+        primitives: vec![
+          CreatePrimitiveValue::Queue {
+            name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+            public: true,
+          },
+          CreatePrimitiveValue::Queue {
+            name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+            public: true,
+          },
+        ],
+        success_next: State::TestCreateQueueMainReturn,
+        success_binds: vec!["created_queue_name".to_string(), "created_queue_name".to_string()],
+        fail_next: State::TestCreateQueueMainDebugVars,
+        fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
+      }
+    }
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainSelectCounter),

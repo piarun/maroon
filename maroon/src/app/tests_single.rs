@@ -327,13 +327,19 @@ async fn app_executes_after_epoch_confirmed() {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(0),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
-          init_values: vec![Value::U64(1), Value::U64(1)]
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(1), Value::U64(1)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          source: TaskBPSource::FiberFunc { fiber_type: FiberType::new("application"), function_key: "async_foo".to_string() },
-          init_values: vec![Value::U64(1), Value::U64(1)]
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(1), Value::U64(1)],
+          },
         }
       ]
     )),

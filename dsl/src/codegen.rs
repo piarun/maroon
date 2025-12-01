@@ -647,7 +647,6 @@ fn render_expr_code(
       s.push_str("tmp }");
       s
     }
-    Expr::Str(_) => todo!(),
   }
 }
 
@@ -917,7 +916,6 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
             Step::ScheduleTimer { .. } => {}
-            Step::Create { .. } => {}
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -1316,7 +1314,6 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
           Step::ScheduleTimer { .. } => {}
-          Step::Create { .. } => {}
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
