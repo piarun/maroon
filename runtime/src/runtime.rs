@@ -1,5 +1,5 @@
 use crate::fiber::*;
-use crate::wait_registry::WaitRegistry;
+use crate::wait_registry::{WaitKey, WaitRegistry};
 use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
@@ -7,9 +7,6 @@ use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
 use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value};
 use std::collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
-use std::hash::Hash;
-use std::os::linux::raw::stat;
-use std::primitive;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -129,9 +126,20 @@ pub struct Runtime<T: Timer> {
   // monotonically increasing id for newly created futures (via Create)
   next_created_future_id: u64,
 
+  /// message queues
   /// key - queue name
-  /// value - queue of messages that are awaiting to be processed
-  message_queues: HashMap<String, VecDeque<Value>>,
+  /// value - queue of messages
+  queue_messages: HashMap<String, VecDeque<Value>>,
+  /// order of non-empty queues in which I should check queues
+  /// when smth adds message to the empty `queue_messages` - it should add queueName to this queue
+  /// when smth works with this list it should:
+  /// 1. pop_front
+  /// 2. find queue in `queue_messages`
+  /// 3. If a waiter exists for queue, pop one message and wake it; otherwise rotate q without poppingpop front message from step 2
+  /// 4. if queue is empty - don't add name here
+  /// 5. requeue q only if queue_messages[q] is still non-empty
+  non_empty_queues: VecDeque<String>,
+
   message_futures: HashMap<FutureId, Value>,
 
   /// Shared debug output sink used by all fibers, safe to share with tests
@@ -181,7 +189,8 @@ impl<T: Timer> Runtime<T> {
       next_created_future_id: 0,
       awaiting_fibers: HashMap::new(),
 
-      message_queues: HashMap::new(),
+      queue_messages: HashMap::new(),
+      non_empty_queues: VecDeque::new(),
       message_futures: HashMap::new(),
 
       dbg_out: Arc::new(Mutex::new(String::new())),
@@ -271,9 +280,7 @@ limiter:
     &mut self,
     root_type: String,
   ) {
-    self.message_queues.insert("test_queue".to_string(), VecDeque::new());
-
-    let root = Fiber::new(FiberType(root_type), 0, &vec![Value::String("test_queue".to_string())]);
+    let root = Fiber::new(FiberType(root_type), 0, &vec![]);
     self.next_fiber_id = 1;
     self.active_fibers.push_back(root);
 
@@ -295,8 +302,12 @@ limiter:
       while let Some(mut fiber) = self.active_fibers.pop_front() {
         // Accumulate debug output locally, then append with a single lock
         let mut local_dbg = String::new();
-        match fiber.run(&mut local_dbg) {
+        local_dbg.push_str(&format!("--- start {}:{} ---\n", fiber.f_type, fiber.unique_id));
+        let res = fiber.run(&mut local_dbg);
+        local_dbg.push_str(&format!("--- await {}:{} ---\n", fiber.f_type, fiber.unique_id));
+        match res {
           RunResult::Done(result) => {
+            local_dbg.push_str(&format!("--- exit {}:{} ---\n", fiber.f_type, fiber.unique_id));
             println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 
             let options = fiber.context.clone();
@@ -310,17 +321,14 @@ limiter:
               self.interface.send((global_id, result.clone()));
             }
 
-            let Some(future_id) = options.future_id else {
-              continue;
-            };
-            let Some(mut task_box) = self.parked_fibers.remove(&future_id) else {
-              continue;
-            };
-
-            if let Some(var) = task_box.result_var_bind {
-              task_box.fiber.assign_local(var, result);
+            if let Some(future_id) = options.future_id {
+              if let Some(mut task_box) = self.parked_fibers.remove(&future_id) {
+                if let Some(var) = task_box.result_var_bind {
+                  task_box.fiber.assign_local(var, result);
+                }
+                self.active_fibers.push_front(task_box.fiber);
+              }
             }
-            self.active_fibers.push_front(task_box.fiber);
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {
             if let Some(mut available_fiber) = self.get_fiber(&f_type) {
@@ -357,7 +365,18 @@ limiter:
             for v in values {
               match v {
                 SetPrimitiveValue::QueueMessage { queue_name, value } => {
-                  self.message_queues.entry(queue_name).or_default().push_back(value);
+                  if let Some(queue) = self.queue_messages.get_mut(&queue_name) {
+                    let is_empty = queue.is_empty();
+                    queue.push_back(value);
+                    if is_empty {
+                      self.non_empty_queues.push_back(queue_name);
+                    }
+                  } else {
+                    // todo: how to send an error here? should I send an error here?
+                    panic!("it means smb is trying to send value to non-existing queue");
+                    // self.queue_messages.insert(queue_name.clone(), VecDeque::from(vec![value]));
+                    // self.non_empty_queues.push_back(queue_name);
+                  }
                 }
                 SetPrimitiveValue::Future { id, value } => {
                   self.message_futures.insert(FutureId(id), value);
@@ -377,7 +396,7 @@ limiter:
             for primitive in primitives.iter() {
               match primitive {
                 CreatePrimitiveValue::Queue { name, public: _ } => {
-                  if self.message_queues.contains_key(name) || candidate_queues.contains(name) {
+                  if self.queue_messages.contains_key(name) || candidate_queues.contains(name) {
                     errors.push(Some("already_exists".to_string()));
                     ids.push(String::new());
                     has_error = true;
@@ -408,10 +427,10 @@ limiter:
               self.active_fibers.push_front(fiber);
             } else {
               // Apply creations for all primitives since validation succeeded
-              for primitive in primitives.iter() {
+              for primitive in primitives {
                 match primitive {
                   CreatePrimitiveValue::Queue { name, public: _ } => {
-                    self.message_queues.entry(name.clone()).or_insert_with(VecDeque::new);
+                    self.queue_messages.insert(name, VecDeque::new());
                   }
                   CreatePrimitiveValue::Future => {
                     self.next_created_future_id += 1;
@@ -432,6 +451,40 @@ limiter:
           if let Ok(mut g) = self.dbg_out.lock() {
             g.push_str(&local_dbg);
           }
+        }
+      }
+
+      // try to get message from next message_queue and run fiber
+      // maybe later I should add some index here so we don't hit here if one of the condition doesn't match
+      if let Some(q_name) = self.non_empty_queues.pop_front() {
+        if let Some(awaiter_info) = self.wait_index.wake_one(&WaitKey::Queue(q_name.clone())) {
+          let mut fb = self
+            .awaiting_fibers
+            .remove(&awaiter_info.fiber_id)
+            .expect("if fiber is in wait_index, it should be in awaiters. Otherwise data consistency is violated");
+
+          let m_queue = self
+            .queue_messages
+            .get_mut(&q_name)
+            .expect("should be here and non empty. Otherwise it shouldn't end up in non_empty_queues");
+          let v = m_queue.pop_front().expect("should be non empty. Otherwise it shouldn't end up in non_empty_queues");
+
+          // Bind the dequeued message into the awaiting fiber and push its next state
+          if let Some(bind_name) = awaiter_info.bind {
+            fb.assign_local_and_push_next(bind_name, v, awaiter_info.next);
+          } else {
+            // No bind requested; just continue to the next state
+            fb.stack.push(StackEntry::State(awaiter_info.next));
+          }
+
+          println!("AWAKENING FIBER");
+          self.active_fibers.push_front(fb);
+          if !m_queue.is_empty() {
+            self.non_empty_queues.push_back(q_name);
+          }
+          continue 'main_loop;
+        } else {
+          self.non_empty_queues.push_back(q_name);
         }
       }
 
@@ -460,6 +513,8 @@ limiter:
         continue 'main_loop;
       };
 
+      // this part I won't delete because it reads messages from external source
+      // and puts them where they should be
       'process_active_tasks: loop {
         let now = self.timer.from_start();
 
@@ -516,8 +571,16 @@ limiter:
                 );
               }
             }
-            TaskBPSource::QueueName(_q) => {
-              // not yet supported in active_tasks ingestion; ignore for now
+            TaskBPSource::QueueName(q) => {
+              println!("GOT IN QUEUE MESSSSAGE");
+              if let Some(queue) = self.queue_messages.get_mut(q) {
+                let was_empty = queue.is_empty();
+                queue.push_back(Value::U64(10));
+                if was_empty {
+                  // if it was empty => not in non_empty_queues => adding
+                  self.non_empty_queues.push_back(q.clone());
+                }
+              }
             }
           }
         }
@@ -691,17 +754,39 @@ mod tests {
       rt.run("testCreateQueue".to_string()).await;
     });
 
+    _ = a2b_runtime.send((
+      LogicalTimeAbsoluteMs(0),
+      vec![TaskBlueprint {
+        global_id: UniqueU64BlobId(9),
+        source: TaskBPSource::QueueName("randomQueueName".to_string()),
+        init_values: vec![],
+      }],
+    ));
+
     tokio::time::sleep(Duration::from_secs(1)).await;
     let result = debug_out.lock();
     assert_eq!(
-      r#"value=0
+      r#"--- start testCreateQueue:0 ---
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+value=0
 f_queueName=randomQueueName
 created_queue_name=
 f_queueCreationError=OptionString(Some("already_exists"))
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
 value=0
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+value=10
+f_queueName=randomQueueName
+created_queue_name=randomQueueName
+f_queueCreationError=OptionString(None)
+--- await testCreateQueue:0 ---
+--- exit testCreateQueue:0 ---
 "#,
       result.expect("should be object").as_str()
     );

@@ -15,7 +15,7 @@ pub struct WaitRegistry {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum WaitKey {
+pub enum WaitKey {
   // TODO: should replace strings with some u64s
   Queue(String),
   Future(FutureId),
@@ -70,11 +70,11 @@ struct SelectReg {
 
 /// keeps an information that runtime is needed to wake up and run the Fiber
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct WakeOutcome {
-  fiber_id: u64,
+pub struct WakeOutcome {
+  pub fiber_id: u64,
   /// to which variable bind the result
-  bind: Option<String>,
-  next: State,
+  pub bind: Option<String>,
+  pub next: State,
 }
 
 /// Uniquily identifies in-flight select registration inside WaitRegistry
