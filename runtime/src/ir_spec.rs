@@ -191,7 +191,7 @@ pub fn sample_ir() -> IR {
                   LocalVar("f_queueCreationError", Type::Option(Box::new(Type::String))),
                   LocalVar("f_future_id_response", Type::Future(Box::new(Type::UInt64))),
                   LocalVar("f_res_inc", Type::UInt64),
-                ], 
+                ],
                 steps: vec![
                 (
                   StepId::new("entry"),
@@ -199,11 +199,11 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("wrong_queue_creation"),
-                  Step::Create { 
+                  Step::Create {
                     primitives: vec![
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
-                    ], 
+                    ],
                     success: SuccessCreateBranch { next: StepId::new("return"), id_binds: vec![LocalVarRef("created_queue_name"), LocalVarRef("created_queue_name")] }, 
                     fail: FailCreateBranch { next: StepId::new("debug_vars"), error_binds: vec![LocalVarRef("f_queueCreationError"), LocalVarRef("f_queueCreationError")] }, 
                   },
@@ -214,21 +214,21 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("clean_up"),
-                  Step::RustBlock { 
+                  Step::RustBlock {
                     binds: vec![
                       LocalVarRef("created_queue_name"),
                       LocalVarRef("f_queueCreationError"),
-                    ], 
+                    ],
                     code: r#"(String::new(), None)"#.to_string(), 
                     next: StepId::new("correct_creation"), 
                   },
                 ),
                 (
                   StepId::new("correct_creation"),
-                  Step::Create { 
+                  Step::Create {
                     primitives: vec![
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
-                    ], 
+                    ],
                     success: SuccessCreateBranch { next: StepId::new("debug_vars_2"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
                     fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] }, 
                   },
@@ -239,8 +239,8 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("await_on_queue"),
-                  Step::Select { 
-                    arms: vec![AwaitSpec::Queue { 
+                  Step::Select {
+                    arms: vec![AwaitSpec::Queue {
                       queue_name: LocalVarRef("created_queue_name"), 
                       message_var: LocalVarRef("value"), 
                       next: StepId::new("extract_fut_and_inc"),
@@ -249,11 +249,11 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("extract_fut_and_inc"),
-                  Step::RustBlock { 
+                  Step::RustBlock {
                     binds: vec![
                       LocalVarRef("f_future_id_response"),
                       LocalVarRef("f_res_inc"),
-                    ], 
+                    ],
                     code: "(value.publicFutureId, value.value + 2)".to_string(), 
                     next: StepId::new("debug_vars_3"),
                   },
@@ -264,11 +264,11 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("answer"),
-                  Step::SetValues { 
-                    values: vec![SetPrimitive::Future { 
+                  Step::SetValues {
+                    values: vec![SetPrimitive::Future {
                       f_var_name: LocalVarRef("f_future_id_response"), 
                       var_name: LocalVarRef("f_res_inc"),
-                    }], 
+                    }],
                     next: StepId::new("return"),
                   },
                 ),
