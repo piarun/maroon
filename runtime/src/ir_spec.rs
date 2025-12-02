@@ -185,7 +185,7 @@ pub fn sample_ir() -> IR {
                 in_vars: vec![],
                 out: Type::Void,
                 locals: vec![
-                  LocalVar("value", Type::UInt64), 
+                  LocalVar("value", Type::Custom("TestCreateQueueMessage".to_string())), 
                   LocalVar("f_queueName", Type::String),
                   LocalVar("created_queue_name", Type::String),
                   LocalVar("f_queueCreationError", Type::Option(Box::new(Type::String))),
@@ -1002,6 +1002,22 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
           StructField { name: "in_str_value".to_string(), ty: Type::UInt64 },
           StructField { name: "in_str_resp_future_id".to_string(), ty: Type::String },
           StructField { name: "in_str_resp_queue_name".to_string(), ty: Type::String },
+        ],
+        String::new(),
+      ),
+      Type::Struct(
+        "TestCreateQueueMessage".to_string(),
+        vec![
+          StructField { name: "value".to_string(), ty: Type::UInt64},
+          // right now it will be a mandatory field for public queue messages
+          // but it won't be exposed to gateway's level. It's internal for runtime
+          // runtime will create future for each particular case
+          // but I anyway need this field, so inside IR fibers can work with (ex: pass to each other)
+          // 
+          // but... if this message is created inside the IR(runtime) IR is responsible for creating Future
+          //
+          // TODO: later, maybe it will be done as a separate type, or wrapper, 
+          StructField { name: "public_future_id".to_string(), ty: Type::String },
         ],
         String::new(),
       ),

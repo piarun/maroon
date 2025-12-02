@@ -46,6 +46,12 @@ pub struct TestIncrementTask {
   pub inStrRespQueueName: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestCreateQueueMessage {
+  pub value: u64,
+  pub publicFutureId: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
@@ -176,6 +182,7 @@ pub enum Value {
   OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
+  TestCreateQueueMessage(TestCreateQueueMessage),
   TestIncrementTask(TestIncrementTask),
   U64(u64),
   Unit(()),
@@ -899,7 +906,8 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
       let fQueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let value: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let value: TestCreateQueueMessage =
+        if let StackEntry::Value(_, Value::TestCreateQueueMessage(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
         let out = { (String::new(), None) };
         let (o0, o1) = out;
@@ -1684,7 +1692,7 @@ fn root_result_main_value(stack: &[StackEntry]) -> Value {
 pub fn testCreateQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("value".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("value".to_string(), Value::TestCreateQueueMessage(TestCreateQueueMessage::default())));
   stack.push(StackEntry::Value("f_queueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("created_queue_name".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("f_queueCreationError".to_string(), Value::OptionString(None)));

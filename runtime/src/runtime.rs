@@ -574,6 +574,15 @@ limiter:
             TaskBPSource::Queue { q_name, value } => {
               if let Some(queue) = self.queue_messages.get_mut(&q_name) {
                 let was_empty = queue.is_empty();
+                /*
+                 TODO:
+                 here I can have only messages that can be passed from the outside
+                 so runtime can do smth like:
+
+                 value.publicFutureId = format!("ef-{}",self.next_created_future_id);
+                 self.next_created_future_id += 1;
+
+                */
                 queue.push_back(value);
                 if was_empty {
                   // if it was empty => not in non_empty_queues => adding
@@ -593,6 +602,7 @@ mod tests {
   use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
+  use generated::maroon_assembler::TestCreateQueueMessage;
   use std::fmt::Debug;
   use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -760,7 +770,10 @@ mod tests {
       LogicalTimeAbsoluteMs(0),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        source: TaskBPSource::Queue { q_name: "randomQueueName".to_string(), value: Value::U64(10) },
+        source: TaskBPSource::Queue {
+          q_name: "randomQueueName".to_string(),
+          value: Value::TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: "0".to_string() }),
+        },
       }],
     ));
 
@@ -773,19 +786,19 @@ mod tests {
       r#"--- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=0
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: "" })
 f_queueName=randomQueueName
 created_queue_name=
 f_queueCreationError=OptionString(Some("already_exists"))
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=0
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: "" })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=10
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: "0" })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
