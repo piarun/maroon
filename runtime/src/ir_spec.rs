@@ -1005,9 +1005,9 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         ],
         String::new(),
       ),
-      Type::Struct(
-        "TestCreateQueueMessage".to_string(),
-        vec![
+      Type::PubQueueMessage{
+        name:"TestCreateQueueMessage".to_string(),
+        fields:vec![
           StructField { name: "value".to_string(), ty: Type::UInt64},
           // right now it will be a mandatory field for public queue messages
           // but it won't be exposed to gateway's level. It's internal for runtime
@@ -1019,8 +1019,8 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
           // TODO: later, maybe it will be done as a separate type, or wrapper, 
           StructField { name: "public_future_id".to_string(), ty: Type::String },
         ],
-        String::new(),
-      ),
+        rust_additions:String::new(),
+      },
   ],
   }
 }

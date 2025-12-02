@@ -47,6 +47,11 @@ pub struct TestIncrementTask {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestCreateQueueMessagePub {
+  pub value: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestCreateQueueMessage {
   pub value: u64,
   pub publicFutureId: String,
@@ -183,9 +188,29 @@ pub enum Value {
   OptionU64(Option<u64>),
   String(String),
   TestCreateQueueMessage(TestCreateQueueMessage),
+  TestCreateQueueMessagePub(TestCreateQueueMessagePub),
   TestIncrementTask(TestIncrementTask),
   U64(u64),
   Unit(()),
+}
+
+pub fn pub_to_private(
+  val: Value,
+  future_id: String,
+) -> Value {
+  match val {
+    Value::TestCreateQueueMessagePub(m) => {
+      Value::TestCreateQueueMessage(TestCreateQueueMessage { value: m.value, publicFutureId: future_id })
+    }
+    _ => panic!("pub_to_private is only for PubQueueMessage values"),
+  }
+}
+
+pub fn private_to_pub(val: Value) -> Value {
+  match val {
+    Value::TestCreateQueueMessage(m) => Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: m.value }),
+    _ => panic!("private_to_pub is only for PubQueueMessage values"),
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

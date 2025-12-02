@@ -12,6 +12,7 @@ fn is_copy_type(t: &Type) -> bool {
     | Type::Map(_, _)
     | Type::Array(_)
     | Type::Struct(_, _, _)
+    | Type::PubQueueMessage { .. }
     | Type::Custom(_) => false,
   }
 }
@@ -24,6 +25,7 @@ fn type_variant_name(t: &Type) -> String {
     Type::MaxQueue(inner) => format!("MaxQueue{}", type_variant_name(inner)),
     Type::MinQueue(inner) => format!("MinQueue{}", type_variant_name(inner)),
     Type::Struct(name, _, _) => pascal_case(name),
+    Type::PubQueueMessage { name, .. } => pascal_case(name),
     Type::Custom(name) => pascal_case(name),
     Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
     Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
@@ -42,6 +44,7 @@ fn rust_type(t: &Type) -> String {
     Type::Array(t) => format!("Vec<{}>", rust_type(t)),
     Type::Struct(name, _, _) => pascal_case(name),
     Type::Option(t) => format!("Option<{}>", rust_type(t)),
+    Type::PubQueueMessage { name, .. } => pascal_case(name),
     Type::Custom(name) => pascal_case(name),
   }
 }
@@ -147,6 +150,38 @@ pub fn generate_rust_types(ir: &IR) -> String {
         out.push_str("}\n\n");
         out.push_str(impl_block);
         out.push_str("\n\n");
+      }
+      Type::PubQueueMessage { name, fields, rust_additions } => {
+        // Generate public and private variants for PubQueueMessage
+        let ty_pub = format!("{}Pub", pascal_case(name));
+        let ty_priv = pascal_case(name);
+
+        // Public variant: all fields except `public_future_id`
+        out.push_str(&format!(
+          "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+          ty_pub
+        ));
+        for f in fields.iter().filter(|f| f.name != "public_future_id") {
+          out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+        }
+        out.push_str("}\n\n");
+
+        // Private variant: includes all fields
+        out.push_str(&format!(
+          "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+          ty_priv
+        ));
+        for f in fields {
+          out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+        }
+        out.push_str("}\n\n");
+
+        // Additional user-provided impls for this type block
+        let ib = rust_additions.trim();
+        if !ib.is_empty() {
+          out.push_str(ib);
+          out.push_str("\n\n");
+        }
       }
       _ => {}
     }
@@ -290,11 +325,76 @@ pub fn generate_rust_types(ir: &IR) -> String {
     }
   }
 
+  // Ensure Value enum includes both public and private variants for all PubQueueMessage types
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, .. } = t {
+      let priv_name = pascal_case(name);
+      let pub_name = format!("{}Pub", priv_name);
+      // Insert/ensure private variant exists (maps to the private struct type)
+      used_types.entry(priv_name.clone()).or_insert_with(|| Type::PubQueueMessage {
+        name: name.clone(),
+        fields: Vec::new(),
+        rust_additions: String::new(),
+      });
+      // Insert public variant referencing a struct with that name so rust_type resolves
+      used_types
+        .entry(pub_name.clone())
+        .or_insert_with(|| Type::Struct(pub_name.clone(), Vec::new(), String::new()));
+    }
+  }
+
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\npub enum Value {\n");
   for (vname, ty) in used_types.iter() {
     out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }
   out.push_str("}\n\n");
+
+  // Converters for PubQueueMessage values
+  // Convert public -> private with a provided future id
+  out.push_str(
+    "pub fn pub_to_private(val: Value, future_id: String) -> Value {\n  match val {\n",
+  );
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, fields, .. } = t {
+      let ty_pub = format!("{}Pub", pascal_case(name));
+      let ty_priv = pascal_case(name);
+      // Copy all fields except future into private, then set future
+      let mut copies: Vec<String> = Vec::new();
+      for f in fields.iter().filter(|f| f.name != "public_future_id") {
+        let idf = camel_ident(&f.name);
+        copies.push(format!("{}: m.{}", idf, idf));
+      }
+      let future_field = camel_ident("public_future_id");
+      out.push_str(&format!(
+        "    Value::{}(m) => Value::{}({} {{ {} , {}: future_id }}),\n",
+        ty_pub, ty_priv, ty_priv, copies.join(", "), future_field
+      ));
+    }
+  }
+  out.push_str(
+    "    _ => panic!(\"pub_to_private is only for PubQueueMessage values\"),\n  }\n}\n\n",
+  );
+
+  // Convert private -> public by dropping the future id field
+  out.push_str("pub fn private_to_pub(val: Value) -> Value {\n  match val {\n");
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, fields, .. } = t {
+      let ty_pub = format!("{}Pub", pascal_case(name));
+      let ty_priv = pascal_case(name);
+      let mut copies: Vec<String> = Vec::new();
+      for f in fields.iter().filter(|f| f.name != "public_future_id") {
+        let idf = camel_ident(&f.name);
+        copies.push(format!("{}: m.{}", idf, idf));
+      }
+      out.push_str(&format!(
+        "    Value::{}(m) => Value::{}({} {{ {} }}),\n",
+        ty_priv, ty_pub, ty_pub, copies.join(", ")
+      ));
+    }
+  }
+  out.push_str(
+    "    _ => panic!(\"private_to_pub is only for PubQueueMessage values\"),\n  }\n}\n\n",
+  );
 
   // 6) Emit runtime-aligned scaffolding types and global_step
   out.push_str(
@@ -683,6 +783,9 @@ fn default_value_expr(t: &Type) -> String {
     Type::Array(inner) => format!("Vec::<{}>::new()", rust_type(inner)),
     Type::Map(k, v) => format!("std::collections::HashMap::<{}, {}>::new()", rust_type(k), rust_type(v)),
     Type::Struct(name, _, _) | Type::Custom(name) => {
+      format!("{}::default()", pascal_case(name))
+    }
+    Type::PubQueueMessage { name, .. } => {
       format!("{}::default()", pascal_case(name))
     }
   }
