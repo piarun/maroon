@@ -5,7 +5,7 @@ use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value};
+use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value, pub_to_private};
 use std::collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -574,16 +574,14 @@ limiter:
             TaskBPSource::Queue { q_name, value } => {
               if let Some(queue) = self.queue_messages.get_mut(&q_name) {
                 let was_empty = queue.is_empty();
-                /*
-                 TODO:
-                 here I can have only messages that can be passed from the outside
-                 so runtime can do smth like:
+                // here I can have only messages that `can`` be passed from the outside
+                // so for them this function won't fail but for other types it will panic
+                let p_value = pub_to_private(value, format!("{}", self.next_created_future_id));
+                self.next_created_future_id += 1;
 
-                 value.publicFutureId = format!("ef-{}",self.next_created_future_id);
-                 self.next_created_future_id += 1;
+                // TODO: register this future as some future that on resolve will send response to the outside
 
-                */
-                queue.push_back(value);
+                queue.push_back(p_value);
                 if was_empty {
                   // if it was empty => not in non_empty_queues => adding
                   self.non_empty_queues.push_back(q_name);
@@ -602,7 +600,7 @@ mod tests {
   use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
-  use generated::maroon_assembler::TestCreateQueueMessage;
+  use generated::maroon_assembler::{TestCreateQueueMessage, TestCreateQueueMessagePub};
   use std::fmt::Debug;
   use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -772,7 +770,7 @@ mod tests {
         global_id: UniqueU64BlobId(9),
         source: TaskBPSource::Queue {
           q_name: "randomQueueName".to_string(),
-          value: Value::TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: "0".to_string() }),
+          value: Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: 10 }),
         },
       }],
     ));
