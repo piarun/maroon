@@ -295,6 +295,8 @@ pub enum Type {
   MaxQueue(Box<Type>),
   MinQueue(Box<Type>),
   Option(Box<Type>),
+  /// Typed future handle. Represents a runtime future id associated with a payload of type T
+  Future(Box<Type>),
   /// reference to types defined in IR.types
   Custom(String),
   /// Same as struct but public queues must create messages only via this construction
@@ -363,14 +365,21 @@ impl IR {
       if let Type::PubQueueMessage { name, fields, .. } = t {
         let mut found = false;
         for f in fields {
-          if f.name == "public_future_id" && f.ty == Type::String {
-            found = true;
-            break;
+          if f.name == "public_future_id" {
+            // Accept String (legacy) or Future<_>
+            if f.ty == Type::String {
+              found = true;
+              break;
+            }
+            if let Type::Future(_) = f.ty {
+              found = true;
+              break;
+            }
           }
         }
         if !found {
           explanation.push_str(&format!(
-            "PubQueueMessage '{}' must include field public_future_id: String\n",
+            "PubQueueMessage '{}' must include field public_future_id: String or Future<T>\n",
             name
           ));
         }
@@ -585,16 +594,31 @@ fn uses_correct_variables(
               }
             }
             SetPrimitive::Future { f_var_name, var_name } => {
-              if !vars_map.contains_key::<str>(f_var_name.0) {
-                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_name.0));
-              }
-              if let Some(t) = vars_map.get(f_var_name.0) {
-                if *t != Type::String {
-                  explanation.push_str(&format!("{:?} future id '{}' must be String, got {:?}\n", id, f_var_name.0, t));
+              // future variable must exist and be of type Future<T>
+              if let Some(fty) = vars_map.get(f_var_name.0) {
+                match fty {
+                  Type::Future(inner_ty) => {
+                    // value variable must exist and match inner T
+                    if let Some(vty) = vars_map.get(var_name.0) {
+                      if vty != inner_ty.as_ref() {
+                        explanation.push_str(&format!(
+                          "{:?} SetValues::Future value '{}' type mismatch: expected {:?}, got {:?}\n",
+                          id, var_name.0, inner_ty, vty
+                        ));
+                      }
+                    } else {
+                      explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+                    }
+                  }
+                  other => {
+                    explanation.push_str(&format!(
+                      "{:?} future handle '{}' must be Future<T>, got {:?}\n",
+                      id, f_var_name.0, other
+                    ));
+                  }
                 }
-              }
-              if !vars_map.contains_key::<str>(var_name.0) {
-                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+              } else {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_name.0));
               }
             }
           }

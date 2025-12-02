@@ -784,19 +784,19 @@ mod tests {
       r#"--- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: "" })
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: FutureU64("") })
 f_queueName=randomQueueName
 created_queue_name=
 f_queueCreationError=OptionString(Some("already_exists"))
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: "" })
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: FutureU64("") })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
-value=TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: "0" })
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: FutureU64("0") })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)

@@ -59,12 +59,12 @@ fn test_future_response() {
   assert_eq!(
     r#"start function
 f_task=TestIncrementTask(TestIncrementTask { inStrValue: 0, inStrRespFutureId: "", inStrRespQueueName: "" })
-f_respFutureId=
+f_respFutureId=FutureTestIncrementTask(FutureTestIncrementTask(""))
 f_respQueueName=
 f_tasksQueueName=testTasks
 after increment
 f_task=TestIncrementTask(TestIncrementTask { inStrValue: 11, inStrRespFutureId: "my_test_future_id", inStrRespQueueName: "my_test_queue_name" })
-f_respFutureId=my_test_future_id
+f_respFutureId=FutureTestIncrementTask(FutureTestIncrementTask("my_test_future_id"))
 f_respQueueName=my_test_queue_name
 f_tasksQueueName=testTasks
 "#,

@@ -13,6 +13,7 @@ fn is_copy_type(t: &Type) -> bool {
     | Type::Array(_)
     | Type::Struct(_, _, _)
     | Type::PubQueueMessage { .. }
+    | Type::Future(_)
     | Type::Custom(_) => false,
   }
 }
@@ -26,6 +27,7 @@ fn type_variant_name(t: &Type) -> String {
     Type::MinQueue(inner) => format!("MinQueue{}", type_variant_name(inner)),
     Type::Struct(name, _, _) => pascal_case(name),
     Type::PubQueueMessage { name, .. } => pascal_case(name),
+    Type::Future(inner) => format!("Future{}", type_variant_name(inner)),
     Type::Custom(name) => pascal_case(name),
     Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
     Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
@@ -45,6 +47,7 @@ fn rust_type(t: &Type) -> String {
     Type::Struct(name, _, _) => pascal_case(name),
     Type::Option(t) => format!("Option<{}>", rust_type(t)),
     Type::PubQueueMessage { name, .. } => pascal_case(name),
+    Type::Future(inner) => format!("Future{}", type_variant_name(inner)),
     Type::Custom(name) => pascal_case(name),
   }
 }
@@ -185,6 +188,67 @@ pub fn generate_rust_types(ir: &IR) -> String {
       }
       _ => {}
     }
+  }
+
+  // 1.5) Emit wrapper structs for all Future<T> types used anywhere in IR
+  use std::collections::BTreeSet as __BTS_FUTS;
+  let mut future_wrappers: __BTS_FUTS<String> = __BTS_FUTS::new();
+  // Helper to collect wrapper names recursively
+  fn collect_future_wrappers(ir: &IR, ty: &Type, acc: &mut std::collections::BTreeSet<String>) {
+    match ty {
+      Type::Future(inner) => {
+        acc.insert(format!("Future{}", type_variant_name(inner)));
+        collect_future_wrappers(ir, inner, acc);
+      }
+      Type::Option(inner) | Type::Array(inner) | Type::MaxQueue(inner) | Type::MinQueue(inner) => {
+        collect_future_wrappers(ir, inner, acc);
+      }
+      Type::Map(k, v) => {
+        collect_future_wrappers(ir, k, acc);
+        collect_future_wrappers(ir, v, acc);
+      }
+      Type::Custom(name) => {
+        if let Some(tdef) = ir.types.iter().find(|tt| match tt { Type::Struct(n, _, _) if n == name => true, Type::PubQueueMessage { name: n, .. } if n == name => true, _ => false }) {
+          match tdef {
+            Type::Struct(_, fields, _) => {
+              for f in fields { collect_future_wrappers(ir, &f.ty, acc); }
+            }
+            Type::PubQueueMessage { fields, .. } => {
+              for f in fields { collect_future_wrappers(ir, &f.ty, acc); }
+            }
+            _ => {}
+          }
+        }
+      }
+      _ => {}
+    }
+  }
+  // From top-level types
+  for t in &ir.types {
+    match t {
+      Type::Struct(_, fields, _) => { for f in fields { collect_future_wrappers(ir, &f.ty, &mut future_wrappers); } }
+      Type::PubQueueMessage { fields, .. } => { for f in fields { collect_future_wrappers(ir, &f.ty, &mut future_wrappers); } }
+      other => collect_future_wrappers(ir, other, &mut future_wrappers),
+    }
+  }
+  // From fibers (params, locals, returns, messages, heap)
+  for (_fname, fiber) in ir.fibers.iter() {
+    for (_hname, hty) in &fiber.heap { collect_future_wrappers(ir, hty, &mut future_wrappers); }
+    for (_func_name, func) in &fiber.funcs {
+      for InVar(_, ty) in &func.in_vars { collect_future_wrappers(ir, ty, &mut future_wrappers); }
+      for LocalVar(_, ty) in &func.locals { collect_future_wrappers(ir, ty, &mut future_wrappers); }
+      collect_future_wrappers(ir, &func.out, &mut future_wrappers);
+    }
+    for msg in &fiber.in_messages {
+      for (_fname, fty) in &msg.1 { collect_future_wrappers(ir, fty, &mut future_wrappers); }
+    }
+  }
+
+  for w in future_wrappers.iter() {
+    out.push_str(&format!(
+      "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {}(pub String);\n\n",
+      w
+    ));
   }
 
   // 2) Emit message structs per fiber.in_messages (sorted by fiber, then message name)
@@ -358,16 +422,26 @@ pub fn generate_rust_types(ir: &IR) -> String {
     if let Type::PubQueueMessage { name, fields, .. } = t {
       let ty_pub = format!("{}Pub", pascal_case(name));
       let ty_priv = pascal_case(name);
-      // Copy all fields except future into private, then set future
+      // Copy all non-future fields
       let mut copies: Vec<String> = Vec::new();
-      for f in fields.iter().filter(|f| f.name != "public_future_id") {
+      let mut future_assign: Option<String> = None;
+      for f in fields {
+        if f.name == "public_future_id" {
+          match &f.ty {
+            Type::String => future_assign = Some("future_id".to_string()),
+            Type::Future(inner) => future_assign = Some(format!("Future{}(future_id)", type_variant_name(inner))),
+            _ => future_assign = Some("future_id".to_string()),
+          }
+          continue;
+        }
         let idf = camel_ident(&f.name);
         copies.push(format!("{}: m.{}", idf, idf));
       }
       let future_field = camel_ident("public_future_id");
+      let future_assign = future_assign.unwrap_or_else(|| "future_id".to_string());
       out.push_str(&format!(
-        "    Value::{}(m) => Value::{}({} {{ {} , {}: future_id }}),\n",
-        ty_pub, ty_priv, ty_priv, copies.join(", "), future_field
+        "    Value::{}(m) => Value::{}({} {{ {} , {}: {} }}),\n",
+        ty_pub, ty_priv, ty_priv, copies.join(", "), future_field, future_assign
       ));
     }
   }
@@ -788,6 +862,9 @@ fn default_value_expr(t: &Type) -> String {
     Type::PubQueueMessage { name, .. } => {
       format!("{}::default()", pascal_case(name))
     }
+    Type::Future(inner) => {
+      format!("Future{}::default()", type_variant_name(inner))
+    }
   }
 }
 
@@ -1175,9 +1252,16 @@ fn generate_global_step(ir: &IR) -> String {
                       local_ident = format!("{}.clone()", local_ident);
                     }
                     let f_ident = camel_ident(f_var_name.0);
+                    let fid_expr = match var_type_of(func, f_var_name.0) {
+                    Some(Type::Future(inner)) => {
+                      let _ = inner; // silence unused
+                      format!("{}.0.clone()", f_ident)
+                    }
+                      _ => format!("{}.clone()", f_ident),
+                    };
                     vparts.push(format!(
-                      "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
-                      f_ident, vname, local_ident
+                      "SetPrimitiveValue::Future {{ id: {}, value: Value::{}({}) }}",
+                      fid_expr, vname, local_ident
                     ));
                   }
                 }
@@ -1570,9 +1654,17 @@ fn generate_global_step(ir: &IR) -> String {
                   let mut local_ident = camel_ident(var_name.0);
                   local_ident = format!("{}.clone()", local_ident);
                   let f_ident = camel_ident(f_var_name.0);
+                  // Determine how to extract id: from Future<T>.id or directly if String
+                  let fid_expr = match var_type_of(func, f_var_name.0) {
+                    Some(Type::Future(inner)) => {
+                      let _ = inner; // suppress unused warning in generation
+                      format!("{}.0.clone()", f_ident)
+                    }
+                    _ => format!("{}.clone()", f_ident),
+                  };
                   vparts.push(format!(
-                    "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
-                    f_ident, vname, local_ident
+                    "SetPrimitiveValue::Future {{ id: {}, value: Value::{}({}) }}",
+                    fid_expr, vname, local_ident
                   ));
                 }
               }

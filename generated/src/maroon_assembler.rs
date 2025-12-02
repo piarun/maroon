@@ -54,8 +54,14 @@ pub struct TestCreateQueueMessagePub {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestCreateQueueMessage {
   pub value: u64,
-  pub publicFutureId: String,
+  pub publicFutureId: FutureU64,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FutureTestIncrementTask(pub String);
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FutureU64(pub String);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
@@ -184,6 +190,7 @@ pub enum State {
 pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
+  FutureTestIncrementTask(FutureTestIncrementTask),
   OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
@@ -200,7 +207,7 @@ pub fn pub_to_private(
 ) -> Value {
   match val {
     Value::TestCreateQueueMessagePub(m) => {
-      Value::TestCreateQueueMessage(TestCreateQueueMessage { value: m.value, publicFutureId: future_id })
+      Value::TestCreateQueueMessage(TestCreateQueueMessage { value: m.value, publicFutureId: FutureU64(future_id) })
     }
     _ => panic!("pub_to_private is only for PubQueueMessage values"),
   }
@@ -1059,8 +1066,8 @@ pub fn global_step(
       StepResult::DebugPrintVars(State::TestTaskExecutorIncrementerMainReturnResult)
     }
     State::TestTaskExecutorIncrementerMainIncrement => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
@@ -1071,22 +1078,22 @@ pub fn global_step(
         let out = {
           let mut t_m = fTask;
           t_m.inStrValue += 1;
-          (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+          (t_m.clone(), t_m.inStrRespQueueName, FutureTestIncrementTask(t_m.inStrRespFutureId))
         };
         let (o0, o1, o2) = out;
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![
             (0, Value::TestIncrementTask(o0)),
             (2, Value::String(o1)),
-            (1, Value::String(o2)),
+            (1, Value::FutureTestIncrementTask(o2)),
           ]),
           StackEntry::State(State::TestTaskExecutorIncrementerMainDebug2),
         ])
       }
     }
     State::TestTaskExecutorIncrementerMainInitQueueName => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
@@ -1103,15 +1110,15 @@ pub fn global_step(
     }
     State::TestTaskExecutorIncrementerMainReturn => StepResult::ReturnVoid,
     State::TestTaskExecutorIncrementerMainReturnResult => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
         if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::SetValues {
         values: vec![
-          SetPrimitiveValue::Future { id: fRespfutureid.clone(), value: Value::TestIncrementTask(fTask.clone()) },
+          SetPrimitiveValue::Future { id: fRespfutureid.0.clone(), value: Value::TestIncrementTask(fTask.clone()) },
           SetPrimitiveValue::QueueMessage {
             queue_name: fRespqueuename.clone(),
             value: Value::TestIncrementTask(fTask.clone()),
@@ -1769,7 +1776,10 @@ pub fn testTaskExecutorIncrementer_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("f_task".to_string(), Value::TestIncrementTask(TestIncrementTask::default())));
-  stack.push(StackEntry::Value("f_respFutureId".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value(
+    "f_respFutureId".to_string(),
+    Value::FutureTestIncrementTask(FutureTestIncrementTask::default()),
+  ));
   stack.push(StackEntry::Value("f_respQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("f_tasksQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::State(State::TestTaskExecutorIncrementerMainEntry));

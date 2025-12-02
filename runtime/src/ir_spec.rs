@@ -103,7 +103,7 @@ pub fn sample_ir() -> IR {
                   // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
                   // I also want to explicitly verify names conversion, because right now it jumps between snake and camel case, which should be fixed for sure
                   LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())),
-                  LocalVar("f_respFutureId", Type::String),
+                  LocalVar("f_respFutureId", Type::Future(Box::new(Type::Custom("TestIncrementTask".to_string())))),
                   LocalVar("f_respQueueName", Type::String),
                   LocalVar("f_tasksQueueName", Type::String),
                 ],
@@ -139,7 +139,7 @@ pub fn sample_ir() -> IR {
                   Step::RustBlock { binds: vec![LocalVarRef("f_task"), LocalVarRef("f_respQueueName"), LocalVarRef("f_respFutureId")], code: r#"
                     let mut t_m = fTask;
                     t_m.inStrValue += 1;
-                    (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+                    (t_m.clone(), t_m.inStrRespQueueName, FutureTestIncrementTask(t_m.inStrRespFutureId))
                   "#.
                   to_string(), next: StepId::new("debug2") },
                 ),
@@ -1009,15 +1009,8 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         name:"TestCreateQueueMessage".to_string(),
         fields:vec![
           StructField { name: "value".to_string(), ty: Type::UInt64},
-          // right now it will be a mandatory field for public queue messages
-          // but it won't be exposed to gateway's level. It's internal for runtime
-          // runtime will create future for each particular case
-          // but I anyway need this field, so inside IR fibers can work with (ex: pass to each other)
-          // 
-          // but... if this message is created inside the IR(runtime) IR is responsible for creating Future
-          //
-          // TODO: later, maybe it will be done as a separate type, or wrapper, 
-          StructField { name: "public_future_id".to_string(), ty: Type::String },
+          // just returns the same value as was put as an input
+          StructField { name: "public_future_id".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
         ],
         rust_additions:String::new(),
       },
