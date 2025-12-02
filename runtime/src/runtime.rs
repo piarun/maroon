@@ -127,6 +127,8 @@ pub struct Runtime<T: Timer> {
   next_fiber_id: u64,
   // monotonically increasing id for newly created futures (via Create)
   next_created_future_id: u64,
+  /// only for futures that are linked to the external messages(that are coming from gateways)
+  public_futures: HashMap<String, UniqueU64BlobId>,
 
   /// message queues
   /// key - queue name
@@ -189,6 +191,7 @@ impl<T: Timer> Runtime<T> {
       timer: timer,
       next_fiber_id: 0,
       next_created_future_id: 0,
+      public_futures: HashMap::new(),
       awaiting_fibers: HashMap::new(),
 
       queue_messages: HashMap::new(),
@@ -381,7 +384,11 @@ limiter:
                   }
                 }
                 SetPrimitiveValue::Future { id, value } => {
-                  self.message_futures.insert(FutureId(id), value);
+                  if let Some(u_id) = self.public_futures.remove(&id) {
+                    self.interface.send((u_id, value));
+                  } else {
+                    self.message_futures.insert(FutureId(id), value);
+                  }
                 }
               }
             }
@@ -391,7 +398,6 @@ limiter:
           RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
             let mut candidate_queues = HashSet::<String>::new();
             let mut errors = Vec::<Option<String>>::with_capacity(primitives.len());
-            let mut ids = Vec::<String>::with_capacity(primitives.len());
             let mut has_error = false;
 
             // Validate and compute ids for all primitives first (atomic behavior)
@@ -400,18 +406,14 @@ limiter:
                 CreatePrimitiveValue::Queue { name, public: _ } => {
                   if self.queue_messages.contains_key(name) || candidate_queues.contains(name) {
                     errors.push(Some("already_exists".to_string()));
-                    ids.push(String::new());
                     has_error = true;
                   } else {
                     errors.push(None);
-                    ids.push(name.clone());
                     candidate_queues.insert(name.clone());
                   }
                 }
                 CreatePrimitiveValue::Future => {
-                  let id = format!("rtf-{}", self.next_created_future_id);
                   errors.push(None);
-                  ids.push(id);
                 }
               }
             }
@@ -428,20 +430,24 @@ limiter:
               fiber.stack.push(StackEntry::State(fail_next));
               self.active_fibers.push_front(fiber);
             } else {
+              let mut ids = Vec::<String>::with_capacity(primitives.len());
+
               // Apply creations for all primitives since validation succeeded
               for primitive in primitives {
                 match primitive {
                   CreatePrimitiveValue::Queue { name, public: _ } => {
+                    ids.push(name.clone());
                     self.queue_messages.insert(name, VecDeque::new());
                   }
                   CreatePrimitiveValue::Future => {
+                    ids.push(format!("{}", self.next_created_future_id));
                     self.next_created_future_id += 1;
                   }
                 }
               }
               // Bind success ids into locals
               for (idx, var_name) in success_binds.iter().enumerate() {
-                let id = ids.get(idx).cloned().unwrap_or_default();
+                let id = ids.get(idx).cloned().expect("no way it doesn't exist");
                 fiber.assign_local(var_name.clone(), Value::String(id));
               }
               fiber.stack.push(StackEntry::State(success_next));
@@ -577,9 +583,8 @@ limiter:
                 // here I can have only messages that `can`` be passed from the outside
                 // so for them this function won't fail but for other types it will panic
                 let p_value = pub_to_private(value, format!("{}", self.next_created_future_id));
+                self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
                 self.next_created_future_id += 1;
-
-                // TODO: register this future as some future that on resolve will send response to the outside
 
                 queue.push_back(p_value);
                 if was_empty {
@@ -777,7 +782,7 @@ mod tests {
 
     tokio::time::sleep(Duration::from_millis(10)).await;
 
-    // compare_channel_data_with_exp(vec![], a2b_runtime.receiver).await;
+    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(12))], a2b_runtime.receiver).await;
 
     let result = debug_out.lock();
     assert_eq!(
@@ -788,18 +793,26 @@ value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: 
 f_queueName=randomQueueName
 created_queue_name=
 f_queueCreationError=OptionString(Some("already_exists"))
+f_future_id_response=FutureU64(FutureU64(""))
+f_res_inc=0
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
 value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: FutureU64("") })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
+f_future_id_response=FutureU64(FutureU64(""))
+f_res_inc=0
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
 value=TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: FutureU64("0") })
 f_queueName=randomQueueName
 created_queue_name=randomQueueName
 f_queueCreationError=OptionString(None)
+f_future_id_response=FutureU64(FutureU64("0"))
+f_res_inc=12
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- exit testCreateQueue:0 ---
 "#,

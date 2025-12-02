@@ -160,6 +160,7 @@ pub enum State {
   OrderBookMainEntry,
   OrderBookTopNDepthEntry,
   RootMainEntry,
+  TestCreateQueueMainAnswer,
   TestCreateQueueMainAwaitOnQueue,
   TestCreateQueueMainCleanUp,
   TestCreateQueueMainCorrectCreation,
@@ -167,6 +168,7 @@ pub enum State {
   TestCreateQueueMainDebugVars2,
   TestCreateQueueMainDebugVars3,
   TestCreateQueueMainEntry,
+  TestCreateQueueMainExtractFutAndInc,
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
   TestSelectQueueMainCompare,
@@ -191,6 +193,7 @@ pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
   FutureTestIncrementTask(FutureTestIncrementTask),
+  FutureU64(FutureU64),
   OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
@@ -335,15 +338,17 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
-    State::TestCreateQueueMainEntry => 4,
-    State::TestCreateQueueMainAwaitOnQueue => 4,
-    State::TestCreateQueueMainCleanUp => 4,
-    State::TestCreateQueueMainCorrectCreation => 4,
-    State::TestCreateQueueMainDebugVars => 4,
-    State::TestCreateQueueMainDebugVars2 => 4,
-    State::TestCreateQueueMainDebugVars3 => 4,
-    State::TestCreateQueueMainReturn => 4,
-    State::TestCreateQueueMainWrongQueueCreation => 4,
+    State::TestCreateQueueMainEntry => 6,
+    State::TestCreateQueueMainAnswer => 6,
+    State::TestCreateQueueMainAwaitOnQueue => 6,
+    State::TestCreateQueueMainCleanUp => 6,
+    State::TestCreateQueueMainCorrectCreation => 6,
+    State::TestCreateQueueMainDebugVars => 6,
+    State::TestCreateQueueMainDebugVars2 => 6,
+    State::TestCreateQueueMainDebugVars3 => 6,
+    State::TestCreateQueueMainExtractFutAndInc => 6,
+    State::TestCreateQueueMainReturn => 6,
+    State::TestCreateQueueMainWrongQueueCreation => 6,
     State::TestSelectQueueMainEntry => 3,
     State::TestSelectQueueMainCompare => 3,
     State::TestSelectQueueMainIncFromFut => 3,
@@ -922,22 +927,34 @@ pub fn global_step(
       StackEntry::FrameAssign(vec![(1, Value::String("randomQueueName".to_string()))]),
       StackEntry::State(State::TestCreateQueueMainWrongQueueCreation),
     ]),
+    State::TestCreateQueueMainAnswer => {
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![SetPrimitiveValue::Future { id: fFutureIdResponse.0.clone(), value: Value::U64(fResInc.clone()) }],
+        next: State::TestCreateQueueMainReturn,
+      }
+    }
     State::TestCreateQueueMainAwaitOnQueue => {
       let createdQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       StepResult::Select(vec![SelectArm::Queue {
         queue_name: createdQueueName.clone(),
         bind: "value".to_string(),
-        next: State::TestCreateQueueMainDebugVars3,
+        next: State::TestCreateQueueMainExtractFutAndInc,
       }])
     }
     State::TestCreateQueueMainCleanUp => {
       let createdQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       let fQueuecreationerror: Option<String> =
         if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
       let fQueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       let value: TestCreateQueueMessage =
         if let StackEntry::Value(_, Value::TestCreateQueueMessage(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
@@ -965,7 +982,28 @@ pub fn global_step(
     }
     State::TestCreateQueueMainDebugVars => StepResult::DebugPrintVars(State::TestCreateQueueMainCleanUp),
     State::TestCreateQueueMainDebugVars2 => StepResult::DebugPrintVars(State::TestCreateQueueMainAwaitOnQueue),
-    State::TestCreateQueueMainDebugVars3 => StepResult::DebugPrintVars(State::TestCreateQueueMainReturn),
+    State::TestCreateQueueMainDebugVars3 => StepResult::DebugPrintVars(State::TestCreateQueueMainAnswer),
+    State::TestCreateQueueMainExtractFutAndInc => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fQueuecreationerror: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let value: TestCreateQueueMessage =
+        if let StackEntry::Value(_, Value::TestCreateQueueMessage(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { (value.publicFutureId, value.value + 2) };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(4, Value::FutureU64(o0)), (5, Value::U64(o1))]),
+          StackEntry::State(State::TestCreateQueueMainDebugVars3),
+        ])
+      }
+    }
     State::TestCreateQueueMainReturn => StepResult::ReturnVoid,
     State::TestCreateQueueMainWrongQueueCreation => {
       let fQueuename: String =
@@ -1728,6 +1766,8 @@ pub fn testCreateQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Value("f_queueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("created_queue_name".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("f_queueCreationError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("f_future_id_response".to_string(), Value::FutureU64(FutureU64::default())));
+  stack.push(StackEntry::Value("f_res_inc".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::TestCreateQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)

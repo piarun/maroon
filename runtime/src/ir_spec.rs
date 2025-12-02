@@ -189,6 +189,8 @@ pub fn sample_ir() -> IR {
                   LocalVar("f_queueName", Type::String),
                   LocalVar("created_queue_name", Type::String),
                   LocalVar("f_queueCreationError", Type::Option(Box::new(Type::String))),
+                  LocalVar("f_future_id_response", Type::Future(Box::new(Type::UInt64))),
+                  LocalVar("f_res_inc", Type::UInt64),
                 ], 
                 steps: vec![
                 (
@@ -237,11 +239,38 @@ pub fn sample_ir() -> IR {
                 ),
                 (
                   StepId::new("await_on_queue"),
-                  Step::Select { arms: vec![AwaitSpec::Queue { queue_name: LocalVarRef("created_queue_name"), message_var: LocalVarRef("value"), next: StepId::new("debug_vars_3") }] },
+                  Step::Select { 
+                    arms: vec![AwaitSpec::Queue { 
+                      queue_name: LocalVarRef("created_queue_name"), 
+                      message_var: LocalVarRef("value"), 
+                      next: StepId::new("extract_fut_and_inc"),
+                    }],
+                  },
+                ),
+                (
+                  StepId::new("extract_fut_and_inc"),
+                  Step::RustBlock { 
+                    binds: vec![
+                      LocalVarRef("f_future_id_response"),
+                      LocalVarRef("f_res_inc"),
+                    ], 
+                    code: "(value.publicFutureId, value.value + 2)".to_string(), 
+                    next: StepId::new("debug_vars_3"),
+                  },
                 ),
                 (
                   StepId::new("debug_vars_3"),
-                  Step::DebugPrintVars(StepId::new("return")),
+                  Step::DebugPrintVars(StepId::new("answer")),
+                ),
+                (
+                  StepId::new("answer"),
+                  Step::SetValues { 
+                    values: vec![SetPrimitive::Future { 
+                      f_var_name: LocalVarRef("f_future_id_response"), 
+                      var_name: LocalVarRef("f_res_inc"),
+                    }], 
+                    next: StepId::new("return"),
+                  },
                 ),
                 (
                   StepId::new("return"),
