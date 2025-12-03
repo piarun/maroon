@@ -57,6 +57,10 @@ pub enum RunResult {
   Select(Vec<SelectArm>),
   /// Broadcast primitive updates to runtime; fiber has already queued next state
   SetValues(Vec<SetPrimitiveValue>),
+  /// Spawn new fibers via runtime; fiber already queued next state
+  CreateFibers {
+    details: Vec<(FiberType, Vec<Value>)>,
+  },
   /// Request to atomically create primitives; runtime will decide branch
   Create {
     primitives: Vec<CreatePrimitiveValue>,
@@ -360,6 +364,10 @@ impl Fiber {
         }
         StepResult::Select(arms) => {
           return RunResult::Select(arms);
+        }
+        StepResult::CreateFibers { details, next } => {
+          self.stack.push(StackEntry::State(next));
+          return RunResult::CreateFibers { details };
         }
         StepResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
           // Do not push next yet; runtime will decide the branch and re-queue us

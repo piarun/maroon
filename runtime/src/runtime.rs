@@ -366,6 +366,14 @@ limiter:
             self.wait_index.register_select(fiber.unique_id, states);
             self.awaiting_fibers.insert(fiber.unique_id, fiber);
           }
+          RunResult::CreateFibers { details } => {
+            for (f_type, init_vars) in details {
+              let nf = Fiber::new(f_type, self.next_fiber_id, &init_vars);
+              self.next_fiber_id += 1;
+              self.active_fibers.push_back(nf);
+            }
+            self.active_fibers.push_front(fiber);
+          }
           RunResult::SetValues(values) => {
             for v in values {
               match v {
@@ -815,6 +823,27 @@ f_res_inc=12
 --- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- exit testCreateQueue:0 ---
+"#,
+      result.expect("should be object").as_str()
+    );
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn creating_fiber_cross_fiber_communication() {
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let debug_out = rt.debug_handle();
+    tokio::spawn(async move {
+      rt.run("testRootFiber".to_string()).await;
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let result = debug_out.lock();
+    assert_eq!(
+      r#"
 "#,
       result.expect("should be object").as_str()
     );
