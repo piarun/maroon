@@ -560,6 +560,9 @@ pub enum StepResult {
   Debug(&'static str, State),
   // Print all current-frame vars in order and continue to next state.
   DebugPrintVars(State),
+  // Spawn new fibers (fire-and-forget) and continue to `next`.
+  // Runtime may ignore this for now; present for forward-compat.
+  CreateFibers { details: Vec<(FiberType, Vec<Value>)>, next: State },
 }",
   );
 
@@ -1124,6 +1127,7 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
             Step::ScheduleTimer { .. } => {}
+            Step::CreateFibers { .. } => {}
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -1188,15 +1192,30 @@ fn generate_global_step(ir: &IR) -> String {
                   out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
                 }
               }
+            } else if let Some(iv) = fiber.init_vars.iter().find(|iv| iv.0 == var_name.as_str()) {
+              // Referenced fiber-level init var; bind from heap
+              let rust_ty = rust_type(&iv.1);
+              let heap_field = camel_ident(&fiber_name.0);
+              let local_ident = camel_ident(var_name);
+              out.push_str(&format!(
+                "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
+              ));
             } else {
               out
-                .push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
+                .push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
             }
           }
           match entry_step {
             Step::Debug(msg, next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+            }
+            Step::CreateFibers { details, next } => {
+              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+              let _ = details; // not used yet
+              out.push_str("      StepResult::CreateFibers { details: vec![], next: State::");
+              out.push_str(&next_v);
+              out.push_str(" }\n");
             }
             Step::Create { primitives, success, fail } => {
               let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
@@ -1529,6 +1548,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
           Step::ScheduleTimer { .. } => {}
+          Step::CreateFibers { .. } => {}
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1597,14 +1617,28 @@ fn generate_global_step(ir: &IR) -> String {
                 out.push_str(&format!("      let {local_ident}: {rust_ty} = if let StackEntry::Value(_, Value::{tname}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }};\n"));
               }
             }
+          } else if let Some(iv) = fiber.init_vars.iter().find(|iv| iv.0 == var_name.as_str()) {
+            let rust_ty = rust_type(&iv.1);
+            let heap_field = camel_ident(&fiber_name.0);
+            let local_ident = camel_ident(var_name);
+            out.push_str(&format!(
+              "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
+            ));
           } else {
-            out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals.\n"));
+            out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
           }
         }
         match step {
           Step::Debug(msg, next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
+          }
+          Step::CreateFibers { details, next } => {
+            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
+            let _ = details; // not used yet
+            out.push_str("      StepResult::CreateFibers { details: vec![], next: State::");
+            out.push_str(&next_v);
+            out.push_str(" }\n");
           }
           Step::Create { primitives, success, fail } => {
             let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
