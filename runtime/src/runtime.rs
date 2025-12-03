@@ -368,6 +368,10 @@ limiter:
           }
           RunResult::CreateFibers { details } => {
             for (f_type, init_vars) in details {
+              local_dbg.push_str(&format!("created: {:?}:{}. init_vars:\n", f_type, self.next_fiber_id));
+              for v in init_vars.iter() {
+                local_dbg.push_str(&format!("     {:?}\n", v));
+              }
               let nf = Fiber::new(f_type, self.next_fiber_id, &init_vars);
               self.next_fiber_id += 1;
               self.active_fibers.push_back(nf);
