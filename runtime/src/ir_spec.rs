@@ -282,6 +282,123 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
+        FiberType::new("testRootFiber"),
+        Fiber {
+          fibers_limit: 0,
+          init_vars: vec![],
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("rootQueueName", Type::String),
+                  LocalVar("createQueueError", Type::Option(Box::new(Type::String))),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::Let { 
+                      local: "rootQueueName".to_string(), 
+                      expr: Expr::Str("rootQueue".to_string()), 
+                      next: StepId::new("create_queueues"),
+                    },
+                  ),
+                  (
+                    StepId::new("create_queueues"),
+                    Step::Create { 
+                      primitives: vec![
+                        RuntimePrimitive::Queue { 
+                          name: LocalVarRef("rootQueueName"), 
+                          public: true, 
+                        },
+                      ], 
+                      success: SuccessCreateBranch { next: StepId::new("create_fiber"), id_binds: vec![LocalVarRef("rootQueueName")] }, 
+                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createQueueError")] }, 
+                    }
+                  ),
+                  (
+                    StepId::new("create_fiber"),
+                    Step::CreateFibers { 
+                      details: vec![
+                        CreateFiberDetail {
+                          f_name: FiberType::new("testCalculator"),
+                          init_vars: vec![LocalVarRef("rootQueueName")],
+                        },
+                      ],
+                      next: StepId::new("return_dbg"),
+                    },
+                  ),
+                  (
+                    StepId::new("return_dbg"),
+                    Step::DebugPrintVars(StepId::new("return")),
+                  ),
+                  (
+                    StepId::new("return"),
+                    Step::ReturnVoid,
+                  ),
+                ],
+              },
+            )
+          ]),
+        }
+      ),
+      (
+        FiberType::new("testCalculator"),
+        Fiber {
+          fibers_limit: 0,
+          init_vars: vec![
+            InVar("calculationRequestsQueueName", Type::String),
+          ],
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("request", Type::Custom("TestCalculatorTask".to_string())),
+                  LocalVar("result", Type::UInt64),
+                  LocalVar("respFutureId", Type::Future(Box::new(Type::UInt64))),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::Select { arms: vec![
+                      AwaitSpec::Queue { 
+                        queue_name: LocalVarRef("calculationRequestsQueueName"), 
+                        message_var: LocalVarRef("request"), 
+                        next: StepId::new("calculate"),
+                      },
+                    ] },
+                  ),
+                  (
+                    StepId::new("calculate"),
+                    Step::RustBlock { 
+                      binds: vec![
+                        LocalVarRef("result"), 
+                        LocalVarRef("respFutureId"),
+                      ], 
+                      code: "(request.a * request.b, request.responseFutureId)".to_string(), 
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (
+                    StepId::new("return"),
+                    Step::ReturnVoid,
+                  ),
+                ],
+              },
+            )
+          ]),
+        }
+      ),
+      (
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,
@@ -1043,6 +1160,16 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         ],
         rust_additions:String::new(),
       },
+      Type::Struct(
+        "TestCalculatorTask".to_string(),
+        vec![
+          StructField { name: "a".to_string(), ty: Type::UInt64},
+          StructField { name: "b".to_string(), ty: Type::UInt64},
+          // will return multiplication of a and b
+          StructField { name: "response_future_id".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
+        ],
+        String::new(),
+      ),
   ],
   }
 }
