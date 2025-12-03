@@ -8,3 +8,4 @@ mod generated_test;
 mod ir_test;
 pub mod runtime;
 mod trace;
+mod wait_registry;

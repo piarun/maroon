@@ -1,11 +1,13 @@
 use crate::fiber::*;
+use crate::wait_registry::WaitRegistry;
 use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::Value;
+use generated::maroon_assembler::{SetPrimitiveValue, Value};
 use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,17 +94,21 @@ pub struct Runtime<T: Timer> {
   // fibers that can be executed
   active_fibers: VecDeque<Fiber>,
   // fibers that have some tasks, but can't be executed because they're awaiting something
+  // deprecating
   parked_fibers: HashMap<FutureId, FiberBox>,
 
   scheduled: BinaryHeap<ScheduledBlob>,
 
   // created but idle fibers
+  // deprecating
   fiber_pool: HashMap<FiberType, Vec<Fiber>>,
 
   // queue for in_messages that will be executed in the order when fiber is available
   // Vec - for predictable order
+  // deprecating
   fiber_in_message_queue: Vec<(FiberType, VecDeque<FiberInMessage>)>,
 
+  // deprecating
   fiber_limiter: HashMap<FiberType, u64>,
 
   timer: T,
@@ -110,8 +116,21 @@ pub struct Runtime<T: Timer> {
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
 
-  // Shared debug output sink used by all fibers, written sequentially during execution
-  pub dbg_out: String,
+  /// key - queue name
+  /// value - queue of messages that are awaiting to be processed
+  message_queues: HashMap<String, VecDeque<Value>>,
+  message_futures: HashMap<FutureId, Value>,
+
+  /// Shared debug output sink used by all fibers, safe to share with tests
+  /// I don't think it's a good way of doing it longterm,
+  ///  but I don't see obvious problems and limitations right now that would justify more advanced solution
+  dbg_out: Arc<Mutex<String>>,
+
+  /// Registry for fibers awaiting on multiple sources (queues/futures) via Select
+  wait_index: WaitRegistry,
+  /// parked fibers that are awaiting smth
+  /// key - fiber_id
+  awaiting_fibers: HashMap<u64, Fiber>,
 }
 
 struct FiberBox {
@@ -146,10 +165,22 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
-      dbg_out: String::new(),
+      awaiting_fibers: HashMap::new(),
+
+      message_queues: HashMap::new(),
+      message_futures: HashMap::new(),
+
+      dbg_out: Arc::new(Mutex::new(String::new())),
+
+      wait_index: WaitRegistry::default(),
 
       interface,
     }
+  }
+
+  /// Returns a clone of the debug output handle for external readers (e.g., tests).
+  pub fn debug_handle(&self) -> Arc<Mutex<String>> {
+    self.dbg_out.clone()
   }
 
   pub fn dump(&self) {
@@ -222,7 +253,16 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
-  pub async fn run(&mut self) {
+  pub async fn run(
+    &mut self,
+    root_type: String,
+  ) {
+    self.message_queues.insert("test_queue".to_string(), VecDeque::new());
+
+    let root = Fiber::new(FiberType(root_type), 0, &vec![Value::String("test_queue".to_string())]);
+    self.next_fiber_id = 1;
+    self.active_fibers.push_back(root);
+
     'main_loop: loop {
       let now = self.timer.from_start();
 
@@ -239,7 +279,9 @@ limiter:
 
       // work on active fibers(state-machine iterations moves)
       while let Some(mut fiber) = self.active_fibers.pop_front() {
-        match fiber.run(&mut self.dbg_out) {
+        // Accumulate debug output locally, then append with a single lock
+        let mut local_dbg = String::new();
+        match fiber.run(&mut local_dbg) {
           RunResult::Done(result) => {
             println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
 
@@ -293,11 +335,37 @@ limiter:
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);
           }
-          RunResult::Select(_states) => {}
-          RunResult::SetValues(_values) => {}
+          RunResult::Select(states) => {
+            self.wait_index.register_select(fiber.unique_id, states);
+            self.awaiting_fibers.insert(fiber.unique_id, fiber);
+          }
+          RunResult::SetValues(values) => {
+            for v in values {
+              match v {
+                SetPrimitiveValue::QueueMessage { queue_name, value } => {
+                  self.message_queues.entry(queue_name).or_default().push_back(value);
+                }
+                SetPrimitiveValue::Future { id, value } => {
+                  self.message_futures.insert(FutureId(id), value);
+                }
+              }
+            }
+            // continue immediately, no need to wait anything
+            self.active_fibers.push_front(fiber);
+          }
+        }
+        if !local_dbg.is_empty() {
+          if let Ok(mut g) = self.dbg_out.lock() {
+            g.push_str(&local_dbg);
+          }
         }
       }
 
+      // below are old parts that I'll delete soon
+      // but I'm keeping them for now to not make all the tests red immediately
+      // but I'll be slowly rewriting them to a new API
+      //
+      //
       // get in_message and put it into available Fiber(if there is one)
       // here I don't put all of them into work, but pick the first one and immediately start execution
       let to_push: Option<(FiberType, usize)> =
@@ -395,7 +463,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     _ = a2b_runtime.send((
@@ -431,7 +499,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     _ = a2b_runtime.send((
@@ -454,7 +522,7 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
 
     tokio::spawn(async move {
-      rt.run().await;
+      rt.run("root".to_string()).await;
     });
 
     // Cases to cover:
@@ -514,6 +582,21 @@ mod tests {
       a2b_runtime.receiver,
     )
     .await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn simple_runtime_start_with_root_work_and_end() {
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let debug_out = rt.debug_handle();
+    tokio::spawn(async move {
+      rt.run("testTaskExecutorIncrementer".to_string()).await;
+    });
+
+    let result = debug_out.lock();
+    assert_eq!("", result.expect("should be object").as_str());
   }
 
   async fn compare_channel_data_with_exp<T: PartialEq + Debug>(

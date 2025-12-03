@@ -87,7 +87,7 @@ impl MaroonStack {
     });
 
     tokio::spawn(async move {
-      runtime.run().await;
+      runtime.run("root".to_string()).await;
     });
 
     move || {
