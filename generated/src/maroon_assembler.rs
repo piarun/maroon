@@ -1099,7 +1099,19 @@ pub fn global_step(
       StackEntry::State(State::TestRootFiberMainCreateQueueues),
     ]),
     State::TestRootFiberMainCreateFiber => {
-      StepResult::CreateFibers { details: vec![], next: State::TestRootFiberMainReturnDbg }
+      let rootQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::CreateFibers {
+        details: vec![(
+          FiberType::new("testCalculator"),
+          vec![Value::String(if let StackEntry::Value(_, Value::String(x)) = &vars[0] {
+            x.clone()
+          } else {
+            unreachable!()
+          })],
+        )],
+        next: State::TestRootFiberMainReturnDbg,
+      }
     }
     State::TestRootFiberMainCreateQueueues => {
       let rootQueueName: String =

@@ -1127,7 +1127,7 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
             Step::ScheduleTimer { .. } => {}
-            Step::CreateFibers { .. } => {}
+            // handled below to capture referenced init_vars
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
                 collect_vars_from_expr(&e, &mut referenced);
@@ -1151,6 +1151,13 @@ fn generate_global_step(ir: &IR) -> String {
               for p in primitives {
                 if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
                   referenced.insert(name.0.to_string());
+                }
+              }
+            }
+            Step::CreateFibers { details, .. } => {
+              for d in details {
+                for v in &d.init_vars {
+                  referenced.insert(v.0.to_string());
                 }
               }
             }
@@ -1212,8 +1219,47 @@ fn generate_global_step(ir: &IR) -> String {
             }
             Step::CreateFibers { details, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              let _ = details; // not used yet
-              out.push_str("      StepResult::CreateFibers { details: vec![], next: State::");
+              let mut dparts: Vec<String> = Vec::new();
+              for d in details {
+                let mut arg_vals: Vec<String> = Vec::new();
+                for v in &d.init_vars {
+                  // Extract from vars by index regardless of binding
+                  if let Some(ty) = var_type_of(func, v.0) {
+                    let vname = type_variant_name(ty);
+                    let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == v.0) {
+                      format!("{}", pi)
+                    } else if let Some(li) = func.locals.iter().position(|l| l.0 == v.0) {
+                      format!("{}", func.in_vars.len() + li)
+                    } else {
+                      "0".to_string()
+                    };
+                    let val_expr = format!(
+                      "if let StackEntry::Value(_, Value::{}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }}",
+                      vname,
+                      idx = idx_expr
+                    );
+                    arg_vals.push(format!("Value::{}({})", vname, val_expr));
+                  } else {
+                    // Fallback to string
+                    let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == v.0) {
+                      format!("{}", pi)
+                    } else if let Some(li) = func.locals.iter().position(|l| l.0 == v.0) {
+                      format!("{}", func.in_vars.len() + li)
+                    } else {
+                      "0".to_string()
+                    };
+                    let val_expr = format!(
+                      "if let StackEntry::Value(_, Value::String(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }}",
+                      idx = idx_expr
+                    );
+                    arg_vals.push(format!("Value::String({})", val_expr));
+                  }
+                }
+                dparts.push(format!("(FiberType::new(\"{}\"), vec![{}])", d.f_name.0, arg_vals.join(", ")));
+              }
+              out.push_str("      StepResult::CreateFibers { details: vec![");
+              out.push_str(&dparts.join(", "));
+              out.push_str("], next: State::");
               out.push_str(&next_v);
               out.push_str(" }\n");
             }
@@ -1548,7 +1594,7 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
           Step::ScheduleTimer { .. } => {}
-          Step::CreateFibers { .. } => {}
+          // handled below to capture referenced init_vars
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
               collect_vars_from_expr(&e, &mut referenced);
@@ -1572,6 +1618,13 @@ fn generate_global_step(ir: &IR) -> String {
             for p in primitives {
               if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
                 referenced.insert(name.0.to_string());
+              }
+            }
+          }
+          Step::CreateFibers { details, .. } => {
+            for d in details {
+              for v in &d.init_vars {
+                referenced.insert(v.0.to_string());
               }
             }
           }
@@ -1635,8 +1688,45 @@ fn generate_global_step(ir: &IR) -> String {
           }
           Step::CreateFibers { details, next } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            let _ = details; // not used yet
-            out.push_str("      StepResult::CreateFibers { details: vec![], next: State::");
+            let mut dparts: Vec<String> = Vec::new();
+            for d in details {
+              let mut arg_vals: Vec<String> = Vec::new();
+              for v in &d.init_vars {
+                if let Some(ty) = var_type_of(func, v.0) {
+                  let vname = type_variant_name(ty);
+                  let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == v.0) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == v.0) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  let val_expr = format!(
+                    "if let StackEntry::Value(_, Value::{}(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }}",
+                    vname,
+                    idx = idx_expr
+                  );
+                  arg_vals.push(format!("Value::{}({})", vname, val_expr));
+                } else {
+                  let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == v.0) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == v.0) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  let val_expr = format!(
+                    "if let StackEntry::Value(_, Value::String(x)) = &vars[{idx}] {{ x.clone() }} else {{ unreachable!() }}",
+                    idx = idx_expr
+                  );
+                  arg_vals.push(format!("Value::String({})", val_expr));
+                }
+              }
+              dparts.push(format!("(FiberType::new(\"{}\"), vec![{}])", d.f_name.0, arg_vals.join(", ")));
+            }
+            out.push_str("      StepResult::CreateFibers { details: vec![");
+            out.push_str(&dparts.join(", "));
+            out.push_str("], next: State::");
             out.push_str(&next_v);
             out.push_str(" }\n");
           }
