@@ -39,15 +39,17 @@ pub struct RunContext {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum RunResult {
-  Done(Value),
-  /// futureId, varBind
-  Await(FutureId, Option<String>),
-  AsyncCall {
-    f_type: FiberType,
-    func: String,
-    args: Vec<Value>,
-    future_id: FutureId,
+  pub enum RunResult {
+    Done(Value),
+    /// futureId, varBind
+    Await(FutureId, Option<String>),
+    /// legacy await variant (kept while we migrate AwaitSpec)
+    AwaitOld(FutureId, Option<String>),
+    AsyncCall {
+      f_type: FiberType,
+      func: String,
+      args: Vec<Value>,
+      future_id: FutureId,
   },
   ScheduleTimer {
     ms: LogicalTimeAbsoluteMs,
@@ -344,6 +346,11 @@ impl Fiber {
           // Continue at `next_state` after the future resolves
           self.stack.push(StackEntry::State(next_state));
           return RunResult::Await(FutureId::from_label(future_id, self.unique_id), bind_result);
+        }
+        StepResult::AwaitOld(future_id, bind_result, next_state) => {
+          // Legacy path: same behavior as Await
+          self.stack.push(StackEntry::State(next_state));
+          return RunResult::AwaitOld(FutureId::from_label(future_id, self.unique_id), bind_result);
         }
         StepResult::SendToFiber { f_type, func, args, next, future_id } => {
           // Continue to `next` and bubble up async call details

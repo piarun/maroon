@@ -725,7 +725,7 @@ out
                   ),
                   (
                     StepId::new("await"),
-                    Step::Await(AwaitSpec::Future {
+                    Step::Await(AwaitSpecOld::Future {
                       bind: Some(LocalVarRef("sum")),
                       ret_to: StepId::new("return"),
                       future_id: FutureLabel::new("async_add_future_1"),
@@ -752,7 +752,7 @@ out
                   ),
                   (
                     StepId::new("await"),
-                    Step::Await(AwaitSpec::Future {
+                    Step::Await(AwaitSpecOld::Future {
                       bind: None,
                       ret_to: StepId::new("calc"),
                       future_id: FutureLabel::new("sleep_and_pow_entry_future"),

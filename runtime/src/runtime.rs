@@ -358,6 +358,10 @@ limiter:
             // specify bind parameters here
             self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
           }
+          RunResult::AwaitOld(future_id, var_bind) => {
+            // legacy variant: same handling as Await
+            self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
+          }
           RunResult::ScheduleTimer { ms, future_id } => {
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);

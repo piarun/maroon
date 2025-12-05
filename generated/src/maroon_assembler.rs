@@ -308,6 +308,8 @@ pub enum StepResult {
   Todo(String),
   // Await a future: (future_id, optional bind_var, next_state)
   Await(FutureLabel, Option<String>, State),
+  // Legacy await variant kept for backward compatibility
+  AwaitOld(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
   SendToFiber {
     f_type: FiberType,
@@ -432,7 +434,7 @@ pub fn global_step(
         future_id: FutureLabel::new("async_add_future_1"),
       }
     }
-    State::ApplicationAsyncFooAwait => StepResult::Await(
+    State::ApplicationAsyncFooAwait => StepResult::AwaitOld(
       FutureLabel::new("async_add_future_1"),
       Some("sum".to_string()),
       State::ApplicationAsyncFooReturn,
@@ -452,7 +454,7 @@ pub fn global_step(
       }
     }
     State::ApplicationSleepAndPowAwait => {
-      StepResult::Await(FutureLabel::new("sleep_and_pow_entry_future"), None, State::ApplicationSleepAndPowCalc)
+      StepResult::AwaitOld(FutureLabel::new("sleep_and_pow_entry_future"), None, State::ApplicationSleepAndPowCalc)
     }
     State::ApplicationSleepAndPowCalc => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };

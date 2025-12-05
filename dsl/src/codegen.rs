@@ -530,33 +530,35 @@ pub enum SetPrimitiveValue {
   Future { id: String, value: Value },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum StepResult {
-  Done,
-  Next(Vec<StackEntry>),
-  ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
-  GoTo(State),
-  Select(Vec<SelectArm>),
-  // Atomically create runtime primitives and branch based on outcome.
-  Create {
-    primitives: Vec<CreatePrimitiveValue>,
-    success_next: State,
-    success_binds: Vec<String>,
-    fail_next: State,
-    fail_binds: Vec<String>,
-  },
-  // Return can carry an optional value to be consumed by the runtime.
-  Return(Value),
-  ReturnVoid,
-  Todo(String),
-  // Await a future: (future_id, optional bind_var, next_state)
-  Await(FutureLabel, Option<String>, State),
-  // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
-  // Broadcast updates to async primitives (queues/futures) and continue to `next`.
-  SetValues { values: Vec<SetPrimitiveValue>, next: State },
-  // Debug
-  // Print a string message and continue to the provided next state.
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub enum StepResult {
+    Done,
+    Next(Vec<StackEntry>),
+    ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
+    GoTo(State),
+    Select(Vec<SelectArm>),
+    // Atomically create runtime primitives and branch based on outcome.
+    Create {
+      primitives: Vec<CreatePrimitiveValue>,
+      success_next: State,
+      success_binds: Vec<String>,
+      fail_next: State,
+      fail_binds: Vec<String>,
+    },
+    // Return can carry an optional value to be consumed by the runtime.
+    Return(Value),
+    ReturnVoid,
+    Todo(String),
+    // Await a future: (future_id, optional bind_var, next_state)
+    Await(FutureLabel, Option<String>, State),
+    // Legacy await variant kept for backward compatibility
+    AwaitOld(FutureLabel, Option<String>, State),
+    // Send a message to a fiber with function and typed args, then continue to `next`.
+    SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+    // Broadcast updates to async primitives (queues/futures) and continue to `next`.
+    SetValues { values: Vec<SetPrimitiveValue>, next: State },
+    // Debug
+    // Print a string message and continue to the provided next state.
   Debug(&'static str, State),
   // Print all current-frame vars in order and continue to next state.
   DebugPrintVars(State),
@@ -1434,20 +1436,20 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Await(spec) => {
               // Pause current task until a future resolves; push continuation state when resuming.
               match spec {
-                AwaitSpec::Future { bind, ret_to, future_id } => {
+                AwaitSpecOld::Future { bind, ret_to, future_id } => {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
                   match bind {
                     Some(name) => out.push_str(&format!(
-                      "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                      "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
                       future_id.0, name.0, next_v
                     )),
                     None => out.push_str(&format!(
-                      "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                      "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), None, State::{})\n",
                       future_id.0, next_v
                     )),
                   }
                 }
-                AwaitSpec::Queue { .. } => {
+                AwaitSpecOld::Queue { .. } => {
                   out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
                 }
               }
@@ -1895,20 +1897,20 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Await(spec) => {
             // Pause current task until a future resolves; push continuation state when resuming.
             match spec {
-              AwaitSpec::Future { bind, ret_to, future_id } => {
+              AwaitSpecOld::Future { bind, ret_to, future_id } => {
                 let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
                 match bind {
                   Some(name) => out.push_str(&format!(
-                    "      StepResult::Await(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
+                    "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
                     future_id.0, name.0, next_v
                   )),
                   None => out.push_str(&format!(
-                    "      StepResult::Await(FutureLabel::new(\"{}\"), None, State::{})\n",
+                    "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), None, State::{})\n",
                     future_id.0, next_v
                   )),
                 }
               }
-              AwaitSpec::Queue { .. } => {
+              AwaitSpecOld::Queue { .. } => {
                 out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
               }
             }
