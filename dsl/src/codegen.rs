@@ -512,9 +512,11 @@ pub enum StackEntry {
   FrameAssign(Vec<(usize, Value)>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SelectArm {
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub enum SelectArm {
   Future { future_id: FutureLabel, bind: Option<String>, next: State },
+  // New variant: future id taken from variable value
+  FutureVar { future_id: String, bind: Option<String>, next: State },
   Queue { queue_name: String, bind: String, next: State },
 }
 
@@ -1166,8 +1168,13 @@ fn generate_global_step(ir: &IR) -> String {
             Step::Await(_) => {}
             Step::Select { arms } => {
               for arm in arms {
-                if let AwaitSpec::Queue { queue_name, .. } = arm {
-                  referenced.insert(queue_name.0.to_string());
+                match arm {
+                  AwaitSpec::Queue { queue_name, .. } => {
+                    referenced.insert(queue_name.0.to_string());
+                  }
+                  AwaitSpec::Future { future_id, bind: _, ret_to: _ } => {
+                    referenced.insert(future_id.0.to_string());
+                  }
                 }
               }
             }
@@ -1382,14 +1389,19 @@ fn generate_global_step(ir: &IR) -> String {
                   }
                   AwaitSpec::Future { bind, ret_to, future_id } => {
                     let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                    let id_ident = camel_ident(future_id.0);
+                    let id_expr = match var_type_of(func, future_id.0) {
+                      Some(Type::Future(_)) => format!("{}.0.clone()", id_ident),
+                      _ => format!("{}.clone()", id_ident),
+                    };
                     match bind {
                     Some(name) => arm_parts.push(format!(
-                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
-                      future_id.0, name.0, next_v
+                      "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
+                      id_expr, name.0, next_v
                     )),
                     None => arm_parts.push(format!(
-                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
-                      future_id.0, next_v
+                      "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
+                      id_expr, next_v
                     )),
                   }
                   }
@@ -1633,8 +1645,13 @@ fn generate_global_step(ir: &IR) -> String {
           Step::Await(_) => {}
           Step::Select { arms } => {
             for arm in arms {
-              if let AwaitSpec::Queue { queue_name, .. } = arm {
-                referenced.insert(queue_name.0.to_string());
+              match arm {
+                AwaitSpec::Queue { queue_name, .. } => {
+                  referenced.insert(queue_name.0.to_string());
+                }
+                AwaitSpec::Future { future_id, .. } => {
+                  referenced.insert(future_id.0.to_string());
+                }
               }
             }
           }
@@ -1844,14 +1861,19 @@ fn generate_global_step(ir: &IR) -> String {
                 }
                 AwaitSpec::Future { bind, ret_to, future_id } => {
                   let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
+                  let id_ident = camel_ident(future_id.0);
+                  let id_expr = match var_type_of(func, future_id.0) {
+                    Some(Type::Future(_)) => format!("{}.0.clone()", id_ident),
+                    _ => format!("{}.clone()", id_ident),
+                  };
                   match bind {
                     Some(name) => arm_parts.push(format!(
-                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: Some(\"{}\".to_string()), next: State::{} }}",
-                      future_id.0, name.0, next_v
+                      "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
+                      id_expr, name.0, next_v
                     )),
                     None => arm_parts.push(format!(
-                      "SelectArm::Future {{ future_id: FutureLabel::new(\"{}\"), bind: None, next: State::{} }}",
-                      future_id.0, next_v
+                      "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
+                      id_expr, next_v
                     )),
                   }
                 }

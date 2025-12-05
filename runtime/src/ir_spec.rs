@@ -41,11 +41,15 @@ pub fn sample_ir() -> IR {
               Func{
                 in_vars: vec![],
                 out: Type::Void,
-                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String)], 
+                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String), LocalVar("futureId", Type::String)], 
                 steps: vec![
                 (
                   StepId::new("entry"),
-                  Step::Let { local: "counterStartQueueName".to_string(), expr: Expr::Str("counterStartQueue".to_string()), next: StepId::new("select_counter") },
+                Step::Let { local: "counterStartQueueName".to_string(), expr: Expr::Str("counterStartQueue".to_string()), next: StepId::new("init_future_id") },
+                ),
+                (
+                  StepId::new("init_future_id"),
+                  Step::Let { local: "futureId".to_string(), expr: Expr::Str("testSelectQueue_future_1".to_string()), next: StepId::new("select_counter") },
                 ),
                 (
                   StepId::new("select_counter"),
@@ -60,7 +64,7 @@ pub fn sample_ir() -> IR {
                       // in real life this future should be created or passed somehow
                       bind: Some(LocalVarRef("responseFromFut")),
                       ret_to: StepId::new("inc_from_fut"),
-                      future_id: FutureLabel::new("testSelectQueue_future_1"),
+                      future_id: LocalVarRef("futureId"),
                     }
                   ] },
                 ),

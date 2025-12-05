@@ -260,8 +260,8 @@ pub enum AwaitSpec {
   Future {
     bind: Option<LocalVarRef>,
     ret_to: StepId,
-    // TODO: get futureid from variable, so use LocalVarRef instead of Label. remove label
-    future_id: FutureLabel,
+    /// variable ref where queue id is located
+    future_id: LocalVarRef,
   },
   Queue {
     /// variable ref where queue name is located

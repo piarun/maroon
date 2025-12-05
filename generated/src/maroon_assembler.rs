@@ -204,6 +204,7 @@ pub enum State {
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
+  TestSelectQueueMainInitFutureId,
   TestSelectQueueMainReturn,
   TestSelectQueueMainSelectCounter,
   TestSelectQueueMainStartWork,
@@ -268,6 +269,8 @@ pub enum StackEntry {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SelectArm {
   Future { future_id: FutureLabel, bind: Option<String>, next: State },
+  // New variant: future id taken from variable value
+  FutureVar { future_id: String, bind: Option<String>, next: State },
   Queue { queue_name: String, bind: String, next: State },
 }
 
@@ -396,12 +399,13 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestRootFiberMainCreateQueueues => 2,
     State::TestRootFiberMainReturn => 2,
     State::TestRootFiberMainReturnDbg => 2,
-    State::TestSelectQueueMainEntry => 3,
-    State::TestSelectQueueMainCompare => 3,
-    State::TestSelectQueueMainIncFromFut => 3,
-    State::TestSelectQueueMainReturn => 3,
-    State::TestSelectQueueMainSelectCounter => 3,
-    State::TestSelectQueueMainStartWork => 3,
+    State::TestSelectQueueMainEntry => 4,
+    State::TestSelectQueueMainCompare => 4,
+    State::TestSelectQueueMainIncFromFut => 4,
+    State::TestSelectQueueMainInitFutureId => 4,
+    State::TestSelectQueueMainReturn => 4,
+    State::TestSelectQueueMainSelectCounter => 4,
+    State::TestSelectQueueMainStartWork => 4,
     State::TestTaskExecutorIncrementerMainEntry => 4,
     State::TestTaskExecutorIncrementerMainAwait => 4,
     State::TestTaskExecutorIncrementerMainDebug2 => 4,
@@ -1133,7 +1137,7 @@ pub fn global_step(
     State::TestRootFiberMainReturnDbg => StepResult::DebugPrintVars(State::TestRootFiberMainReturn),
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
-      StackEntry::State(State::TestSelectQueueMainSelectCounter),
+      StackEntry::State(State::TestSelectQueueMainInitFutureId),
     ]),
     State::TestSelectQueueMainCompare => {
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -1147,6 +1151,8 @@ pub fn global_step(
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let counterStartQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let futureId: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
@@ -1157,18 +1163,24 @@ pub fn global_step(
         ])
       }
     }
+    State::TestSelectQueueMainInitFutureId => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(3, Value::String("testSelectQueue_future_1".to_string()))]),
+      StackEntry::State(State::TestSelectQueueMainSelectCounter),
+    ]),
     State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
     State::TestSelectQueueMainSelectCounter => {
       let counterStartQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let futureId: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Select(vec![
         SelectArm::Queue {
           queue_name: counterStartQueueName.clone(),
           bind: "counter".to_string(),
           next: State::TestSelectQueueMainStartWork,
         },
-        SelectArm::Future {
-          future_id: FutureLabel::new("testSelectQueue_future_1"),
+        SelectArm::FutureVar {
+          future_id: futureId.clone(),
           bind: Some("responseFromFut".to_string()),
           next: State::TestSelectQueueMainIncFromFut,
         },
@@ -1178,6 +1190,8 @@ pub fn global_step(
       let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let counterStartQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let futureId: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
@@ -1948,6 +1962,7 @@ pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Value("counter".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("responseFromFut".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("counterStartQueueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("futureId".to_string(), Value::String(String::new())));
   stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)
