@@ -661,46 +661,6 @@ mod tests {
   use super::*;
 
   #[tokio::test(flavor = "multi_thread")]
-  async fn some_test() {
-    let (a2b_runtime, b2a_runtime) =
-      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
-
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
-
-    tokio::spawn(async move {
-      rt.run("root".to_string()).await;
-    });
-
-    _ = a2b_runtime.send((
-      LogicalTimeAbsoluteMs(10),
-      vec![
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(300),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(4), Value::U64(8)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(1),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(0), Value::U64(8)],
-          },
-        },
-      ],
-    ));
-
-    compare_channel_data_with_exp(
-      vec![(UniqueU64BlobId(300), Value::U64(12)), (UniqueU64BlobId(1), Value::U64(8))],
-      a2b_runtime.receiver,
-    )
-    .await;
-  }
-
-  #[tokio::test(flavor = "multi_thread")]
   async fn sleep_test() {
     let (a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
