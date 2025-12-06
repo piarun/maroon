@@ -2,8 +2,8 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  CreatePrimitiveValue, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count,
-  get_heap_init_fn, get_prepare_fn, get_result_fn, global_step,
+  CreatePrimitiveValue, FutureKind, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, SuccessBindKind,
+  Value, func_args_count, get_heap_init_fn, get_prepare_fn, get_result_fn, global_step, wrap_future_id,
 };
 
 use crate::trace::TraceEvent;
@@ -39,17 +39,17 @@ pub struct RunContext {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-  pub enum RunResult {
-    Done(Value),
-    /// futureId, varBind
-    Await(FutureId, Option<String>),
-    /// legacy await variant (kept while we migrate AwaitSpec)
-    AwaitOld(FutureId, Option<String>),
-    AsyncCall {
-      f_type: FiberType,
-      func: String,
-      args: Vec<Value>,
-      future_id: FutureId,
+pub enum RunResult {
+  Done(Value),
+  /// futureId, varBind
+  Await(FutureId, Option<String>),
+  /// legacy await variant (kept while we migrate AwaitSpec)
+  AwaitOld(FutureId, Option<String>),
+  AsyncCall {
+    f_type: FiberType,
+    func: String,
+    args: Vec<Value>,
+    future_id: FutureId,
   },
   ScheduleTimer {
     ms: LogicalTimeAbsoluteMs,
@@ -68,6 +68,7 @@ pub struct RunContext {
     primitives: Vec<CreatePrimitiveValue>,
     success_next: State,
     success_binds: Vec<String>,
+    success_kinds: Vec<SuccessBindKind>,
     fail_next: State,
     fail_binds: Vec<String>,
   },
@@ -216,6 +217,14 @@ impl Fiber {
     next: State,
   ) {
     self.assign_local(name, val);
+    self.stack.push(StackEntry::State(next));
+  }
+
+  /// Push next state on stack
+  pub fn push_next(
+    &mut self,
+    next: State,
+  ) {
     self.stack.push(StackEntry::State(next));
   }
 
@@ -376,9 +385,9 @@ impl Fiber {
           self.stack.push(StackEntry::State(next));
           return RunResult::CreateFibers { details };
         }
-        StepResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
+        StepResult::Create { primitives, success_next, success_binds, success_kinds, fail_next, fail_binds } => {
           // Do not push next yet; runtime will decide the branch and re-queue us
-          return RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds };
+          return RunResult::Create { primitives, success_next, success_binds, success_kinds, fail_next, fail_binds };
         }
         StepResult::SetValues { values, next } => {
           self.stack.push(StackEntry::State(next));

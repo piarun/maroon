@@ -499,9 +499,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("    _ => panic!(\"private_to_pub is only for PubQueueMessage values\"),\n  }\n}\n\n");
 
   // 6) Emit runtime-aligned scaffolding types and global_step
+  // StackEntry
   out.push_str(
-    r"
-#[derive(Clone, Debug, PartialEq, Eq)]
+    r"#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StackEntry {
   State(State),
   // Option<usize> - local index offset back on stack
@@ -511,9 +511,24 @@ pub enum StackEntry {
   // In-place updates to the current frame (offset -> new Value)
   FrameAssign(Vec<(usize, Value)>),
 }
+"
+  );
 
-  #[derive(Clone, Debug, PartialEq, Eq)]
-  pub enum SelectArm {
+  // FutureKind enum (dynamic variants)
+  out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum FutureKind {\n");
+  for w in future_wrappers.iter() { out.push_str(&format!("  {},\n", w)); }
+  out.push_str("}\n\n");
+  // Helper to wrap String id into a typed Future Value
+  out.push_str("pub fn wrap_future_id(kind: FutureKind, id: String) -> Value {\n  match kind {\n");
+  for w in future_wrappers.iter() { out.push_str(&format!("    FutureKind::{} => Value::{}({}(id)),\n", w, w, w)); }
+  out.push_str("  }\n}\n\n");
+  // SuccessBindKind and the rest
+  out.push_str(
+    r"#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SuccessBindKind { String, Future(FutureKind) }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectArm {
   Future { future_id: FutureLabel, bind: Option<String>, next: State },
   // New variant: future id taken from variable value
   FutureVar { future_id: String, bind: Option<String>, next: State },
@@ -532,43 +547,44 @@ pub enum SetPrimitiveValue {
   Future { id: String, value: Value },
 }
 
-  #[derive(Clone, Debug, PartialEq, Eq)]
-  pub enum StepResult {
-    Done,
-    Next(Vec<StackEntry>),
-    ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
-    GoTo(State),
-    Select(Vec<SelectArm>),
-    // Atomically create runtime primitives and branch based on outcome.
-    Create {
-      primitives: Vec<CreatePrimitiveValue>,
-      success_next: State,
-      success_binds: Vec<String>,
-      fail_next: State,
-      fail_binds: Vec<String>,
-    },
-    // Return can carry an optional value to be consumed by the runtime.
-    Return(Value),
-    ReturnVoid,
-    Todo(String),
-    // Await a future: (future_id, optional bind_var, next_state)
-    Await(FutureLabel, Option<String>, State),
-    // Legacy await variant kept for backward compatibility
-    AwaitOld(FutureLabel, Option<String>, State),
-    // Send a message to a fiber with function and typed args, then continue to `next`.
-    SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
-    // Broadcast updates to async primitives (queues/futures) and continue to `next`.
-    SetValues { values: Vec<SetPrimitiveValue>, next: State },
-    // Debug
-    // Print a string message and continue to the provided next state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StepResult {
+  Done,
+  Next(Vec<StackEntry>),
+  ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
+  GoTo(State),
+  Select(Vec<SelectArm>),
+  // Atomically create runtime primitives and branch based on outcome.
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    success_kinds: Vec<SuccessBindKind>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
+  // Return can carry an optional value to be consumed by the runtime.
+  Return(Value),
+  ReturnVoid,
+  Todo(String),
+  // Await a future: (future_id, optional bind_var, next_state)
+  Await(FutureLabel, Option<String>, State),
+  // Legacy await variant kept for backward compatibility
+  AwaitOld(FutureLabel, Option<String>, State),
+  // Send a message to a fiber with function and typed args, then continue to `next`.
+  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  // Broadcast updates to async primitives (queues/futures) and continue to `next`.
+  SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  // Debug
+  // Print a string message and continue to the provided next state.
   Debug(&'static str, State),
   // Print all current-frame vars in order and continue to next state.
   DebugPrintVars(State),
   // Spawn new fibers (fire-and-forget) and continue to `next`.
   // Runtime may ignore this for now; present for forward-compat.
   CreateFibers { details: Vec<(FiberType, Vec<Value>)>, next: State },
-}",
-  );
+}
+");
 
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
@@ -1277,9 +1293,12 @@ fn generate_global_step(ir: &IR) -> String {
               let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
               // Build primitives vec
               let mut parts: Vec<String> = Vec::new();
+              let mut kinds: Vec<String> = Vec::new();
               for p in primitives {
                 match p {
-                  crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
+                  crate::ir::RuntimePrimitive::Future => {
+                    parts.push("CreatePrimitiveValue::Future".to_string());
+                  }
                   crate::ir::RuntimePrimitive::Queue { name, public } => {
                     let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == name.0) {
                       format!("{}", pi)
@@ -1296,6 +1315,25 @@ fn generate_global_step(ir: &IR) -> String {
                   }
                 }
               }
+              // Build success kinds per bind
+              for (i, b) in success.id_binds.iter().enumerate() {
+                // Determine primitive kind at same index
+                let sk = match primitives.get(i) {
+                  Some(crate::ir::RuntimePrimitive::Queue { .. }) => "SuccessBindKind::String".to_string(),
+                  Some(crate::ir::RuntimePrimitive::Future) => {
+                    // If bound var type is Future<T>, map to correct FutureKind; else String
+                    if let Some(ty) = var_type_of(func, b.0) {
+                      if let Type::Future(inner) = ty {
+                        format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
+                      } else { "SuccessBindKind::String".to_string() }
+                    } else {
+                      "SuccessBindKind::String".to_string()
+                    }
+                  }
+                  None => "SuccessBindKind::String".to_string(),
+                };
+                kinds.push(sk);
+              }
               // Build bind name vectors
               let mut s_binds: Vec<String> = Vec::new();
               for b in &success.id_binds {
@@ -1311,6 +1349,8 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&success_v);
               out.push_str(", success_binds: vec![");
               out.push_str(&s_binds.join(", "));
+              out.push_str("], success_kinds: vec![");
+              out.push_str(&kinds.join(", "));
               out.push_str("], fail_next: State::");
               out.push_str(&fail_v);
               out.push_str(", fail_binds: vec![");
@@ -1753,6 +1793,7 @@ fn generate_global_step(ir: &IR) -> String {
             let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
             let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
             let mut parts: Vec<String> = Vec::new();
+            let mut kinds: Vec<String> = Vec::new();
             for p in primitives {
               match p {
                 crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
@@ -1772,6 +1813,21 @@ fn generate_global_step(ir: &IR) -> String {
                 }
               }
             }
+            // Build success kinds per bind
+            for (i, b) in success.id_binds.iter().enumerate() {
+              let sk = match primitives.get(i) {
+                Some(crate::ir::RuntimePrimitive::Queue { .. }) => "SuccessBindKind::String".to_string(),
+                Some(crate::ir::RuntimePrimitive::Future) => {
+                  if let Some(ty) = var_type_of(func, b.0) {
+                    if let Type::Future(inner) = ty {
+                      format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
+                    } else { "SuccessBindKind::String".to_string() }
+                  } else { "SuccessBindKind::String".to_string() }
+                }
+                None => "SuccessBindKind::String".to_string(),
+              };
+              kinds.push(sk);
+            }
             let mut s_binds: Vec<String> = Vec::new();
             for b in &success.id_binds {
               s_binds.push(format!("\"{}\".to_string()", b.0));
@@ -1786,6 +1842,8 @@ fn generate_global_step(ir: &IR) -> String {
             out.push_str(&success_v);
             out.push_str(", success_binds: vec![");
             out.push_str(&s_binds.join(", "));
+            out.push_str("], success_kinds: vec![");
+            out.push_str(&kinds.join(", "));
             out.push_str("], fail_next: State::");
             out.push_str(&fail_v);
             out.push_str(", fail_binds: vec![");

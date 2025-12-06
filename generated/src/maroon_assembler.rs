@@ -183,8 +183,12 @@ pub enum State {
   OrderBookTopNDepthEntry,
   RootMainEntry,
   TestCalculatorMainCalculate,
+  TestCalculatorMainDebugGottenTask,
+  TestCalculatorMainDebugVars,
   TestCalculatorMainEntry,
+  TestCalculatorMainResponse,
   TestCalculatorMainReturn,
+  TestCalculatorMainSelectQueue,
   TestCreateQueueMainAnswer,
   TestCreateQueueMainAwaitOnQueue,
   TestCreateQueueMainCleanUp,
@@ -196,11 +200,15 @@ pub enum State {
   TestCreateQueueMainExtractFutAndInc,
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
+  TestRootFiberMainAwaitResponse,
   TestRootFiberMainCreateFiber,
+  TestRootFiberMainCreateFuture,
   TestRootFiberMainCreateQueueues,
   TestRootFiberMainEntry,
+  TestRootFiberMainPrepareCalculationRequest,
   TestRootFiberMainReturn,
   TestRootFiberMainReturnDbg,
+  TestRootFiberMainSendCalculationRequest,
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
@@ -265,6 +273,27 @@ pub enum StackEntry {
   // In-place updates to the current frame (offset -> new Value)
   FrameAssign(Vec<(usize, Value)>),
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FutureKind {
+  FutureTestIncrementTask,
+  FutureU64,
+}
+
+pub fn wrap_future_id(
+  kind: FutureKind,
+  id: String,
+) -> Value {
+  match kind {
+    FutureKind::FutureTestIncrementTask => Value::FutureTestIncrementTask(FutureTestIncrementTask(id)),
+    FutureKind::FutureU64 => Value::FutureU64(FutureU64(id)),
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SuccessBindKind {
+  String,
+  Future(FutureKind),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SelectArm {
@@ -302,6 +331,7 @@ pub enum StepResult {
     primitives: Vec<CreatePrimitiveValue>,
     success_next: State,
     success_binds: Vec<String>,
+    success_kinds: Vec<SuccessBindKind>,
     fail_next: State,
     fail_binds: Vec<String>,
   },
@@ -338,6 +368,7 @@ pub enum StepResult {
     next: State,
   },
 }
+
 pub fn func_args_count(e: &State) -> usize {
   match e {
     State::ApplicationAsyncFooEntry => 3,
@@ -382,7 +413,11 @@ pub fn func_args_count(e: &State) -> usize {
     State::RootMainEntry => 0,
     State::TestCalculatorMainEntry => 3,
     State::TestCalculatorMainCalculate => 3,
+    State::TestCalculatorMainDebugGottenTask => 3,
+    State::TestCalculatorMainDebugVars => 3,
+    State::TestCalculatorMainResponse => 3,
     State::TestCalculatorMainReturn => 3,
+    State::TestCalculatorMainSelectQueue => 3,
     State::TestCreateQueueMainEntry => 6,
     State::TestCreateQueueMainAnswer => 6,
     State::TestCreateQueueMainAwaitOnQueue => 6,
@@ -394,11 +429,15 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestCreateQueueMainExtractFutAndInc => 6,
     State::TestCreateQueueMainReturn => 6,
     State::TestCreateQueueMainWrongQueueCreation => 6,
-    State::TestRootFiberMainEntry => 2,
-    State::TestRootFiberMainCreateFiber => 2,
-    State::TestRootFiberMainCreateQueueues => 2,
-    State::TestRootFiberMainReturn => 2,
-    State::TestRootFiberMainReturnDbg => 2,
+    State::TestRootFiberMainEntry => 6,
+    State::TestRootFiberMainAwaitResponse => 6,
+    State::TestRootFiberMainCreateFiber => 6,
+    State::TestRootFiberMainCreateFuture => 6,
+    State::TestRootFiberMainCreateQueueues => 6,
+    State::TestRootFiberMainPrepareCalculationRequest => 6,
+    State::TestRootFiberMainReturn => 6,
+    State::TestRootFiberMainReturnDbg => 6,
+    State::TestRootFiberMainSendCalculationRequest => 6,
     State::TestSelectQueueMainEntry => 4,
     State::TestSelectQueueMainCompare => 4,
     State::TestSelectQueueMainIncFromFut => 4,
@@ -974,14 +1013,7 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
-    State::TestCalculatorMainEntry => {
-      let calculationRequestsQueueName: String = heap.testCalculator.in_vars.calculationRequestsQueueName.clone();
-      StepResult::Select(vec![SelectArm::Queue {
-        queue_name: calculationRequestsQueueName.clone(),
-        bind: "request".to_string(),
-        next: State::TestCalculatorMainCalculate,
-      }])
-    }
+    State::TestCalculatorMainEntry => StepResult::DebugPrintVars(State::TestCalculatorMainSelectQueue),
     State::TestCalculatorMainCalculate => {
       let request: TestCalculatorTask =
         if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -993,11 +1025,32 @@ pub fn global_step(
         let (o0, o1) = out;
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(1, Value::U64(o0)), (2, Value::FutureU64(o1))]),
-          StackEntry::State(State::TestCalculatorMainReturn),
+          StackEntry::State(State::TestCalculatorMainResponse),
         ])
       }
     }
+    State::TestCalculatorMainDebugGottenTask => {
+      StepResult::Debug("got task from the queue", State::TestCalculatorMainDebugVars)
+    }
+    State::TestCalculatorMainDebugVars => StepResult::DebugPrintVars(State::TestCalculatorMainCalculate),
+    State::TestCalculatorMainResponse => {
+      let respFutureId: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![SetPrimitiveValue::Future { id: respFutureId.0.clone(), value: Value::U64(result.clone()) }],
+        next: State::TestCalculatorMainReturn,
+      }
+    }
     State::TestCalculatorMainReturn => StepResult::ReturnVoid,
+    State::TestCalculatorMainSelectQueue => {
+      let calculationRequestsQueueName: String = heap.testCalculator.in_vars.calculationRequestsQueueName.clone();
+      StepResult::Select(vec![SelectArm::Queue {
+        queue_name: calculationRequestsQueueName.clone(),
+        bind: "request".to_string(),
+        next: State::TestCalculatorMainDebugGottenTask,
+      }])
+    }
     State::TestCreateQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(1, Value::String("randomQueueName".to_string()))]),
       StackEntry::State(State::TestCreateQueueMainWrongQueueCreation),
@@ -1051,6 +1104,7 @@ pub fn global_step(
         }],
         success_next: State::TestCreateQueueMainDebugVars2,
         success_binds: vec!["created_queue_name".to_string()],
+        success_kinds: vec![SuccessBindKind::String],
         fail_next: State::TestCreateQueueMainReturn,
         fail_binds: vec!["f_queueCreationError".to_string()],
       }
@@ -1096,6 +1150,7 @@ pub fn global_step(
         ],
         success_next: State::TestCreateQueueMainReturn,
         success_binds: vec!["created_queue_name".to_string(), "created_queue_name".to_string()],
+        success_kinds: vec![SuccessBindKind::String, SuccessBindKind::String],
         fail_next: State::TestCreateQueueMainDebugVars,
         fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
       }
@@ -1104,6 +1159,15 @@ pub fn global_step(
       StackEntry::FrameAssign(vec![(0, Value::String("rootQueue".to_string()))]),
       StackEntry::State(State::TestRootFiberMainCreateQueueues),
     ]),
+    State::TestRootFiberMainAwaitResponse => {
+      let responseFutureId: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::FutureVar {
+        future_id: responseFutureId.0.clone(),
+        bind: Some("responseFromCalculator".to_string()),
+        next: State::TestRootFiberMainReturnDbg,
+      }])
+    }
     State::TestRootFiberMainCreateFiber => {
       let rootQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -1116,9 +1180,17 @@ pub fn global_step(
             unreachable!()
           })],
         )],
-        next: State::TestRootFiberMainReturnDbg,
+        next: State::TestRootFiberMainCreateFuture,
       }
     }
+    State::TestRootFiberMainCreateFuture => StepResult::Create {
+      primitives: vec![CreatePrimitiveValue::Future],
+      success_next: State::TestRootFiberMainPrepareCalculationRequest,
+      success_binds: vec!["responseFutureId".to_string()],
+      success_kinds: vec![SuccessBindKind::Future(FutureKind::FutureU64)],
+      fail_next: State::TestRootFiberMainReturnDbg,
+      fail_binds: vec!["createFutureError".to_string()],
+    },
     State::TestRootFiberMainCreateQueueues => {
       let rootQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -1129,12 +1201,47 @@ pub fn global_step(
         }],
         success_next: State::TestRootFiberMainCreateFiber,
         success_binds: vec!["rootQueueName".to_string()],
+        success_kinds: vec![SuccessBindKind::String],
         fail_next: State::TestRootFiberMainReturnDbg,
         fail_binds: vec!["createQueueError".to_string()],
       }
     }
+    State::TestRootFiberMainPrepareCalculationRequest => {
+      let calculatorTask: TestCalculatorTask =
+        if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let createFutureError: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let createQueueError: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let responseFromCalculator: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let responseFutureId: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let rootQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { TestCalculatorTask { a: 10, b: 15, responseFutureId: responseFutureId } };
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(1, Value::TestCalculatorTask(out))]),
+          StackEntry::State(State::TestRootFiberMainSendCalculationRequest),
+        ])
+      }
+    }
     State::TestRootFiberMainReturn => StepResult::ReturnVoid,
     State::TestRootFiberMainReturnDbg => StepResult::DebugPrintVars(State::TestRootFiberMainReturn),
+    State::TestRootFiberMainSendCalculationRequest => {
+      let calculatorTask: TestCalculatorTask =
+        if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let rootQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![SetPrimitiveValue::QueueMessage {
+          queue_name: rootQueueName.clone(),
+          value: Value::TestCalculatorTask(calculatorTask.clone()),
+        }],
+        next: State::TestRootFiberMainAwaitResponse,
+      }
+    }
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainInitFutureId),
@@ -1936,7 +2043,11 @@ pub fn testRootFiber_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("rootQueueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("calculatorTask".to_string(), Value::TestCalculatorTask(TestCalculatorTask::default())));
+  stack.push(StackEntry::Value("responseFutureId".to_string(), Value::FutureU64(FutureU64::default())));
+  stack.push(StackEntry::Value("responseFromCalculator".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("createQueueError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("createFutureError".to_string(), Value::OptionString(None)));
   stack.push(StackEntry::State(State::TestRootFiberMainEntry));
   let heap = Heap::default();
   (stack, heap)

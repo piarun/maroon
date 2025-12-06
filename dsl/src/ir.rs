@@ -205,7 +205,7 @@ pub struct SuccessCreateBranch {
   /// where to go in case of success
   pub next: StepId,
   /// ids of created primitives will be put here in the same order as requested
-  /// LocalVars should have type String, as we use this type for queues/futures ids
+  /// LocalVars should have type String for queues and Type::Future for futures
   pub id_binds: Vec<LocalVarRef>,
 }
 
@@ -727,15 +727,30 @@ fn uses_correct_variables(
           ));
         }
         for (i, p) in primitives.iter().enumerate() {
-          // success id bind must be String
+          // success id bind type must match the primitive kind:
+          // - Queue => String
+          // - Future => Future<T>
           if let Some(b) = success.id_binds.get(i) {
             match vars_map.get(b.0) {
-              Some(t) => {
-                if *t != Type::String {
-                  explanation
-                    .push_str(&format!("{:?} Create: success bind '{}' must be String, got {:?}\n", id, b.0, t));
+              Some(t) => match p {
+                RuntimePrimitive::Queue { .. } => {
+                  if *t != Type::String {
+                    explanation.push_str(&format!(
+                      "{:?} Create: success bind '{}' must be String, got {:?}\n",
+                      id, b.0, t
+                    ));
+                  }
                 }
-              }
+                RuntimePrimitive::Future => {
+                  match t {
+                    Type::Future(_) => {}
+                    other => explanation.push_str(&format!(
+                      "{:?} Create: success bind '{}' must be Future<T>, got {:?}\n",
+                      id, b.0, other
+                    )),
+                  }
+                }
+              },
               None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
             }
           }
