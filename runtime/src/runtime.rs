@@ -713,7 +713,7 @@ mod tests {
     compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(12))], a2b_runtime.receiver).await;
 
     let result = debug_out.lock();
-    assert_eq!(
+    assert_str_eq_by_lines(
       r#"--- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- start testCreateQueue:0 ---
@@ -744,7 +744,7 @@ f_res_inc=12
 --- await testCreateQueue:0 ---
 --- exit testCreateQueue:0 ---
 "#,
-      result.expect("should be object").as_str()
+      result.expect("should be object").as_str(),
     );
   }
 
@@ -762,7 +762,7 @@ f_res_inc=12
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let result = debug_out.lock();
-    assert_eq!(
+    assert_str_eq_by_lines(
       r#"--- start testRootFiber:0 ---
 --- await testRootFiber:0 ---
 --- start testRootFiber:0 ---
@@ -821,7 +821,7 @@ createFutureError2=OptionString(None)
 --- await testRootFiber:0 ---
 --- exit testRootFiber:0 ---
 "#,
-      result.expect("should be object").as_str()
+      result.expect("should be object").as_str(),
     );
   }
 
@@ -835,5 +835,37 @@ createFutureError2=OptionString(None)
     }
     // Ensure there are no extra messages
     assert!(ch.try_recv().is_err());
+  }
+
+  fn assert_str_eq_by_lines(
+    expected: &str,
+    actual: &str,
+  ) {
+    if expected == actual {
+      return;
+    }
+
+    let exp_lines: Vec<&str> = expected.lines().collect();
+    let act_lines: Vec<&str> = actual.lines().collect();
+    let max_len = exp_lines.len().max(act_lines.len());
+
+    let mut diffs = Vec::new();
+    for i in 0..max_len {
+      let e = exp_lines.get(i).copied();
+      let a = act_lines.get(i).copied();
+      match (e, a) {
+        (Some(e), Some(a)) if e == a => {}
+        (Some(e), Some(a)) => diffs.push(format!("{i}: -{e}\n   +{a}")),
+        (Some(e), None) => diffs.push(format!("{i}: -{e}\n   +<missing>")),
+        (None, Some(a)) => diffs.push(format!("{i}: -<missing>\n   +{a}")),
+        _ => {}
+      }
+    }
+
+    let shown = diffs.iter().take(30).cloned().collect::<Vec<_>>().join("\n");
+    let more =
+      if diffs.len() > 30 { format!("\n... and {} more differing lines", diffs.len() - 30) } else { String::new() };
+
+    panic!("String mismatch ({} vs {} lines). Diff by line:\n{}{}", exp_lines.len(), act_lines.len(), shown, more);
   }
 }
