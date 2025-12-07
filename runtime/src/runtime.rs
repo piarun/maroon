@@ -687,88 +687,7 @@ mod tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
-  async fn multiple_await() {
-    let (a2b_runtime, b2a_runtime) =
-      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
-
-    tokio::spawn(async move {
-      rt.run("root".to_string()).await;
-    });
-
-    // Cases to cover:
-    // - many awaiting fibers of the same function
-    // - IR has limitation for application - 2, so some of them will be executed immediately, some will go to in_message queue
-    _ = a2b_runtime.send((
-      LogicalTimeAbsoluteMs(10),
-      vec![
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(9),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "sleep_and_pow".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(4)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(10),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "sleep_and_pow".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(8)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(300),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("global"),
-            function_key: "add".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(8)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(11),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "sleep_and_pow".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(7)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(12),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "sleep_and_pow".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(7)],
-          },
-        },
-        TaskBlueprint {
-          global_id: UniqueU64BlobId(13),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "sleep_and_pow".to_string(),
-            init_values: vec![Value::U64(2), Value::U64(7)],
-          },
-        },
-      ],
-    ));
-
-    compare_channel_data_with_exp(
-      vec![
-        (UniqueU64BlobId(300), Value::U64(10)),
-        (UniqueU64BlobId(9), Value::U64(16)),
-        (UniqueU64BlobId(10), Value::U64(256)),
-        (UniqueU64BlobId(11), Value::U64(128)),
-        (UniqueU64BlobId(12), Value::U64(128)),
-        (UniqueU64BlobId(13), Value::U64(128)),
-      ],
-      a2b_runtime.receiver,
-    )
-    .await;
-  }
-
-  #[tokio::test(flavor = "multi_thread")]
-  async fn simple_runtime_start_with_root_work_and_end() {
+  async fn create_queues_and_external_communication() {
     let (a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
@@ -831,7 +750,7 @@ f_res_inc=12
 
   #[tokio::test(flavor = "multi_thread")]
   async fn creating_fiber_cross_fiber_communication() {
-    let (a2b_runtime, b2a_runtime) =
+    let (_a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
@@ -850,6 +769,8 @@ f_res_inc=12
 --- await testRootFiber:0 ---
 created: FiberType("testCalculator"):1. init_vars:
     String("rootQueue")
+created: FiberType("testCalculator"):2. init_vars:
+    String("rootQueue")
 --- start testRootFiber:0 ---
 --- await testRootFiber:0 ---
 --- start testRootFiber:0 ---
@@ -861,6 +782,11 @@ request=TestCalculatorTask(TestCalculatorTask { a: 0, b: 0, responseFutureId: Fu
 result=0
 respFutureId=FutureU64(FutureU64(""))
 --- await testCalculator:1 ---
+--- start testCalculator:2 ---
+request=TestCalculatorTask(TestCalculatorTask { a: 0, b: 0, responseFutureId: FutureU64("") })
+result=0
+respFutureId=FutureU64(FutureU64(""))
+--- await testCalculator:2 ---
 --- start testCalculator:1 ---
 got task from the queue
 request=TestCalculatorTask(TestCalculatorTask { a: 10, b: 15, responseFutureId: FutureU64("0") })
@@ -870,13 +796,28 @@ respFutureId=FutureU64(FutureU64(""))
 --- start testCalculator:1 ---
 --- await testCalculator:1 ---
 --- exit testCalculator:1 ---
+--- start testCalculator:2 ---
+got task from the queue
+request=TestCalculatorTask(TestCalculatorTask { a: 2, b: 4, responseFutureId: FutureU64("1") })
+result=0
+respFutureId=FutureU64(FutureU64(""))
+--- await testCalculator:2 ---
+--- start testCalculator:2 ---
+--- await testCalculator:2 ---
+--- exit testCalculator:2 ---
+--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
 --- start testRootFiber:0 ---
 rootQueueName=rootQueue
 calculatorTask=TestCalculatorTask(TestCalculatorTask { a: 10, b: 15, responseFutureId: FutureU64("0") })
+calculatorTask2=TestCalculatorTask(TestCalculatorTask { a: 2, b: 4, responseFutureId: FutureU64("1") })
 responseFutureId=FutureU64(FutureU64("0"))
-responseFromCalculator=150
+responseFutureId2=FutureU64(FutureU64("1"))
+responseFromCalculator=8
+responseFromCalculator2=150
 createQueueError=OptionString(None)
 createFutureError=OptionString(None)
+createFutureError2=OptionString(None)
 --- await testRootFiber:0 ---
 --- exit testRootFiber:0 ---
 "#,

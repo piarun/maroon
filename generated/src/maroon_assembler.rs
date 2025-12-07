@@ -201,11 +201,12 @@ pub enum State {
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
   TestRootFiberMainAwaitResponse,
+  TestRootFiberMainAwaitResponse2,
   TestRootFiberMainCreateFiber,
   TestRootFiberMainCreateFuture,
   TestRootFiberMainCreateQueueues,
   TestRootFiberMainEntry,
-  TestRootFiberMainPrepareCalculationRequest,
+  TestRootFiberMainPrepareCalculationRequests,
   TestRootFiberMainReturn,
   TestRootFiberMainReturnDbg,
   TestRootFiberMainSendCalculationRequest,
@@ -429,15 +430,16 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestCreateQueueMainExtractFutAndInc => 6,
     State::TestCreateQueueMainReturn => 6,
     State::TestCreateQueueMainWrongQueueCreation => 6,
-    State::TestRootFiberMainEntry => 6,
-    State::TestRootFiberMainAwaitResponse => 6,
-    State::TestRootFiberMainCreateFiber => 6,
-    State::TestRootFiberMainCreateFuture => 6,
-    State::TestRootFiberMainCreateQueueues => 6,
-    State::TestRootFiberMainPrepareCalculationRequest => 6,
-    State::TestRootFiberMainReturn => 6,
-    State::TestRootFiberMainReturnDbg => 6,
-    State::TestRootFiberMainSendCalculationRequest => 6,
+    State::TestRootFiberMainEntry => 10,
+    State::TestRootFiberMainAwaitResponse => 10,
+    State::TestRootFiberMainAwaitResponse2 => 10,
+    State::TestRootFiberMainCreateFiber => 10,
+    State::TestRootFiberMainCreateFuture => 10,
+    State::TestRootFiberMainCreateQueueues => 10,
+    State::TestRootFiberMainPrepareCalculationRequests => 10,
+    State::TestRootFiberMainReturn => 10,
+    State::TestRootFiberMainReturnDbg => 10,
+    State::TestRootFiberMainSendCalculationRequest => 10,
     State::TestSelectQueueMainEntry => 4,
     State::TestSelectQueueMainCompare => 4,
     State::TestSelectQueueMainIncFromFut => 4,
@@ -1160,11 +1162,20 @@ pub fn global_step(
       StackEntry::State(State::TestRootFiberMainCreateQueueues),
     ]),
     State::TestRootFiberMainAwaitResponse => {
+      let responseFutureId2: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::FutureVar {
+        future_id: responseFutureId2.0.clone(),
+        bind: Some("responseFromCalculator".to_string()),
+        next: State::TestRootFiberMainAwaitResponse2,
+      }])
+    }
+    State::TestRootFiberMainAwaitResponse2 => {
       let responseFutureId: FutureU64 =
-        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[3] { x.clone() } else { unreachable!() };
       StepResult::Select(vec![SelectArm::FutureVar {
         future_id: responseFutureId.0.clone(),
-        bind: Some("responseFromCalculator".to_string()),
+        bind: Some("responseFromCalculator2".to_string()),
         next: State::TestRootFiberMainReturnDbg,
       }])
     }
@@ -1172,24 +1183,37 @@ pub fn global_step(
       let rootQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::CreateFibers {
-        details: vec![(
-          FiberType::new("testCalculator"),
-          vec![Value::String(if let StackEntry::Value(_, Value::String(x)) = &vars[0] {
-            x.clone()
-          } else {
-            unreachable!()
-          })],
-        )],
+        details: vec![
+          (
+            FiberType::new("testCalculator"),
+            vec![Value::String(if let StackEntry::Value(_, Value::String(x)) = &vars[0] {
+              x.clone()
+            } else {
+              unreachable!()
+            })],
+          ),
+          (
+            FiberType::new("testCalculator"),
+            vec![Value::String(if let StackEntry::Value(_, Value::String(x)) = &vars[0] {
+              x.clone()
+            } else {
+              unreachable!()
+            })],
+          ),
+        ],
         next: State::TestRootFiberMainCreateFuture,
       }
     }
     State::TestRootFiberMainCreateFuture => StepResult::Create {
-      primitives: vec![CreatePrimitiveValue::Future],
-      success_next: State::TestRootFiberMainPrepareCalculationRequest,
-      success_binds: vec!["responseFutureId".to_string()],
-      success_kinds: vec![SuccessBindKind::Future(FutureKind::FutureU64)],
+      primitives: vec![CreatePrimitiveValue::Future, CreatePrimitiveValue::Future],
+      success_next: State::TestRootFiberMainPrepareCalculationRequests,
+      success_binds: vec!["responseFutureId".to_string(), "responseFutureId2".to_string()],
+      success_kinds: vec![
+        SuccessBindKind::Future(FutureKind::FutureU64),
+        SuccessBindKind::Future(FutureKind::FutureU64),
+      ],
       fail_next: State::TestRootFiberMainReturnDbg,
-      fail_binds: vec!["createFutureError".to_string()],
+      fail_binds: vec!["createFutureError".to_string(), "createFutureError2".to_string()],
     },
     State::TestRootFiberMainCreateQueueues => {
       let rootQueueName: String =
@@ -1206,23 +1230,37 @@ pub fn global_step(
         fail_binds: vec!["createQueueError".to_string()],
       }
     }
-    State::TestRootFiberMainPrepareCalculationRequest => {
+    State::TestRootFiberMainPrepareCalculationRequests => {
       let calculatorTask: TestCalculatorTask =
         if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let calculatorTask2: TestCalculatorTask =
+        if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let createFutureError: Option<String> =
-        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[5] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[8] { x.clone() } else { unreachable!() };
+      let createFutureError2: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[9] { x.clone() } else { unreachable!() };
       let createQueueError: Option<String> =
-        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[4] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[7] { x.clone() } else { unreachable!() };
       let responseFromCalculator: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::String(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let responseFromCalculator2: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[6] { x.clone() } else { unreachable!() };
       let responseFutureId: FutureU64 =
-        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let responseFutureId2: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
       let rootQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
       {
-        let out = { TestCalculatorTask { a: 10, b: 15, responseFutureId: responseFutureId } };
+        let out = {
+          (
+            TestCalculatorTask { a: 10, b: 15, responseFutureId: responseFutureId },
+            TestCalculatorTask { a: 2, b: 4, responseFutureId: responseFutureId2 },
+          )
+        };
+        let (o0, o1) = out;
         StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(1, Value::TestCalculatorTask(out))]),
+          StackEntry::FrameAssign(vec![(1, Value::TestCalculatorTask(o0)), (2, Value::TestCalculatorTask(o1))]),
           StackEntry::State(State::TestRootFiberMainSendCalculationRequest),
         ])
       }
@@ -1232,13 +1270,21 @@ pub fn global_step(
     State::TestRootFiberMainSendCalculationRequest => {
       let calculatorTask: TestCalculatorTask =
         if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let calculatorTask2: TestCalculatorTask =
+        if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let rootQueueName: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::SetValues {
-        values: vec![SetPrimitiveValue::QueueMessage {
-          queue_name: rootQueueName.clone(),
-          value: Value::TestCalculatorTask(calculatorTask.clone()),
-        }],
+        values: vec![
+          SetPrimitiveValue::QueueMessage {
+            queue_name: rootQueueName.clone(),
+            value: Value::TestCalculatorTask(calculatorTask.clone()),
+          },
+          SetPrimitiveValue::QueueMessage {
+            queue_name: rootQueueName.clone(),
+            value: Value::TestCalculatorTask(calculatorTask2.clone()),
+          },
+        ],
         next: State::TestRootFiberMainAwaitResponse,
       }
     }
@@ -2044,10 +2090,15 @@ pub fn testRootFiber_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("rootQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("calculatorTask".to_string(), Value::TestCalculatorTask(TestCalculatorTask::default())));
+  stack
+    .push(StackEntry::Value("calculatorTask2".to_string(), Value::TestCalculatorTask(TestCalculatorTask::default())));
   stack.push(StackEntry::Value("responseFutureId".to_string(), Value::FutureU64(FutureU64::default())));
+  stack.push(StackEntry::Value("responseFutureId2".to_string(), Value::FutureU64(FutureU64::default())));
   stack.push(StackEntry::Value("responseFromCalculator".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("responseFromCalculator2".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("createQueueError".to_string(), Value::OptionString(None)));
   stack.push(StackEntry::Value("createFutureError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("createFutureError2".to_string(), Value::OptionString(None)));
   stack.push(StackEntry::State(State::TestRootFiberMainEntry));
   let heap = Heap::default();
   (stack, heap)
