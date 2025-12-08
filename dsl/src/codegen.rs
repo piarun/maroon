@@ -511,16 +511,20 @@ pub enum StackEntry {
   // In-place updates to the current frame (offset -> new Value)
   FrameAssign(Vec<(usize, Value)>),
 }
-"
+",
   );
 
   // FutureKind enum (dynamic variants)
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum FutureKind {\n");
-  for w in future_wrappers.iter() { out.push_str(&format!("  {},\n", w)); }
+  for w in future_wrappers.iter() {
+    out.push_str(&format!("  {},\n", w));
+  }
   out.push_str("}\n\n");
   // Helper to wrap String id into a typed Future Value
   out.push_str("pub fn wrap_future_id(kind: FutureKind, id: String) -> Value {\n  match kind {\n");
-  for w in future_wrappers.iter() { out.push_str(&format!("    FutureKind::{} => Value::{}({}(id)),\n", w, w, w)); }
+  for w in future_wrappers.iter() {
+    out.push_str(&format!("    FutureKind::{} => Value::{}({}(id)),\n", w, w, w));
+  }
   out.push_str("  }\n}\n\n");
   // SuccessBindKind and the rest
   out.push_str(
@@ -587,7 +591,8 @@ pub enum StepResult {
   // Runtime may ignore this for now; present for forward-compat.
   CreateFibers { details: Vec<(FiberType, Vec<Value>)>, next: State },
 }
-");
+",
+  );
 
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
@@ -1149,7 +1154,6 @@ fn generate_global_step(ir: &IR) -> String {
           match entry_step {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
-            Step::ScheduleTimer { .. } => {}
             // handled below to capture referenced init_vars
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
@@ -1236,8 +1240,9 @@ fn generate_global_step(ir: &IR) -> String {
                 "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
               ));
             } else {
-              out
-                .push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
+              out.push_str(&format!(
+                "      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"
+              ));
             }
           }
           match entry_step {
@@ -1342,8 +1347,13 @@ fn generate_global_step(ir: &IR) -> String {
                     // If bound var type is Future<T>, map to correct FutureKind; else String
                     if let Some(ty) = var_type_of(func, b.0) {
                       if let Type::Future(inner) = ty {
-                        format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
-                      } else { "SuccessBindKind::String".to_string() }
+                        format!(
+                          "SuccessBindKind::Future(FutureKind::{})",
+                          format!("Future{}", type_variant_name(inner))
+                        )
+                      } else {
+                        "SuccessBindKind::String".to_string()
+                      }
                     } else {
                       "SuccessBindKind::String".to_string()
                     }
@@ -1378,13 +1388,6 @@ fn generate_global_step(ir: &IR) -> String {
             Step::DebugPrintVars(next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
-            }
-            Step::ScheduleTimer { ms, next, future_id } => {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              out.push_str(&format!(
-                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
-                ms.0, next_v, future_id.0
-              ));
             }
             Step::SetValues { values, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1453,15 +1456,15 @@ fn generate_global_step(ir: &IR) -> String {
                       _ => format!("{}.clone()", id_ident),
                     };
                     match bind {
-                    Some(name) => arm_parts.push(format!(
-                      "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
-                      id_expr, name.0, next_v
-                    )),
-                    None => arm_parts.push(format!(
-                      "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
-                      id_expr, next_v
-                    )),
-                  }
+                      Some(name) => arm_parts.push(format!(
+                        "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
+                        id_expr, name.0, next_v
+                      )),
+                      None => arm_parts.push(format!(
+                        "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
+                        id_expr, next_v
+                      )),
+                    }
                   }
                 }
               }
@@ -1665,7 +1668,6 @@ fn generate_global_step(ir: &IR) -> String {
         match step {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
-          Step::ScheduleTimer { .. } => {}
           // handled below to capture referenced init_vars
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
@@ -1755,7 +1757,9 @@ fn generate_global_step(ir: &IR) -> String {
               "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
             ));
           } else {
-            out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
+            out.push_str(&format!(
+              "      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"
+            ));
           }
         }
         match step {
@@ -1853,8 +1857,12 @@ fn generate_global_step(ir: &IR) -> String {
                   if let Some(ty) = var_type_of(func, b.0) {
                     if let Type::Future(inner) = ty {
                       format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
-                    } else { "SuccessBindKind::String".to_string() }
-                  } else { "SuccessBindKind::String".to_string() }
+                    } else {
+                      "SuccessBindKind::String".to_string()
+                    }
+                  } else {
+                    "SuccessBindKind::String".to_string()
+                  }
                 }
                 None => "SuccessBindKind::String".to_string(),
               };
@@ -1885,13 +1893,6 @@ fn generate_global_step(ir: &IR) -> String {
           Step::DebugPrintVars(next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
-          }
-          Step::ScheduleTimer { ms, next, future_id } => {
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            out.push_str(&format!(
-              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
-              ms.0, next_v, future_id.0
-            ));
           }
           Step::SetValues { values, next } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);

@@ -89,11 +89,6 @@ pub struct LocalVarRef(pub &'static str);
 
 #[derive(Debug, Clone)]
 pub enum Step {
-  ScheduleTimer {
-    ms: LogicalTimeAbsoluteMs,
-    next: StepId,
-    future_id: FutureLabel,
-  },
   /// send a message to a fiber (by name) of a specific kind with arguments, then continue
   /// doesn't awaits by default. I think that makes sense?
   /// but it can be used with await
@@ -466,7 +461,6 @@ fn uses_correct_variables(
     match step {
       Step::Debug(_, _) => {}
       Step::DebugPrintVars(_) => {}
-      Step::ScheduleTimer { .. } => {}
       Step::CreateFibers { details, .. } => {
         for d in details {
           // Fiber must exist

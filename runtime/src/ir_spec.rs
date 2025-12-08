@@ -891,41 +891,6 @@ out
                 ],
               },
             ),
-            (
-              "sleep_and_pow".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("pow", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::ScheduleTimer {
-                      ms: LogicalTimeAbsoluteMs(20),
-                      next: StepId::new("await"),
-                      future_id: FutureLabel::new("sleep_and_pow_entry_future"),
-                    },
-                  ),
-                  (
-                    StepId::new("await"),
-                    Step::Await(AwaitSpecOld::Future {
-                      bind: None,
-                      ret_to: StepId::new("calc"),
-                      future_id: FutureLabel::new("sleep_and_pow_entry_future"),
-                    }),
-                  ),
-                  (
-                    StepId::new("calc"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("pow")],
-                      code: "a.pow(b as u32)".to_string(),
-                      next: StepId::new("return".to_string()),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("pow")) }),
-                ],
-              },
-            ),
           ]),
         },
       ),
