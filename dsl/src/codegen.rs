@@ -539,6 +539,9 @@ pub enum SelectArm {
 pub enum CreatePrimitiveValue {
   Future,
   Queue { name: String, public: bool },
+  // Create a scheduled timer future that resolves after `ms` milliseconds.
+  // The created future is a Void future (Unit), i.e., it signals completion with no value.
+  Schedule { ms: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1313,6 +1316,21 @@ fn generate_global_step(ir: &IR) -> String {
                     );
                     parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
                   }
+                  crate::ir::RuntimePrimitive::Schedule { ms_var } => {
+                    // Extract ms value (u64) from current frame
+                    let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == ms_var.0) {
+                      format!("{}", pi)
+                    } else if let Some(li) = func.locals.iter().position(|l| l.0 == ms_var.0) {
+                      format!("{}", func.in_vars.len() + li)
+                    } else {
+                      "0".to_string()
+                    };
+                    let ms_expr = format!(
+                      "if let StackEntry::Value(_, Value::U64(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                      idx_expr
+                    );
+                    parts.push(format!("CreatePrimitiveValue::Schedule {{ ms: {} }}", ms_expr));
+                  }
                 }
               }
               // Build success kinds per bind
@@ -1320,7 +1338,7 @@ fn generate_global_step(ir: &IR) -> String {
                 // Determine primitive kind at same index
                 let sk = match primitives.get(i) {
                   Some(crate::ir::RuntimePrimitive::Queue { .. }) => "SuccessBindKind::String".to_string(),
-                  Some(crate::ir::RuntimePrimitive::Future) => {
+                  Some(crate::ir::RuntimePrimitive::Future) | Some(crate::ir::RuntimePrimitive::Schedule { .. }) => {
                     // If bound var type is Future<T>, map to correct FutureKind; else String
                     if let Some(ty) = var_type_of(func, b.0) {
                       if let Type::Future(inner) = ty {
@@ -1811,13 +1829,27 @@ fn generate_global_step(ir: &IR) -> String {
                   );
                   parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
                 }
+                crate::ir::RuntimePrimitive::Schedule { ms_var } => {
+                  let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == ms_var.0) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == ms_var.0) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  let ms_expr = format!(
+                    "if let StackEntry::Value(_, Value::U64(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                    idx_expr
+                  );
+                  parts.push(format!("CreatePrimitiveValue::Schedule {{ ms: {} }}", ms_expr));
+                }
               }
             }
             // Build success kinds per bind
             for (i, b) in success.id_binds.iter().enumerate() {
               let sk = match primitives.get(i) {
                 Some(crate::ir::RuntimePrimitive::Queue { .. }) => "SuccessBindKind::String".to_string(),
-                Some(crate::ir::RuntimePrimitive::Future) => {
+                Some(crate::ir::RuntimePrimitive::Future) | Some(crate::ir::RuntimePrimitive::Schedule { .. }) => {
                   if let Some(ty) = var_type_of(func, b.0) {
                     if let Type::Future(inner) = ty {
                       format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))

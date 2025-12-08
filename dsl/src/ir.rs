@@ -233,6 +233,10 @@ pub enum RuntimePrimitive {
     name: LocalVarRef,
     public: bool,
   },
+  /// creates a future that will be resolved after provided amount of milliseconds
+  Schedule {
+    ms_var: LocalVarRef,
+  },
 }
 
 #[derive(Debug, Clone)]
@@ -748,6 +752,17 @@ fn uses_correct_variables(
                   other => explanation
                     .push_str(&format!("{:?} Create: success bind '{}' must be Future<T>, got {:?}\n", id, b.0, other)),
                 },
+                RuntimePrimitive::Schedule { .. } => match t {
+                  Type::Future(inner) if **inner == Type::Void => {}
+                  Type::Future(inner) => explanation.push_str(&format!(
+                    "{:?} Create: success bind '{}' for Schedule must be Future<Void>, got Future<{:?}>\n",
+                    id, b.0, inner
+                  )),
+                  other => explanation.push_str(&format!(
+                    "{:?} Create: success bind '{}' for Schedule must be Future<Void>, got {:?}\n",
+                    id, b.0, other
+                  )),
+                },
               },
               None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
             }
@@ -772,6 +787,18 @@ fn uses_correct_variables(
                 }
               } else {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, qname.0));
+              }
+            }
+            RuntimePrimitive::Schedule { ms_var } => {
+              if let Some(t) = vars_map.get(ms_var.0) {
+                if *t != Type::UInt64 {
+                  explanation.push_str(&format!(
+                    "{:?} Create: schedule ms var '{}' must be U64, got {:?}\n",
+                    id, ms_var.0, t
+                  ));
+                }
+              } else {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, ms_var.0));
               }
             }
           }

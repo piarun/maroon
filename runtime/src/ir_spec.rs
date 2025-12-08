@@ -501,6 +501,59 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
+        FiberType::new("testRootFiberSleepTest"),
+        Fiber {
+          fibers_limit: 0,
+          heap: HashMap::new(),
+          in_messages:vec![],
+          init_vars:vec![InVar("await_milliseconds", Type::UInt64)],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![InVar("await_milliseconds", Type::UInt64)],
+                locals: vec![
+                  LocalVar("scheduledFutId", Type::Future(Box::new(Type::Void))),
+                  LocalVar("createScheduleError", Type::Option(Box::new(Type::String))),
+                ],
+                out: Type::Void,
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::DebugPrintVars(StepId::new("return"))
+                  ),
+                  (
+                    StepId::new("entry"),
+                    Step::Create { 
+                      primitives: vec![RuntimePrimitive::Schedule { ms_var: LocalVarRef("await_milliseconds") }], 
+                      success: SuccessCreateBranch { next: StepId::new("seelect"), id_binds: vec![LocalVarRef("scheduledFutId")] }, 
+                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createScheduleError")] },
+                    }
+                  ),
+                  (
+                    StepId::new("seelect"),
+                    Step::Select { arms: vec![
+                      AwaitSpec::Future { 
+                        bind: None, 
+                        ret_to: StepId::new("return_dbg"), 
+                        future_id: LocalVarRef("scheduledFutId"),
+                      }] },
+                  ),
+                  (
+                    StepId::new("return_dbg"),
+                    Step::DebugPrintVars(StepId::new("return")),
+                  ),
+                  (
+                    StepId::new("return"),
+                    Step::ReturnVoid,
+                  ),
+                ],
+              }
+            ),
+          ]),
+        },
+      ),
+      (
         FiberType::new("global"),
         Fiber {
           fibers_limit: 100,

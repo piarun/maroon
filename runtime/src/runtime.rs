@@ -434,6 +434,9 @@ limiter:
                 CreatePrimitiveValue::Future => {
                   errors.push(None);
                 }
+                CreatePrimitiveValue::Schedule { .. } => {
+                  errors.push(None);
+                }
               }
             }
 
@@ -461,6 +464,8 @@ limiter:
                   CreatePrimitiveValue::Future => {
                     ids.push(format!("{}", self.next_created_future_id));
                     self.next_created_future_id += 1;
+                  }
+                  CreatePrimitiveValue::Schedule { ms } => {
                   }
                 }
               }
