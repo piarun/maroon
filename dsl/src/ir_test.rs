@@ -17,7 +17,6 @@ fn is_valid_variables() {
       Fiber {
         fibers_limit: 0,
         heap: HashMap::new(),
-        in_messages: vec![],
         init_vars: vec![],
         funcs: HashMap::from([(
           "f1".to_string(),

@@ -73,12 +73,6 @@ pub struct FutureU64(pub String);
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FutureUnit(pub String);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ApplicationAsyncFooMsg {
-  pub a: u64,
-  pub b: u64,
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct ApplicationHeap {}
 

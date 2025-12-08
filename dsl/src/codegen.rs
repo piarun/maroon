@@ -265,11 +265,6 @@ pub fn generate_rust_types(ir: &IR) -> String {
       }
       collect_future_wrappers(ir, &func.out, &mut future_wrappers);
     }
-    for msg in &fiber.in_messages {
-      for (_fname, fty) in &msg.1 {
-        collect_future_wrappers(ir, fty, &mut future_wrappers);
-      }
-    }
   }
 
   for w in future_wrappers.iter() {
@@ -279,25 +274,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
     ));
   }
 
-  // 2) Emit message structs per fiber.in_messages (sorted by fiber, then message name)
+  // 2) Emit per-fiber heap structs and a unified Heap enum
   let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.0.cmp(&b.0));
-    for msg in &msgs {
-      let msg_ty = variant_name(&[fiber_name.0.as_str(), &msg.0, "Msg"]);
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\npub struct {} {{\n", msg_ty));
-      let mut fields_sorted = msg.1.clone();
-      fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
-      for (fname, fty) in &fields_sorted {
-        out.push_str(&format!("  pub {}: {},\n", camel_ident(fname), rust_type(fty)));
-      }
-      out.push_str("}\n\n");
-    }
-  }
-
-  // 3) Emit per-fiber heap structs and a unified Heap enum
   let mut heap_structs: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let heap_struct = variant_name(&[fiber_name.0.as_str(), "Heap"]);
@@ -332,7 +311,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("}\n\n");
 
-  // 4) Emit State enum variants for all steps of all funcs (always include entry).
+  // 3) Emit State enum variants for all steps of all funcs (always include entry).
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum State {\n");
   // Always include `Completed` and `Idle` as catch-alls to mirror runtime expectations.
   out.push_str("  Completed,\n  Idle,\n");
@@ -389,7 +368,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("}\n\n");
 
-  // 5) Emit Value enum compacted by Rust types actually used in IR (params, locals, returns, message fields).
+  // 4) Emit Value enum compacted by Rust types actually used in IR (params, locals, returns, message fields).
   use std::collections::BTreeMap;
   let mut used_types: BTreeMap<String, Type> = BTreeMap::new();
   for (_, fiber) in fibers_sorted.iter() {
@@ -407,13 +386,6 @@ pub fn generate_rust_types(ir: &IR) -> String {
         used_types.insert(type_variant_name(ty), ty.clone());
       }
       used_types.insert(type_variant_name(&func.out), func.out.clone());
-    }
-    let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.0.cmp(&b.0));
-    for msg in &msgs {
-      for (_, fty) in &msg.1 {
-        used_types.insert(type_variant_name(fty), fty.clone());
-      }
     }
   }
 
@@ -498,7 +470,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("    _ => panic!(\"private_to_pub is only for PubQueueMessage values\"),\n  }\n}\n\n");
 
-  // 6) Emit runtime-aligned scaffolding types and global_step
+  // 5) Emit runtime-aligned scaffolding types and global_step
   // StackEntry
   out.push_str(
     r"#[derive(Clone, Debug, PartialEq, Eq)]
@@ -2163,7 +2135,6 @@ mod tests {
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
-            in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
             init_vars: vec![],
             funcs: HashMap::from([(
               "get".into(),
@@ -2178,13 +2149,7 @@ mod tests {
         ),
         (
           FiberType::new("global"),
-          Fiber {
-            fibers_limit: 1,
-            heap: HashMap::new(),
-            in_messages: vec![],
-            init_vars: vec![],
-            funcs: HashMap::new(),
-          },
+          Fiber { fibers_limit: 1, heap: HashMap::new(), init_vars: vec![], funcs: HashMap::new() },
         ),
       ]),
     };
@@ -2192,7 +2157,6 @@ mod tests {
     let code = generate_rust_types(&ir);
     // Spot-check a few important bits are present.
     assert!(code.contains("pub struct User"));
-    assert!(code.contains("pub struct UserManagerGetUserMsg"));
     assert!(code.contains("pub struct Heap"));
     assert!(code.contains("pub enum State"));
     assert!(code.contains("UserManagerGetEntry"));

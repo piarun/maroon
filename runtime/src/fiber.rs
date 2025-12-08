@@ -2,8 +2,8 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  CreatePrimitiveValue, FutureKind, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, SuccessBindKind,
-  Value, func_args_count, get_heap_init_fn, get_prepare_fn, get_result_fn, global_step, wrap_future_id,
+  CreatePrimitiveValue, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, SuccessBindKind, Value,
+  func_args_count, get_heap_init_fn, get_prepare_fn, get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;

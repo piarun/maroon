@@ -1,4 +1,3 @@
-use common::logical_time::LogicalTimeAbsoluteMs;
 use dsl::ir::*;
 use std::collections::HashMap;
 
@@ -12,7 +11,6 @@ pub fn sample_ir() -> IR {
           fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -34,7 +32,6 @@ pub fn sample_ir() -> IR {
           fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -98,7 +95,6 @@ pub fn sample_ir() -> IR {
             InVar("in_taskQueueName", Type::String),
           ],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -181,7 +177,6 @@ pub fn sample_ir() -> IR {
           fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -291,7 +286,6 @@ pub fn sample_ir() -> IR {
           fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -434,7 +428,6 @@ pub fn sample_ir() -> IR {
             InVar("calculationRequestsQueueName", Type::String),
           ],
           heap: HashMap::new(),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -505,7 +498,6 @@ pub fn sample_ir() -> IR {
         Fiber {
           fibers_limit: 0,
           heap: HashMap::new(),
-          in_messages:vec![],
           init_vars:vec![],
           funcs: HashMap::from([
             (
@@ -560,7 +552,6 @@ pub fn sample_ir() -> IR {
           fibers_limit: 100,
           init_vars: vec![],
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -847,8 +838,6 @@ out
           fibers_limit: 2,
           init_vars: vec![],
           heap: HashMap::new(),
-          in_messages: vec![MessageSpec("async_foo", vec![("a", Type::UInt64), ("b", Type::UInt64)])],
-          // (StepId::new("await_in_message"), Step::Await(())),
           funcs: HashMap::from([
             (
               "main".to_string(),
@@ -915,7 +904,6 @@ out
               Type::Map(Box::new(Type::UInt64), Box::new(Type::Custom("OrderIndex".to_string()))),
             ),
           ]),
-          in_messages: vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
