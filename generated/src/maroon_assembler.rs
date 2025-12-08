@@ -116,14 +116,7 @@ pub struct TestCreateQueueHeap {}
 pub struct TestRootFiberHeap {}
 
 #[derive(Clone, Debug, Default)]
-pub struct TestRootFiberSleepTestHeap {
-  pub in_vars: TestRootFiberSleepTestInVars,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct TestRootFiberSleepTestInVars {
-  pub awaitMilliseconds: u64,
-}
+pub struct TestRootFiberSleepTestHeap {}
 
 #[derive(Clone, Debug, Default)]
 pub struct TestSelectQueueHeap {}
@@ -224,6 +217,7 @@ pub enum State {
   TestRootFiberMainReturn,
   TestRootFiberMainReturnDbg,
   TestRootFiberMainSendCalculationRequest,
+  TestRootFiberSleepTestMainCreatePrimitives,
   TestRootFiberSleepTestMainEntry,
   TestRootFiberSleepTestMainReturn,
   TestRootFiberSleepTestMainReturnDbg,
@@ -465,6 +459,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestRootFiberMainReturnDbg => 10,
     State::TestRootFiberMainSendCalculationRequest => 10,
     State::TestRootFiberSleepTestMainEntry => 3,
+    State::TestRootFiberSleepTestMainCreatePrimitives => 3,
     State::TestRootFiberSleepTestMainReturn => 3,
     State::TestRootFiberSleepTestMainReturnDbg => 3,
     State::TestRootFiberSleepTestMainSeelect => 3,
@@ -1316,16 +1311,25 @@ pub fn global_step(
         next: State::TestRootFiberMainAwaitResponse,
       }
     }
-    State::TestRootFiberSleepTestMainEntry => {
-      let await_milliseconds: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      StepResult::DebugPrintVars(State::TestRootFiberSleepTestMainReturn)
-    }
+    State::TestRootFiberSleepTestMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(2, Value::U64(150u64))]),
+      StackEntry::State(State::TestRootFiberSleepTestMainCreatePrimitives),
+    ]),
+    State::TestRootFiberSleepTestMainCreatePrimitives => StepResult::Create {
+      primitives: vec![CreatePrimitiveValue::Schedule {
+        ms: if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() },
+      }],
+      success_next: State::TestRootFiberSleepTestMainSeelect,
+      success_binds: vec!["scheduledFutId".to_string()],
+      success_kinds: vec![SuccessBindKind::Future(FutureKind::FutureUnit)],
+      fail_next: State::TestRootFiberSleepTestMainReturnDbg,
+      fail_binds: vec!["createScheduleError".to_string()],
+    },
     State::TestRootFiberSleepTestMainReturn => StepResult::ReturnVoid,
     State::TestRootFiberSleepTestMainReturnDbg => StepResult::DebugPrintVars(State::TestRootFiberSleepTestMainReturn),
     State::TestRootFiberSleepTestMainSeelect => {
       let scheduledFutId: FutureUnit =
-        if let StackEntry::Value(_, Value::FutureUnit(x)) = &vars[1] { x.clone() } else { unreachable!() };
+        if let StackEntry::Value(_, Value::FutureUnit(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::Select(vec![SelectArm::FutureVar {
         future_id: scheduledFutId.0.clone(),
         bind: None,
@@ -2162,12 +2166,12 @@ fn testRootFiber_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(testRootFiber_result_main(stack))
 }
 
-pub fn testRootFiberSleepTest_prepare_main(awaitMilliseconds: u64) -> (Vec<StackEntry>, Heap) {
+pub fn testRootFiberSleepTest_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("await_milliseconds".to_string(), Value::U64(awaitMilliseconds)));
   stack.push(StackEntry::Value("scheduledFutId".to_string(), Value::FutureUnit(FutureUnit::default())));
   stack.push(StackEntry::Value("createScheduleError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("await_milliseconds".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::State(State::TestRootFiberSleepTestMainEntry));
   let heap = Heap::default();
   (stack, heap)
@@ -2179,9 +2183,7 @@ pub fn testRootFiberSleepTest_result_main(stack: &[StackEntry]) -> () {
 }
 
 fn testRootFiberSleepTest_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let awaitMilliseconds: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for testRootFiberSleepTest.main") };
-  let (stack, _heap) = testRootFiberSleepTest_prepare_main(awaitMilliseconds);
+  let (stack, _heap) = testRootFiberSleepTest_prepare_main();
   stack
 }
 
@@ -2374,16 +2376,13 @@ fn testRootFiber_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   testRootFiber_prepare_heap()
 }
 
-pub fn testRootFiberSleepTest_prepare_heap(awaitMilliseconds: u64) -> Heap {
+pub fn testRootFiberSleepTest_prepare_heap() -> Heap {
   let mut heap = Heap::default();
-  heap.testRootFiberSleepTest.in_vars.awaitMilliseconds = awaitMilliseconds;
   heap
 }
 
 fn testRootFiberSleepTest_prepare_heap_from_values(args: Vec<Value>) -> Heap {
-  let awaitMilliseconds: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid init var for testRootFiberSleepTest") };
-  testRootFiberSleepTest_prepare_heap(awaitMilliseconds)
+  testRootFiberSleepTest_prepare_heap()
 }
 
 pub fn testSelectQueue_prepare_heap() -> Heap {

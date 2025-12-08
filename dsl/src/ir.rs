@@ -792,10 +792,8 @@ fn uses_correct_variables(
             RuntimePrimitive::Schedule { ms_var } => {
               if let Some(t) = vars_map.get(ms_var.0) {
                 if *t != Type::UInt64 {
-                  explanation.push_str(&format!(
-                    "{:?} Create: schedule ms var '{}' must be U64, got {:?}\n",
-                    id, ms_var.0, t
-                  ));
+                  explanation
+                    .push_str(&format!("{:?} Create: schedule ms var '{}' must be U64, got {:?}\n", id, ms_var.0, t));
                 }
               } else {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, ms_var.0));

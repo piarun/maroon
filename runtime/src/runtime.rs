@@ -296,14 +296,17 @@ limiter:
     'main_loop: loop {
       let now = self.timer.from_start();
 
-      // take scheduled Fibers and push them to active_fibers if it's time to work on them
+      // take scheduled futures and either wake parked fibers (old AwaitOld path)
+      // or enqueue a resolved Unit value for Select-based waiters
       if let Some(blob) = self.scheduled.peek() {
         if now >= blob.when {
           let blob = self.scheduled.pop().unwrap();
-
           if let Some(task_box) = self.parked_fibers.remove(&blob.what) {
             self.active_fibers.push_front(task_box.fiber);
-          };
+          } else {
+            // we end up here because parked_fibers is for 'old' api that will be removed later
+            self.resolved_futures.push_front((blob.what, Value::Unit(())));
+          }
         }
       }
 
@@ -466,6 +469,13 @@ limiter:
                     self.next_created_future_id += 1;
                   }
                   CreatePrimitiveValue::Schedule { ms } => {
+                    let id = format!("{}", self.next_created_future_id);
+                    self.next_created_future_id += 1;
+                    self.scheduled.push(ScheduledBlob {
+                      when: self.timer.from_start() + LogicalTimeAbsoluteMs(ms),
+                      what: FutureId(id.clone()),
+                    });
+                    ids.push(id);
                   }
                 }
               }
@@ -659,36 +669,68 @@ mod tests {
   use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
-  use generated::maroon_assembler::{TestCreateQueueMessage, TestCreateQueueMessagePub};
+  use generated::maroon_assembler::TestCreateQueueMessagePub;
   use std::fmt::Debug;
   use tokio::sync::mpsc::UnboundedReceiver;
 
   use super::*;
 
   #[tokio::test(flavor = "multi_thread")]
-  async fn sleep_test() {
-    let (a2b_runtime, b2a_runtime) =
-      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+  async fn scheduled_select() {
+    // wait more than 150 ms
+    {
+      let (_a2b_runtime, b2a_runtime) =
+        create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+      let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+      let debug_out = rt.debug_handle();
+      tokio::spawn(async move {
+        rt.run("testRootFiberSleepTest".to_string()).await;
+      });
 
-    tokio::spawn(async move {
-      rt.run("root".to_string()).await;
-    });
+      tokio::time::sleep(Duration::from_millis(200)).await;
 
-    _ = a2b_runtime.send((
-      LogicalTimeAbsoluteMs(10),
-      vec![TaskBlueprint {
-        global_id: UniqueU64BlobId(9),
-        source: TaskBPSource::FiberFunc {
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(4)],
-        },
-      }],
-    ));
+      let result = debug_out.lock();
+      assert_str_eq_by_lines(
+        r#"--- start testRootFiberSleepTest:0 ---
+--- await testRootFiberSleepTest:0 ---
+--- start testRootFiberSleepTest:0 ---
+--- await testRootFiberSleepTest:0 ---
+--- start testRootFiberSleepTest:0 ---
+scheduledFutId=FutureUnit(FutureUnit("0"))
+createScheduleError=OptionString(None)
+await_milliseconds=150
+--- await testRootFiberSleepTest:0 ---
+--- exit testRootFiberSleepTest:0 ---
+"#,
+        result.expect("should be object").as_str(),
+      );
+    }
 
-    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(16))], a2b_runtime.receiver).await;
+    // wait less than 150 ms
+    // see that fiber started to await but hasn't been resolved after 10 ms awaiting
+    {
+      let (_a2b_runtime, b2a_runtime) =
+        create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+
+      let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+      let debug_out = rt.debug_handle();
+      tokio::spawn(async move {
+        rt.run("testRootFiberSleepTest".to_string()).await;
+      });
+
+      tokio::time::sleep(Duration::from_millis(10)).await;
+
+      let result = debug_out.lock();
+      assert_str_eq_by_lines(
+        r#"--- start testRootFiberSleepTest:0 ---
+--- await testRootFiberSleepTest:0 ---
+--- start testRootFiberSleepTest:0 ---
+--- await testRootFiberSleepTest:0 ---
+"#,
+        result.expect("should be object").as_str(),
+      );
+    }
   }
 
   #[tokio::test(flavor = "multi_thread")]
@@ -871,6 +913,13 @@ createFutureError2=OptionString(None)
     let more =
       if diffs.len() > 30 { format!("\n... and {} more differing lines", diffs.len() - 30) } else { String::new() };
 
-    panic!("String mismatch ({} vs {} lines). Diff by line:\n{}{}", exp_lines.len(), act_lines.len(), shown, more);
+    panic!(
+      "String mismatch ({} vs {} lines). Diff by line:\n{}{}\n\nactual:{}",
+      exp_lines.len(),
+      act_lines.len(),
+      shown,
+      more,
+      actual
+    );
   }
 }

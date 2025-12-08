@@ -506,24 +506,25 @@ pub fn sample_ir() -> IR {
           fibers_limit: 0,
           heap: HashMap::new(),
           in_messages:vec![],
-          init_vars:vec![InVar("await_milliseconds", Type::UInt64)],
+          init_vars:vec![],
           funcs: HashMap::from([
             (
               "main".to_string(),
               Func {
-                in_vars: vec![InVar("await_milliseconds", Type::UInt64)],
+                in_vars: vec![],
                 locals: vec![
                   LocalVar("scheduledFutId", Type::Future(Box::new(Type::Void))),
                   LocalVar("createScheduleError", Type::Option(Box::new(Type::String))),
+                  LocalVar("await_milliseconds", Type::UInt64),
                 ],
                 out: Type::Void,
                 steps: vec![
                   (
                     StepId::new("entry"),
-                    Step::DebugPrintVars(StepId::new("return"))
+                    Step::Let { local: "await_milliseconds".to_string(), expr: Expr::UInt64(150), next: StepId::new("create_primitives") }
                   ),
                   (
-                    StepId::new("entry"),
+                    StepId::new("create_primitives"),
                     Step::Create { 
                       primitives: vec![RuntimePrimitive::Schedule { ms_var: LocalVarRef("await_milliseconds") }], 
                       success: SuccessCreateBranch { next: StepId::new("seelect"), id_binds: vec![LocalVarRef("scheduledFutId")] }, 
