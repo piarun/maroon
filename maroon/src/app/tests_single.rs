@@ -8,11 +8,10 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::{KeyOffset, KeyRange, U64BlobIdClosedInterval, UniqueU64BlobId};
 use epoch_coordinator::epoch::Epoch;
 use epoch_coordinator::interface::{EpochUpdates, create_interface_pair as create_epoch_coordinator_interface_pair};
-use generated::maroon_assembler::Value;
+use generated::maroon_assembler::{TestInfiniteSummatorQueueMessagePub, Value};
 use libp2p::PeerId;
 use protocol::node2gw::TxUpdate;
 use protocol::transaction::{Meta, TxStatus};
-use runtime::ir::FiberType;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBPSource, TaskBlueprint};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -327,20 +326,18 @@ async fn app_executes_after_epoch_confirmed() {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(0),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(1), Value::U64(1)],
-          },
+          source: TaskBPSource::Queue {
+            q_name: "testInfiniteCalculatorQueue".to_string(),
+            value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
+          }
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          source: TaskBPSource::FiberFunc {
-            fiber_type: FiberType::new("application"),
-            function_key: "async_foo".to_string(),
-            init_values: vec![Value::U64(1), Value::U64(1)],
-          },
-        }
+          source: TaskBPSource::Queue {
+            q_name: "testInfiniteCalculatorQueue".to_string(),
+            value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
+          }
+        },
       ]
     )),
     increment

@@ -16,7 +16,7 @@ use types::range_key::{KeyRange, UniqueU64BlobId, full_interval_for_range};
 
 #[derive(Debug, Clone, Serialize)]
 pub enum MonitorEvent {
-  NewRequest { id: UniqueU64BlobId, fiber_type: FiberType, function_key: String, init_values: Vec<Value> },
+  NewRequest { id: UniqueU64BlobId, queue: String, value: Value },
   TxUpdate { meta: Meta, result: Option<Value> },
 }
 
@@ -120,6 +120,7 @@ impl Gateway {
   }
 }
 
+/// gateway sends new request to maroon node
 fn handle_send_new_request(
   sender: &UnboundedSender<Outbox>,
   request: NewRequest,
@@ -133,12 +134,8 @@ fn handle_send_new_request(
     ws_registry.insert(id, sock);
   }
 
-  let _ = monitor_tx.send(MonitorEvent::NewRequest {
-    id,
-    fiber_type: bp_for_monitor.fiber_type,
-    function_key: bp_for_monitor.function_key,
-    init_values: bp_for_monitor.init_values,
-  });
+  let _ =
+    monitor_tx.send(MonitorEvent::NewRequest { id, queue: bp_for_monitor.queue_name, value: bp_for_monitor.param });
 }
 
 async fn handle_inbox(

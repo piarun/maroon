@@ -17,9 +17,19 @@ pub fn sample_ir() -> IR {
               Func{in_vars: vec![],out: Type::Void, locals: vec![], steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::CreateFibers { 
+                    details: vec![CreateFiberDetail{
+                      f_name: FiberType::new("testInfiniteSummator"),
+                      init_vars: vec![],
+                    }], 
+                    next: StepId::new("return"),
+                  },
+                ),
+                (
+                  StepId::new("return"),
                   Step::ReturnVoid,
                 ),
-              ]},
+              ]}, 
             ),
           ]),
         }
@@ -546,6 +556,86 @@ pub fn sample_ir() -> IR {
           ]),
         },
       ),
+       (
+        FiberType::new("testInfiniteSummator"),
+        Fiber {
+          fibers_limit: 0,
+          init_vars: vec![],
+          heap: HashMap::new(),
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("infiniteCalculatorQueue", Type::String),
+                  LocalVar("request", Type::Custom("TestInfiniteSummatorQueueMessage".to_string())),
+                  LocalVar("result", Type::UInt64),
+                  LocalVar("createQueueError", Type::Option(Box::new(Type::String))),
+                  LocalVar("respFutureId", Type::Future(Box::new(Type::UInt64))),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::Let { 
+                      local: "infiniteCalculatorQueue".to_string(), 
+                      expr: Expr::Str("testInfiniteCalculatorQueue".to_string()), 
+                      next: StepId::new("create_queue"),
+                    }
+                  ),
+                  (
+                    StepId::new("create_queue"),
+                    Step::Create { 
+                      primitives: vec![RuntimePrimitive::Queue { name: LocalVarRef("infiniteCalculatorQueue"), public: true }], 
+                      success: SuccessCreateBranch { 
+                        next: StepId::new("select_queue"), 
+                        id_binds: vec![LocalVarRef("infiniteCalculatorQueue")],
+                      }, 
+                      fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("createQueueError")] },
+                    }
+                  ),
+                  (
+                    StepId::new("select_queue"),
+                    Step::Select { arms: vec![
+                      AwaitSpec::Queue { 
+                        queue_name: LocalVarRef("infiniteCalculatorQueue"), 
+                        message_var: LocalVarRef("request"), 
+                        next: StepId::new("calculate"),
+                      },
+                    ] },
+                  ),
+                  (
+                    StepId::new("calculate"),
+                    Step::RustBlock { 
+                      binds: vec![
+                        LocalVarRef("result"), 
+                        LocalVarRef("respFutureId"),
+                      ], 
+                      code: "(request.a * request.b, request.publicFutureId)".to_string(), 
+                      next: StepId::new("response"),
+                    },
+                  ),
+                  (
+                    StepId::new("response"),
+                    Step::SetValues { 
+                      values: vec![SetPrimitive::Future { 
+                        f_var_name: LocalVarRef("respFutureId"), 
+                        var_name: LocalVarRef("result"),
+                      }], 
+                      next: StepId::new("select_queue"), // loop here
+                    },
+                  ),
+                  (
+                    StepId::new("return"),
+                    Step::ReturnVoid,
+                  ),
+                ],
+              },
+            )
+          ]),
+        }
+      ),
       (
         FiberType::new("global"),
         Fiber {
@@ -914,6 +1004,15 @@ out
         ],
         String::new(),
       ),
+      Type::PubQueueMessage{
+        name:"TestInfiniteSummatorQueueMessage".to_string(),
+        fields:vec![
+          StructField { name: "a".to_string(), ty: Type::UInt64},
+          StructField { name: "b".to_string(), ty: Type::UInt64},
+          StructField { name: "public_future_id".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
+        ],
+        rust_additions:String::new(),
+      },
   ],
   }
 }

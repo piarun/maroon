@@ -32,6 +32,19 @@ pub struct TestCalculatorTask {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestInfiniteSummatorQueueMessagePub {
+  pub a: u64,
+  pub b: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestInfiniteSummatorQueueMessage {
+  pub a: u64,
+  pub b: u64,
+  pub publicFutureId: FutureU64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FutureTestIncrementTask(pub String);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +78,9 @@ pub struct TestCalculatorInVars {
 pub struct TestCreateQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestInfiniteSummatorHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct TestRootFiberHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -90,6 +106,7 @@ pub struct Heap {
   pub root: RootHeap,
   pub testCalculator: TestCalculatorHeap,
   pub testCreateQueue: TestCreateQueueHeap,
+  pub testInfiniteSummator: TestInfiniteSummatorHeap,
   pub testRootFiber: TestRootFiberHeap,
   pub testRootFiberSleepTest: TestRootFiberSleepTestHeap,
   pub testSelectQueue: TestSelectQueueHeap,
@@ -130,6 +147,7 @@ pub enum State {
   GlobalSubAddFinalize,
   GlobalSubAddSubSum,
   RootMainEntry,
+  RootMainReturn,
   TestCalculatorMainCalculate,
   TestCalculatorMainDebugGottenTask,
   TestCalculatorMainDebugVars,
@@ -148,6 +166,12 @@ pub enum State {
   TestCreateQueueMainExtractFutAndInc,
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
+  TestInfiniteSummatorMainCalculate,
+  TestInfiniteSummatorMainCreateQueue,
+  TestInfiniteSummatorMainEntry,
+  TestInfiniteSummatorMainResponse,
+  TestInfiniteSummatorMainReturn,
+  TestInfiniteSummatorMainSelectQueue,
   TestRootFiberMainAwaitResponse,
   TestRootFiberMainAwaitResponse2,
   TestRootFiberMainCreateFiber,
@@ -193,6 +217,8 @@ pub enum Value {
   TestCreateQueueMessage(TestCreateQueueMessage),
   TestCreateQueueMessagePub(TestCreateQueueMessagePub),
   TestIncrementTask(TestIncrementTask),
+  TestInfiniteSummatorQueueMessage(TestInfiniteSummatorQueueMessage),
+  TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub),
   U64(u64),
   Unit(()),
 }
@@ -205,6 +231,13 @@ pub fn pub_to_private(
     Value::TestCreateQueueMessagePub(m) => {
       Value::TestCreateQueueMessage(TestCreateQueueMessage { value: m.value, publicFutureId: FutureU64(future_id) })
     }
+    Value::TestInfiniteSummatorQueueMessagePub(m) => {
+      Value::TestInfiniteSummatorQueueMessage(TestInfiniteSummatorQueueMessage {
+        a: m.a,
+        b: m.b,
+        publicFutureId: FutureU64(future_id),
+      })
+    }
     _ => panic!("pub_to_private is only for PubQueueMessage values"),
   }
 }
@@ -212,6 +245,9 @@ pub fn pub_to_private(
 pub fn private_to_pub(val: Value) -> Value {
   match val {
     Value::TestCreateQueueMessage(m) => Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: m.value }),
+    Value::TestInfiniteSummatorQueueMessage(m) => {
+      Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: m.a, b: m.b })
+    }
     _ => panic!("private_to_pub is only for PubQueueMessage values"),
   }
 }
@@ -359,6 +395,7 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
     State::RootMainEntry => 0,
+    State::RootMainReturn => 0,
     State::TestCalculatorMainEntry => 3,
     State::TestCalculatorMainCalculate => 3,
     State::TestCalculatorMainDebugGottenTask => 3,
@@ -377,6 +414,12 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestCreateQueueMainExtractFutAndInc => 6,
     State::TestCreateQueueMainReturn => 6,
     State::TestCreateQueueMainWrongQueueCreation => 6,
+    State::TestInfiniteSummatorMainEntry => 5,
+    State::TestInfiniteSummatorMainCalculate => 5,
+    State::TestInfiniteSummatorMainCreateQueue => 5,
+    State::TestInfiniteSummatorMainResponse => 5,
+    State::TestInfiniteSummatorMainReturn => 5,
+    State::TestInfiniteSummatorMainSelectQueue => 5,
     State::TestRootFiberMainEntry => 10,
     State::TestRootFiberMainAwaitResponse => 10,
     State::TestRootFiberMainAwaitResponse2 => 10,
@@ -667,7 +710,11 @@ pub fn global_step(
         StackEntry::State(State::GlobalSubEntry),
       ])
     }
-    State::RootMainEntry => StepResult::ReturnVoid,
+    State::RootMainEntry => StepResult::CreateFibers {
+      details: vec![(FiberType::new("testInfiniteSummator"), vec![])],
+      next: State::RootMainReturn,
+    },
+    State::RootMainReturn => StepResult::ReturnVoid,
     State::TestCalculatorMainEntry => StepResult::DebugPrintVars(State::TestCalculatorMainSelectQueue),
     State::TestCalculatorMainCalculate => {
       let request: TestCalculatorTask =
@@ -809,6 +856,67 @@ pub fn global_step(
         fail_next: State::TestCreateQueueMainDebugVars,
         fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
       }
+    }
+    State::TestInfiniteSummatorMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(0, Value::String("testInfiniteCalculatorQueue".to_string()))]),
+      StackEntry::State(State::TestInfiniteSummatorMainCreateQueue),
+    ]),
+    State::TestInfiniteSummatorMainCalculate => {
+      let createQueueError: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let infiniteCalculatorQueue: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let request: TestInfiniteSummatorQueueMessage =
+        if let StackEntry::Value(_, Value::TestInfiniteSummatorQueueMessage(x)) = &vars[1] {
+          x.clone()
+        } else {
+          unreachable!()
+        };
+      let respFutureId: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      {
+        let out = { (request.a * request.b, request.publicFutureId) };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(2, Value::U64(o0)), (4, Value::FutureU64(o1))]),
+          StackEntry::State(State::TestInfiniteSummatorMainResponse),
+        ])
+      }
+    }
+    State::TestInfiniteSummatorMainCreateQueue => {
+      let infiniteCalculatorQueue: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Create {
+        primitives: vec![CreatePrimitiveValue::Queue {
+          name: if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() },
+          public: true,
+        }],
+        success_next: State::TestInfiniteSummatorMainSelectQueue,
+        success_binds: vec!["infiniteCalculatorQueue".to_string()],
+        success_kinds: vec![SuccessBindKind::String],
+        fail_next: State::TestInfiniteSummatorMainReturn,
+        fail_binds: vec!["createQueueError".to_string()],
+      }
+    }
+    State::TestInfiniteSummatorMainResponse => {
+      let respFutureId: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![SetPrimitiveValue::Future { id: respFutureId.0.clone(), value: Value::U64(result.clone()) }],
+        next: State::TestInfiniteSummatorMainSelectQueue,
+      }
+    }
+    State::TestInfiniteSummatorMainReturn => StepResult::ReturnVoid,
+    State::TestInfiniteSummatorMainSelectQueue => {
+      let infiniteCalculatorQueue: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::Queue {
+        queue_name: infiniteCalculatorQueue.clone(),
+        bind: "request".to_string(),
+        next: State::TestInfiniteSummatorMainCalculate,
+      }])
     }
     State::TestRootFiberMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(0, Value::String("rootQueue".to_string()))]),
@@ -1518,6 +1626,36 @@ fn testCreateQueue_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(testCreateQueue_result_main(stack))
 }
 
+pub fn testInfiniteSummator_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("infiniteCalculatorQueue".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value(
+    "request".to_string(),
+    Value::TestInfiniteSummatorQueueMessage(TestInfiniteSummatorQueueMessage::default()),
+  ));
+  stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("createQueueError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("respFutureId".to_string(), Value::FutureU64(FutureU64::default())));
+  stack.push(StackEntry::State(State::TestInfiniteSummatorMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testInfiniteSummator_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testInfiniteSummator_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testInfiniteSummator_prepare_main();
+  stack
+}
+
+fn testInfiniteSummator_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testInfiniteSummator_result_main(stack))
+}
+
 pub fn testRootFiber_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1646,6 +1784,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "root.main" => root_prepare_main_from_values,
     "testCalculator.main" => testCalculator_prepare_main_from_values,
     "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
+    "testInfiniteSummator.main" => testInfiniteSummator_prepare_main_from_values,
     "testRootFiber.main" => testRootFiber_prepare_main_from_values,
     "testRootFiberSleepTest.main" => testRootFiberSleepTest_prepare_main_from_values,
     "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
@@ -1669,6 +1808,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "root.main" => root_result_main_value,
     "testCalculator.main" => testCalculator_result_main_value,
     "testCreateQueue.main" => testCreateQueue_result_main_value,
+    "testInfiniteSummator.main" => testInfiniteSummator_result_main_value,
     "testRootFiber.main" => testRootFiber_result_main_value,
     "testRootFiberSleepTest.main" => testRootFiberSleepTest_result_main_value,
     "testSelectQueue.main" => testSelectQueue_result_main_value,
@@ -1727,6 +1867,15 @@ fn testCreateQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   testCreateQueue_prepare_heap()
 }
 
+pub fn testInfiniteSummator_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testInfiniteSummator_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testInfiniteSummator_prepare_heap()
+}
+
 pub fn testRootFiber_prepare_heap() -> Heap {
   let mut heap = Heap::default();
   heap
@@ -1776,6 +1925,7 @@ pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
     "root" => root_prepare_heap_from_values,
     "testCalculator" => testCalculator_prepare_heap_from_values,
     "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
+    "testInfiniteSummator" => testInfiniteSummator_prepare_heap_from_values,
     "testRootFiber" => testRootFiber_prepare_heap_from_values,
     "testRootFiberSleepTest" => testRootFiberSleepTest_prepare_heap_from_values,
     "testSelectQueue" => testSelectQueue_prepare_heap_from_values,

@@ -230,10 +230,9 @@ impl<L: Linearizer> App<L> {
 
               blueprints.push(TaskBlueprint {
                 global_id: tx.meta.id,
-                source: TaskBPSource::FiberFunc {
-                  fiber_type: FiberType::new(tx.blueprint.fiber_type.0.clone()),
-                  function_key: tx.blueprint.function_key.clone(),
-                  init_values: tx.blueprint.init_values.clone(),
+                source: TaskBPSource::Queue {
+                  q_name: tx.blueprint.queue_name.clone(),
+                  value: tx.blueprint.param.clone(),
                 },
               });
             }

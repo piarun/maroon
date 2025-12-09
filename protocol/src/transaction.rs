@@ -23,12 +23,11 @@ pub struct TxUpdate {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskBlueprint {
-  pub fiber_type: FiberType,
+  /// registered in ir_spec public queue
+  pub queue_name: String,
 
-  // function key to provide an information which function should be executed, ex: `add` or `sub`...
-  pub function_key: String,
-  // input parameters for the function
-  pub init_values: Vec<Value>,
+  /// message with the same type as queue accepts it
+  pub param: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -38,7 +37,8 @@ pub enum TxStatus {
   Pending,
   // Confirmed,
   Finished,
-  // Rejected,
+  /// if smth is wrong with the request. Ex: wrong queue, incorrect message type, etc.
+  Rejected(String),
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize)]
