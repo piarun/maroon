@@ -82,15 +82,6 @@ pub struct GlobalHeap {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct OrderBookHeap {
-  pub asksByPrice: std::collections::HashMap<u64, Vec<Order>>,
-  pub asksPrices: std::collections::BinaryHeap<std::cmp::Reverse<u64>>,
-  pub bidsByPrice: std::collections::HashMap<u64, Vec<Order>>,
-  pub bidsPrices: std::collections::BinaryHeap<u64>,
-  pub ordersIndex: std::collections::HashMap<u64, OrderIndex>,
-}
-
-#[derive(Clone, Debug, Default)]
 pub struct RootHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -129,7 +120,6 @@ pub struct TestTaskExecutorIncrementerInVars {
 pub struct Heap {
   pub application: ApplicationHeap,
   pub global: GlobalHeap,
-  pub orderBook: OrderBookHeap,
   pub root: RootHeap,
   pub testCalculator: TestCalculatorHeap,
   pub testCreateQueue: TestCreateQueueHeap,
@@ -172,13 +162,6 @@ pub enum State {
   GlobalSubAddEntry,
   GlobalSubAddFinalize,
   GlobalSubAddSubSum,
-  OrderBookAddBuyEntry,
-  OrderBookAddSellEntry,
-  OrderBookBestAskEntry,
-  OrderBookBestBidEntry,
-  OrderBookCancelEntry,
-  OrderBookMainEntry,
-  OrderBookTopNDepthEntry,
   RootMainEntry,
   TestCalculatorMainCalculate,
   TestCalculatorMainDebugGottenTask,
@@ -233,8 +216,6 @@ pub enum State {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
-  ArrayTrade(Vec<Trade>),
-  BookSnapshot(BookSnapshot),
   FutureTestIncrementTask(FutureTestIncrementTask),
   FutureU64(FutureU64),
   FutureUnit(FutureUnit),
@@ -410,13 +391,6 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalSubAddEntry => 5,
     State::GlobalSubAddFinalize => 5,
     State::GlobalSubAddSubSum => 5,
-    State::OrderBookAddBuyEntry => 4,
-    State::OrderBookAddSellEntry => 4,
-    State::OrderBookBestAskEntry => 1,
-    State::OrderBookBestBidEntry => 1,
-    State::OrderBookCancelEntry => 2,
-    State::OrderBookMainEntry => 0,
-    State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
     State::TestCalculatorMainEntry => 3,
     State::TestCalculatorMainCalculate => 3,
@@ -725,284 +699,6 @@ pub fn global_step(
         StackEntry::Value("sub".to_string(), Value::U64(0u64)),
         StackEntry::State(State::GlobalSubEntry),
       ])
-    }
-    State::OrderBookAddBuyEntry => {
-      let id: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let price: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let qty: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let result: Vec<Trade> =
-        if let StackEntry::Value(_, Value::ArrayTrade(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-          let mut remaining = qty;
-          let mut trades: Vec<Trade> = Vec::new();
-
-          // Clean stale top asks and match while price allows
-          loop {
-            // Find current best ask
-            let best_ask = loop {
-              if let Some(top) = ob.asksPrices.peek() {
-                let p = top.0;
-                if let Some(level) = ob.asksByPrice.get(&p) {
-                  if !level.is_empty() {
-                    break Some(p);
-                  }
-                }
-                // stale level
-                ob.asksPrices.pop();
-                continue;
-              } else {
-                break None;
-              }
-            };
-
-            match best_ask {
-              Some(ap) if ap <= price && remaining > 0 => {
-                // Execute against this level FIFO
-                if let Some(level) = ob.asksByPrice.get_mut(&ap) {
-                  while remaining > 0 && !level.is_empty() {
-                    let maker = &mut level[0];
-                    if maker.qty <= remaining {
-                      let trade_qty = maker.qty;
-                      remaining -= trade_qty;
-                      trades.push(Trade { price: ap, qty: trade_qty, takerId: id, makerId: maker.id });
-                      level.remove(0);
-                    } else {
-                      maker.qty -= remaining;
-                      trades.push(Trade { price: ap, qty: remaining, takerId: id, makerId: maker.id });
-                      remaining = 0;
-                    }
-                  }
-                  if level.is_empty() {
-                    ob.asksByPrice.remove(&ap);
-                  }
-                }
-                // continue loop to next level or exit if remaining==0
-              }
-              _ => break,
-            }
-          }
-
-          // If remaining, add to bids book
-          if remaining > 0 {
-            ob.bidsByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-            ob.bidsPrices.push(price);
-            ob.ordersIndex.insert(id, OrderIndex { side: "buy".to_string(), price });
-          }
-
-          trades
-        };
-        StepResult::Return(Value::ArrayTrade(out))
-      }
-    }
-    State::OrderBookAddSellEntry => {
-      let id: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let price: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let qty: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let result: Vec<Trade> =
-        if let StackEntry::Value(_, Value::ArrayTrade(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-          let mut remaining = qty;
-          let mut trades: Vec<Trade> = Vec::new();
-
-          // Clean stale top bids and match while price allows
-          loop {
-            // Find current best bid
-            let best_bid = loop {
-              if let Some(&bp) = ob.bidsPrices.peek() {
-                if let Some(level) = ob.bidsByPrice.get(&bp) {
-                  if !level.is_empty() {
-                    break Some(bp);
-                  }
-                }
-                // stale
-                ob.bidsPrices.pop();
-                continue;
-              } else {
-                break None;
-              }
-            };
-
-            match best_bid {
-              Some(bp) if bp >= price && remaining > 0 => {
-                if let Some(level) = ob.bidsByPrice.get_mut(&bp) {
-                  while remaining > 0 && !level.is_empty() {
-                    let maker = &mut level[0];
-                    if maker.qty <= remaining {
-                      let trade_qty = maker.qty;
-                      remaining -= trade_qty;
-                      trades.push(Trade { price: bp, qty: trade_qty, takerId: id, makerId: maker.id });
-                      level.remove(0);
-                    } else {
-                      maker.qty -= remaining;
-                      trades.push(Trade { price: bp, qty: remaining, takerId: id, makerId: maker.id });
-                      remaining = 0;
-                    }
-                  }
-                  if level.is_empty() {
-                    ob.bidsByPrice.remove(&bp);
-                  }
-                }
-              }
-              _ => break,
-            }
-          }
-
-          if remaining > 0 {
-            ob.asksByPrice.entry(price).or_default().push(Order { id, price, qty: remaining });
-            ob.asksPrices.push(std::cmp::Reverse(price));
-            ob.ordersIndex.insert(id, OrderIndex { side: "sell".to_string(), price });
-          }
-
-          trades
-        };
-        StepResult::Return(Value::ArrayTrade(out))
-      }
-    }
-    State::OrderBookBestAskEntry => {
-      let result: Option<u64> =
-        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-          loop {
-            if let Some(top) = ob.asksPrices.peek() {
-              let ap = top.0; // Reverse(u64)
-              if let Some(level) = ob.asksByPrice.get(&ap) {
-                if !level.is_empty() {
-                  break Some(ap);
-                }
-              }
-              ob.asksPrices.pop();
-            } else {
-              break None;
-            }
-          }
-        };
-        StepResult::Return(Value::OptionU64(out))
-      }
-    }
-    State::OrderBookBestBidEntry => {
-      let result: Option<u64> =
-        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-          loop {
-            if let Some(&bp) = ob.bidsPrices.peek() {
-              if let Some(level) = ob.bidsByPrice.get(&bp) {
-                if !level.is_empty() {
-                  break Some(bp);
-                }
-              }
-              ob.bidsPrices.pop();
-            } else {
-              break None;
-            }
-          }
-        };
-        StepResult::Return(Value::OptionU64(out))
-      }
-    }
-    State::OrderBookCancelEntry => {
-      let id: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-          let mut ok = 0u64;
-          if let Some(idx) = ob.ordersIndex.remove(&id) {
-            let price = idx.price;
-            if idx.side == "buy" {
-              if let Some(level) = ob.bidsByPrice.get_mut(&price) {
-                if let Some(pos) = level.iter().position(|o| o.id == id) {
-                  level.remove(pos);
-                  ok = 1;
-                  if level.is_empty() {
-                    ob.bidsByPrice.remove(&price);
-                  }
-                }
-              }
-            } else {
-              if let Some(level) = ob.asksByPrice.get_mut(&price) {
-                if let Some(pos) = level.iter().position(|o| o.id == id) {
-                  level.remove(pos);
-                  ok = 1;
-                  if level.is_empty() {
-                    ob.asksByPrice.remove(&price);
-                  }
-                }
-              }
-            }
-          }
-          ok
-        };
-        StepResult::Return(Value::U64(out))
-      }
-    }
-    State::OrderBookMainEntry => StepResult::ReturnVoid,
-    State::OrderBookTopNDepthEntry => {
-      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let result: BookSnapshot =
-        if let StackEntry::Value(_, Value::BookSnapshot(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let ob = &mut heap.orderBook;
-
-          let mut bids_depth: Vec<Level> = Vec::new();
-          let mut asks_depth: Vec<Level> = Vec::new();
-
-          // Bids: highest first
-          {
-            let mut tmp = ob.bidsPrices.clone();
-            let mut seen = std::collections::HashSet::<u64>::new();
-            while (bids_depth.len() as u64) < n {
-              if let Some(bp) = tmp.pop() {
-                if seen.contains(&bp) {
-                  continue;
-                }
-                if let Some(level) = ob.bidsByPrice.get(&bp) {
-                  if !level.is_empty() {
-                    let qty = level.iter().map(|o| o.qty).sum::<u64>();
-                    bids_depth.push(Level { price: bp, qty });
-                    seen.insert(bp);
-                  }
-                }
-              } else {
-                break;
-              }
-            }
-          }
-
-          // Asks: lowest first
-          {
-            let mut tmp = ob.asksPrices.clone();
-            let mut seen = std::collections::HashSet::<u64>::new();
-            while (asks_depth.len() as u64) < n {
-              if let Some(std::cmp::Reverse(ap)) = tmp.pop() {
-                if seen.contains(&ap) {
-                  continue;
-                }
-                if let Some(level) = ob.asksByPrice.get(&ap) {
-                  if !level.is_empty() {
-                    let qty = level.iter().map(|o| o.qty).sum::<u64>();
-                    asks_depth.push(Level { price: ap, qty });
-                    seen.insert(ap);
-                  }
-                }
-              } else {
-                break;
-              }
-            }
-          }
-
-          BookSnapshot { bids: bids_depth, asks: asks_depth }
-        };
-        StepResult::Return(Value::BookSnapshot(out))
-      }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
     State::TestCalculatorMainEntry => StepResult::DebugPrintVars(State::TestCalculatorMainSelectQueue),
@@ -1780,216 +1476,6 @@ fn global_result_subAdd_value(stack: &[StackEntry]) -> Value {
   Value::U64(global_result_subAdd(stack))
 }
 
-pub fn orderBook_prepare_addBuy(
-  id: u64,
-  price: u64,
-  qty: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("id".to_string(), Value::U64(id)));
-  stack.push(StackEntry::Value("price".to_string(), Value::U64(price)));
-  stack.push(StackEntry::Value("qty".to_string(), Value::U64(qty)));
-  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
-  stack.push(StackEntry::State(State::OrderBookAddBuyEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_addBuy(stack: &[StackEntry]) -> Vec<Trade> {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::ArrayTrade(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_addBuy_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let id: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
-  let price: u64 =
-    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
-  let qty: u64 =
-    if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for order_book.add_buy") };
-  let (stack, _heap) = orderBook_prepare_addBuy(id, price, qty);
-  stack
-}
-
-fn orderBook_result_addBuy_value(stack: &[StackEntry]) -> Value {
-  Value::ArrayTrade(orderBook_result_addBuy(stack))
-}
-
-pub fn orderBook_prepare_addSell(
-  id: u64,
-  price: u64,
-  qty: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("id".to_string(), Value::U64(id)));
-  stack.push(StackEntry::Value("price".to_string(), Value::U64(price)));
-  stack.push(StackEntry::Value("qty".to_string(), Value::U64(qty)));
-  stack.push(StackEntry::Value("result".to_string(), Value::ArrayTrade(Vec::<Trade>::new())));
-  stack.push(StackEntry::State(State::OrderBookAddSellEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_addSell(stack: &[StackEntry]) -> Vec<Trade> {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::ArrayTrade(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_addSell_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let id: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
-  let price: u64 =
-    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
-  let qty: u64 =
-    if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for order_book.add_sell") };
-  let (stack, _heap) = orderBook_prepare_addSell(id, price, qty);
-  stack
-}
-
-fn orderBook_result_addSell_value(stack: &[StackEntry]) -> Value {
-  Value::ArrayTrade(orderBook_result_addSell(stack))
-}
-
-pub fn orderBook_prepare_bestAsk() -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("result".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::State(State::OrderBookBestAskEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_bestAsk(stack: &[StackEntry]) -> Option<u64> {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_bestAsk_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = orderBook_prepare_bestAsk();
-  stack
-}
-
-fn orderBook_result_bestAsk_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(orderBook_result_bestAsk(stack))
-}
-
-pub fn orderBook_prepare_bestBid() -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("result".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::State(State::OrderBookBestBidEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_bestBid(stack: &[StackEntry]) -> Option<u64> {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_bestBid_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = orderBook_prepare_bestBid();
-  stack
-}
-
-fn orderBook_result_bestBid_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(orderBook_result_bestBid(stack))
-}
-
-pub fn orderBook_prepare_cancel(id: u64) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("id".to_string(), Value::U64(id)));
-  stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::OrderBookCancelEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_cancel(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_cancel_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let id: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.cancel") };
-  let (stack, _heap) = orderBook_prepare_cancel(id);
-  stack
-}
-
-fn orderBook_result_cancel_value(stack: &[StackEntry]) -> Value {
-  Value::U64(orderBook_result_cancel(stack))
-}
-
-pub fn orderBook_prepare_main() -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::State(State::OrderBookMainEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_main(stack: &[StackEntry]) -> () {
-  let _ = stack;
-  ()
-}
-
-fn orderBook_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = orderBook_prepare_main();
-  stack
-}
-
-fn orderBook_result_main_value(stack: &[StackEntry]) -> Value {
-  Value::Unit(orderBook_result_main(stack))
-}
-
-pub fn orderBook_prepare_topNDepth(n: u64) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::BookSnapshot(BookSnapshot::default())));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("n".to_string(), Value::U64(n)));
-  stack.push(StackEntry::Value("result".to_string(), Value::BookSnapshot(BookSnapshot::default())));
-  stack.push(StackEntry::State(State::OrderBookTopNDepthEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn orderBook_result_topNDepth(stack: &[StackEntry]) -> BookSnapshot {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::BookSnapshot(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn orderBook_prepare_topNDepth_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let n: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for order_book.top_n_depth") };
-  let (stack, _heap) = orderBook_prepare_topNDepth(n);
-  stack
-}
-
-fn orderBook_result_topNDepth_value(stack: &[StackEntry]) -> Value {
-  Value::BookSnapshot(orderBook_result_topNDepth(stack))
-}
-
 pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -2190,13 +1676,6 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "global.mult" => global_prepare_mult_from_values,
     "global.sub" => global_prepare_sub_from_values,
     "global.subAdd" => global_prepare_subAdd_from_values,
-    "order_book.add_buy" => orderBook_prepare_addBuy_from_values,
-    "order_book.add_sell" => orderBook_prepare_addSell_from_values,
-    "order_book.best_ask" => orderBook_prepare_bestAsk_from_values,
-    "order_book.best_bid" => orderBook_prepare_bestBid_from_values,
-    "order_book.cancel" => orderBook_prepare_cancel_from_values,
-    "order_book.main" => orderBook_prepare_main_from_values,
-    "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
     "testCalculator.main" => testCalculator_prepare_main_from_values,
     "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
@@ -2220,13 +1699,6 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "global.mult" => global_result_mult_value,
     "global.sub" => global_result_sub_value,
     "global.subAdd" => global_result_subAdd_value,
-    "order_book.add_buy" => orderBook_result_addBuy_value,
-    "order_book.add_sell" => orderBook_result_addSell_value,
-    "order_book.best_ask" => orderBook_result_bestAsk_value,
-    "order_book.best_bid" => orderBook_result_bestBid_value,
-    "order_book.cancel" => orderBook_result_cancel_value,
-    "order_book.main" => orderBook_result_main_value,
-    "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
     "testCalculator.main" => testCalculator_result_main_value,
     "testCreateQueue.main" => testCreateQueue_result_main_value,
@@ -2256,15 +1728,6 @@ pub fn global_prepare_heap() -> Heap {
 
 fn global_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   global_prepare_heap()
-}
-
-pub fn orderBook_prepare_heap() -> Heap {
-  let mut heap = Heap::default();
-  heap
-}
-
-fn orderBook_prepare_heap_from_values(args: Vec<Value>) -> Heap {
-  orderBook_prepare_heap()
 }
 
 pub fn root_prepare_heap() -> Heap {
@@ -2343,7 +1806,6 @@ pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
   match fiber.0.as_str() {
     "application" => application_prepare_heap_from_values,
     "global" => global_prepare_heap_from_values,
-    "order_book" => orderBook_prepare_heap_from_values,
     "root" => root_prepare_heap_from_values,
     "testCalculator" => testCalculator_prepare_heap_from_values,
     "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
