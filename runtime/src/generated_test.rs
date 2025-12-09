@@ -4,8 +4,7 @@ use crate::{
 };
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  BookSnapshot, GlobalHeap, Heap, Level, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult,
-  TestIncrementTask, Trade, Value,
+  GlobalHeap, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, TestIncrementTask, Value,
 };
 
 #[test]

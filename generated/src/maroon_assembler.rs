@@ -7,39 +7,6 @@ use crate::ir::{FiberType, FutureLabel};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Order {
-  pub id: u64,
-  pub price: u64,
-  pub qty: u64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Trade {
-  pub price: u64,
-  pub qty: u64,
-  pub takerId: u64,
-  pub makerId: u64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrderIndex {
-  pub side: String,
-  pub price: u64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Level {
-  pub price: u64,
-  pub qty: u64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BookSnapshot {
-  pub bids: Vec<Level>,
-  pub asks: Vec<Level>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestIncrementTask {
   pub inStrValue: u64,
   pub inStrRespFutureId: String,

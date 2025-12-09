@@ -886,43 +886,6 @@ out
     ]),
     types: vec![
       Type::Struct(
-        "Order".to_string(),
-        vec![
-          StructField { name: "id".to_string(), ty: Type::UInt64 },
-          StructField { name: "price".to_string(), ty: Type::UInt64 },
-          StructField { name: "qty".to_string(), ty: Type::UInt64 },
-        ],
-        String::new(),
-      ),
-      Type::Struct(
-        "Trade".to_string(),
-        vec![
-          StructField { name: "price".to_string(), ty: Type::UInt64 },
-          StructField { name: "qty".to_string(), ty: Type::UInt64 },
-          StructField { name: "taker_id".to_string(), ty: Type::UInt64 },
-          StructField { name: "maker_id".to_string(), ty: Type::UInt64 },
-        ],
-        String::new(),
-      ),
-      Type::Struct(
-        "OrderIndex".to_string(),
-        vec![StructField { name: "side".to_string(), ty: Type::String }, StructField { name: "price".to_string(), ty: Type::UInt64 }],
-        String::new(),
-      ),
-      Type::Struct(
-        "Level".to_string(),
-        vec![StructField { name: "price".to_string(), ty: Type::UInt64 }, StructField { name: "qty".to_string(), ty: Type::UInt64 }],
-        String::new(),
-      ),
-      Type::Struct(
-        "BookSnapshot".to_string(),
-        vec![
-          StructField { name: "bids".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
-          StructField { name: "asks".to_string(), ty: Type::Array(Box::new(Type::Custom("Level".to_string()))) },
-        ],
-        String::new(),
-      ),
-      Type::Struct(
         "TestIncrementTask".to_string(),
         vec![
           // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
