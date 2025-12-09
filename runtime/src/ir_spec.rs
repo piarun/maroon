@@ -938,38 +938,6 @@ out
                 steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             ),
-            (
-              "async_foo".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sum", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::SendToFiber {
-                      fiber: "global".to_string(),
-                      message: "add".to_string(),
-                      args: vec![
-                        ("a".to_string(), Expr::Var(LocalVarRef("a"))),
-                        ("b".to_string(), Expr::Var(LocalVarRef("b"))),
-                      ],
-                      next: StepId::new("await"),
-                      future_id: FutureLabel::new("async_add_future_1"),
-                    },
-                  ),
-                  (
-                    StepId::new("await"),
-                    Step::Await(AwaitSpecOld::Future {
-                      bind: Some(LocalVarRef("sum")),
-                      ret_to: StepId::new("return"),
-                      future_id: FutureLabel::new("async_add_future_1"),
-                    }),
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
-                ],
-              },
-            ),
           ]),
         },
       ),

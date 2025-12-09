@@ -99,13 +99,6 @@ impl FutureId {
   pub fn new(id: impl Into<String>) -> Self {
     Self(id.into())
   }
-
-  pub fn from_label(
-    label: dsl::ir::FutureLabel,
-    unique_id: u64,
-  ) -> Self {
-    Self(format!("{}_{}", label.0, unique_id))
-  }
 }
 
 impl Fiber {
@@ -350,33 +343,6 @@ impl Fiber {
               other => self.stack.push(other),
             }
           }
-        }
-        StepResult::Await(future_id, bind_result, next_state) => {
-          // Continue at `next_state` after the future resolves
-          self.stack.push(StackEntry::State(next_state));
-          return RunResult::Await(FutureId::from_label(future_id, self.unique_id), bind_result);
-        }
-        StepResult::AwaitOld(future_id, bind_result, next_state) => {
-          // Legacy path: same behavior as Await
-          self.stack.push(StackEntry::State(next_state));
-          return RunResult::AwaitOld(FutureId::from_label(future_id, self.unique_id), bind_result);
-        }
-        StepResult::SendToFiber { f_type, func, args, next, future_id } => {
-          // Continue to `next` and bubble up async call details
-          self.stack.push(StackEntry::State(next));
-          return RunResult::AsyncCall {
-            f_type,
-            func,
-            args,
-            future_id: FutureId::from_label(future_id, self.unique_id),
-          };
-        }
-        StepResult::ScheduleTimer { ms, next, future_id } => {
-          self.stack.push(StackEntry::State(next));
-          return RunResult::ScheduleTimer {
-            ms: LogicalTimeAbsoluteMs(ms),
-            future_id: FutureId::from_label(future_id, self.unique_id),
-          };
         }
         StepResult::Select(arms) => {
           return RunResult::Select(arms);

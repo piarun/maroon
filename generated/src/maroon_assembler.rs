@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 
-use crate::ir::{FiberType, FutureLabel};
+use crate::ir::FiberType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,9 +117,6 @@ pub struct Heap {
 pub enum State {
   Completed,
   Idle,
-  ApplicationAsyncFooAwait,
-  ApplicationAsyncFooEntry,
-  ApplicationAsyncFooReturn,
   ApplicationMainEntry,
   GlobalAddEntry,
   GlobalBinarySearchCalculateDiv,
@@ -288,8 +285,6 @@ pub enum SuccessBindKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SelectArm {
-  Future { future_id: FutureLabel, bind: Option<String>, next: State },
-  // New variant: future id taken from variable value
   FutureVar { future_id: String, bind: Option<String>, next: State },
   Queue { queue_name: String, bind: String, next: State },
 }
@@ -313,11 +308,6 @@ pub enum SetPrimitiveValue {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer {
-    ms: u64,
-    next: State,
-    future_id: FutureLabel,
-  },
   GoTo(State),
   Select(Vec<SelectArm>),
   // Atomically create runtime primitives and branch based on outcome.
@@ -333,18 +323,6 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, optional bind_var, next_state)
-  Await(FutureLabel, Option<String>, State),
-  // Legacy await variant kept for backward compatibility
-  AwaitOld(FutureLabel, Option<String>, State),
-  // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber {
-    f_type: FiberType,
-    func: String,
-    args: Vec<Value>,
-    next: State,
-    future_id: FutureLabel,
-  },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
   SetValues {
     values: Vec<SetPrimitiveValue>,
@@ -365,9 +343,6 @@ pub enum StepResult {
 
 pub fn func_args_count(e: &State) -> usize {
   match e {
-    State::ApplicationAsyncFooEntry => 3,
-    State::ApplicationAsyncFooAwait => 3,
-    State::ApplicationAsyncFooReturn => 3,
     State::ApplicationMainEntry => 0,
     State::GlobalAddEntry => 3,
     State::GlobalBinarySearchEntry => 6,
@@ -463,26 +438,6 @@ pub fn global_step(
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
-    State::ApplicationAsyncFooEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      StepResult::SendToFiber {
-        f_type: FiberType::new("global"),
-        func: "add".to_string(),
-        args: vec![Value::U64(a), Value::U64(b)],
-        next: State::ApplicationAsyncFooAwait,
-        future_id: FutureLabel::new("async_add_future_1"),
-      }
-    }
-    State::ApplicationAsyncFooAwait => StepResult::AwaitOld(
-      FutureLabel::new("async_add_future_1"),
-      Some("sum".to_string()),
-      State::ApplicationAsyncFooReturn,
-    ),
-    State::ApplicationAsyncFooReturn => {
-      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(sum))
-    }
     State::ApplicationMainEntry => StepResult::ReturnVoid,
     State::GlobalAddEntry => {
       let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -1232,41 +1187,6 @@ pub fn global_step(
 pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;
 pub type ResultFn = fn(&[StackEntry]) -> Value;
 
-pub fn application_prepare_asyncFoo(
-  a: u64,
-  b: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("sum".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::ApplicationAsyncFooEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn application_result_asyncFoo(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn application_prepare_asyncFoo_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for application.async_foo") };
-  let b: u64 =
-    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for application.async_foo") };
-  let (stack, _heap) = application_prepare_asyncFoo(a, b);
-  stack
-}
-
-fn application_result_asyncFoo_value(stack: &[StackEntry]) -> Value {
-  Value::U64(application_result_asyncFoo(stack))
-}
-
 pub fn application_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1771,7 +1691,6 @@ fn testTaskExecutorIncrementer_result_main_value(stack: &[StackEntry]) -> Value 
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
-    "application.async_foo" => application_prepare_asyncFoo_from_values,
     "application.main" => application_prepare_main_from_values,
     "global.add" => global_prepare_add_from_values,
     "global.binary_search" => global_prepare_binarySearch_from_values,
@@ -1795,7 +1714,6 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 
 pub fn get_result_fn(key: &str) -> ResultFn {
   match key {
-    "application.async_foo" => application_result_asyncFoo_value,
     "application.main" => application_result_main_value,
     "global.add" => global_result_add_value,
     "global.binary_search" => global_result_binarySearch_value,

@@ -12,7 +12,7 @@ use generated::maroon_assembler::{TestInfiniteSummatorQueueMessagePub, Value};
 use libp2p::PeerId;
 use protocol::node2gw::TxUpdate;
 use protocol::transaction::{Meta, TxStatus};
-use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBPSource, TaskBlueprint};
+use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -326,17 +326,13 @@ async fn app_executes_after_epoch_confirmed() {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(0),
-          source: TaskBPSource::Queue {
-            q_name: "testInfiniteCalculatorQueue".to_string(),
-            value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
-          }
+          q_name: "testInfiniteCalculatorQueue".to_string(),
+          value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          source: TaskBPSource::Queue {
-            q_name: "testInfiniteCalculatorQueue".to_string(),
-            value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
-          }
+          q_name: "testInfiniteCalculatorQueue".to_string(),
+          value: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
         },
       ]
     )),

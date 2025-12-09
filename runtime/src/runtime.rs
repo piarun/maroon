@@ -15,22 +15,8 @@ use std::time::Duration;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
-  pub source: TaskBPSource,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TaskBPSource {
-  FiberFunc {
-    fiber_type: FiberType,
-    // function key to provide an information which function should be executed, ex: `add` or `sub`...
-    function_key: String,
-    // input parameters for the function
-    init_values: Vec<Value>,
-  },
-  Queue {
-    q_name: String,
-    value: Value,
-  },
+  pub q_name: String,
+  pub value: Value,
 }
 
 #[derive(Debug)]
@@ -615,47 +601,18 @@ limiter:
         }
 
         while let Some(blueprint) = current_queue.pop_front() {
-          match blueprint.source {
-            TaskBPSource::FiberFunc { fiber_type, function_key, init_values } => {
-              if let Some(mut fiber) = self.get_fiber(&fiber_type) {
-                fiber.load_task(
-                  function_key.clone(),
-                  init_values.clone(),
-                  Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-                );
-                self.active_fibers.push_back(fiber);
+          if let Some(queue) = self.queue_messages.get_mut(&blueprint.q_name) {
+            let was_empty = queue.is_empty();
+            // here I can have only messages that `can`` be passed from the outside
+            // so for them this function won't fail but for other types it will panic
+            let p_value = pub_to_private(blueprint.value, format!("{}", self.next_created_future_id));
+            self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
+            self.next_created_future_id += 1;
 
-                if !current_queue.is_empty() {
-                  self.active_tasks.push_front((time_stamp, current_queue));
-                }
-                break 'process_active_tasks;
-              } else {
-                self.push_fiber_in_message(
-                  &fiber_type,
-                  FiberInMessage {
-                    fiber_type: fiber_type.clone(),
-                    function_name: function_key,
-                    args: init_values,
-                    context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-                  },
-                );
-              }
-            }
-            TaskBPSource::Queue { q_name, value } => {
-              if let Some(queue) = self.queue_messages.get_mut(&q_name) {
-                let was_empty = queue.is_empty();
-                // here I can have only messages that `can`` be passed from the outside
-                // so for them this function won't fail but for other types it will panic
-                let p_value = pub_to_private(value, format!("{}", self.next_created_future_id));
-                self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
-                self.next_created_future_id += 1;
-
-                queue.push_back(p_value);
-                if was_empty {
-                  // if it was empty => not in non_empty_queues => adding
-                  self.non_empty_queues.push_back(q_name);
-                }
-              }
+            queue.push_back(p_value);
+            if was_empty {
+              // if it was empty => not in non_empty_queues => adding
+              self.non_empty_queues.push_back(blueprint.q_name);
             }
           }
         }
@@ -748,10 +705,8 @@ await_milliseconds=150
       LogicalTimeAbsoluteMs(0),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        source: TaskBPSource::Queue {
-          q_name: "randomQueueName".to_string(),
-          value: Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: 10 }),
-        },
+        q_name: "randomQueueName".to_string(),
+        value: Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: 10 }),
       }],
     ));
 

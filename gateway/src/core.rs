@@ -5,7 +5,7 @@ use common::duplex_channel::create_a_b_duplex_pair;
 use generated::maroon_assembler::Value;
 use log::error;
 use protocol::node2gw::{Meta, Transaction, TxStatus};
-use protocol::transaction::{FiberType, TaskBlueprint};
+use protocol::transaction::TaskBlueprint;
 use serde::Serialize;
 use std::collections::HashMap;
 use tokio::sync::{

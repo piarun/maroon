@@ -100,7 +100,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   out.push_str("#![allow(non_snake_case)]\n\n");
   // External deps used throughout the generated file
   out.push_str("use serde::{Serialize, Deserialize};\n");
-  out.push_str("use crate::ir::{FiberType, FutureLabel};\n\n");
+  out.push_str("use crate::ir::FiberType;\n\n");
 
   // 1) Emit custom struct types declared at top-level IR.types
   // Determine which custom structs need Ord/Eq derives (used inside Min/Max queues)
@@ -505,8 +505,6 @@ pub enum SuccessBindKind { String, Future(FutureKind) }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SelectArm {
-  Future { future_id: FutureLabel, bind: Option<String>, next: State },
-  // New variant: future id taken from variable value
   FutureVar { future_id: String, bind: Option<String>, next: State },
   Queue { queue_name: String, bind: String, next: State },
 }
@@ -530,7 +528,6 @@ pub enum SetPrimitiveValue {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<SelectArm>),
   // Atomically create runtime primitives and branch based on outcome.
@@ -546,12 +543,6 @@ pub enum StepResult {
   Return(Value),
   ReturnVoid,
   Todo(String),
-  // Await a future: (future_id, optional bind_var, next_state)
-  Await(FutureLabel, Option<String>, State),
-  // Legacy await variant kept for backward compatibility
-  AwaitOld(FutureLabel, Option<String>, State),
-  // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
   SetValues { values: Vec<SetPrimitiveValue>, next: State },
   // Debug
@@ -1126,12 +1117,6 @@ fn generate_global_step(ir: &IR) -> String {
           match entry_step {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
-            // handled below to capture referenced init_vars
-            Step::SendToFiber { args, .. } => {
-              for (_, e) in args {
-                collect_vars_from_expr(&e, &mut referenced);
-              }
-            }
             Step::SetValues { values, .. } => {
               for v in values {
                 match v {
@@ -1160,7 +1145,6 @@ fn generate_global_step(ir: &IR) -> String {
                 }
               }
             }
-            Step::Await(_) => {}
             Step::Select { arms } => {
               for arm in arms {
                 match arm {
@@ -1444,61 +1428,6 @@ fn generate_global_step(ir: &IR) -> String {
               out.push_str(&arm_parts.join(", "));
               out.push_str("])\n");
             }
-            Step::SendToFiber { fiber, message, args, next, future_id } => {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              // Build args vector in callee's param order/types
-              if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
-                let mut arg_elems: Vec<String> = Vec::new();
-                for (aname, aexpr) in args.iter() {
-                  if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
-                    let vname = type_variant_name(&param.1);
-                    let mut expr_code = render_expr_code(aexpr, func);
-                    if let Expr::Var(var_name) = aexpr {
-                      if let Some(src_ty) = var_type_of(func, var_name.0) {
-                        if !is_copy_type(src_ty) {
-                          expr_code = format!("({}).clone()", expr_code);
-                        }
-                      }
-                    }
-                    arg_elems.push(format!("Value::{}({})", vname, expr_code));
-                  }
-                }
-                out.push_str("      StepResult::SendToFiber { f_type: FiberType::new(\"");
-                out.push_str(fiber);
-                out.push_str("\"), func: \"");
-                out.push_str(message);
-                out.push_str("\".to_string(), args: vec![");
-                out.push_str(&arg_elems.join(", "));
-                out.push_str("], next: State::");
-                out.push_str(&next_v);
-                out.push_str(", future_id: FutureLabel::new(\"");
-                out.push_str(&future_id.0);
-                out.push_str("\") }\n");
-              } else {
-                out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-              }
-            }
-            Step::Await(spec) => {
-              // Pause current task until a future resolves; push continuation state when resuming.
-              match spec {
-                AwaitSpecOld::Future { bind, ret_to, future_id } => {
-                  let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
-                  match bind {
-                    Some(name) => out.push_str(&format!(
-                      "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                      future_id.0, name.0, next_v
-                    )),
-                    None => out.push_str(&format!(
-                      "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), None, State::{})\n",
-                      future_id.0, next_v
-                    )),
-                  }
-                }
-                AwaitSpecOld::Queue { .. } => {
-                  out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
-                }
-              }
-            }
             Step::Call { target, args, ret_to, bind } => {
               out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));
             }
@@ -1640,12 +1569,6 @@ fn generate_global_step(ir: &IR) -> String {
         match step {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
-          // handled below to capture referenced init_vars
-          Step::SendToFiber { args, .. } => {
-            for (_, e) in args {
-              collect_vars_from_expr(&e, &mut referenced);
-            }
-          }
           Step::SetValues { values, .. } => {
             for v in values {
               match v {
@@ -1674,7 +1597,6 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
           }
-          Step::Await(_) => {}
           Step::Select { arms } => {
             for arm in arms {
               match arm {
@@ -1945,60 +1867,6 @@ fn generate_global_step(ir: &IR) -> String {
             out.push_str("      StepResult::Select(vec![");
             out.push_str(&arm_parts.join(", "));
             out.push_str("])\n");
-          }
-          Step::SendToFiber { fiber, message, args, next, future_id } => {
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            if let Some(callee) = find_func(ir, fiber.as_str(), message.as_str()) {
-              let mut arg_elems: Vec<String> = Vec::new();
-              for (aname, aexpr) in args.iter() {
-                if let Some(param) = callee.in_vars.iter().find(|p| p.0 == aname.as_str()) {
-                  let vname = type_variant_name(&param.1);
-                  let mut expr_code = render_expr_code(aexpr, func);
-                  if let Expr::Var(var_name) = aexpr {
-                    if let Some(src_ty) = var_type_of(func, var_name.0) {
-                      if !is_copy_type(src_ty) {
-                        expr_code = format!("({}).clone()", expr_code);
-                      }
-                    }
-                  }
-                  arg_elems.push(format!("Value::{}({})", vname, expr_code));
-                }
-              }
-              out.push_str("      StepResult::SendToFiber { f_type: FiberType::new(\"");
-              out.push_str(fiber);
-              out.push_str("\"), func: \"");
-              out.push_str(message);
-              out.push_str("\".to_string(), args: vec![");
-              out.push_str(&arg_elems.join(", "));
-              out.push_str("], next: State::");
-              out.push_str(&next_v);
-              out.push_str(", future_id: FutureLabel::new(\"");
-              out.push_str(&future_id.0);
-              out.push_str("\") }\n");
-            } else {
-              out.push_str(&format!("      StepResult::GoTo(State::{})\n", next_v));
-            }
-          }
-          Step::Await(spec) => {
-            // Pause current task until a future resolves; push continuation state when resuming.
-            match spec {
-              AwaitSpecOld::Future { bind, ret_to, future_id } => {
-                let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &ret_to.0]);
-                match bind {
-                  Some(name) => out.push_str(&format!(
-                    "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), Some(\"{}\".to_string()), State::{})\n",
-                    future_id.0, name.0, next_v
-                  )),
-                  None => out.push_str(&format!(
-                    "      StepResult::AwaitOld(FutureLabel::new(\"{}\"), None, State::{})\n",
-                    future_id.0, next_v
-                  )),
-                }
-              }
-              AwaitSpecOld::Queue { .. } => {
-                out.push_str("      StepResult::Todo(\"await-queue-in-await\".to_string())\n");
-              }
-            }
           }
           Step::Call { target, args, ret_to, bind } => {
             out.push_str(&render_call_step(ir, fiber_name.0.as_str(), func_name, func, target, args, ret_to, bind));

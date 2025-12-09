@@ -9,19 +9,6 @@ impl StepId {
   }
 }
 
-// Note: Runtime `FutureId` moved into runtime modules.
-
-/// IR-only identifier to label futures for awaits/links.
-/// This is not used by the runtime which works with concrete `FutureId`s.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FutureLabel(pub String);
-
-impl FutureLabel {
-  pub fn new(id: impl Into<String>) -> Self {
-    Self(id.into())
-  }
-}
-
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct FiberType(pub String);
 impl std::fmt::Display for FiberType {
@@ -82,20 +69,6 @@ pub struct LocalVarRef(pub &'static str);
 
 #[derive(Debug, Clone)]
 pub enum Step {
-  /// send a message to a fiber (by name) of a specific kind with arguments, then continue
-  /// doesn't awaits by default. I think that makes sense?
-  /// but it can be used with await
-  /// args: (name on the incoming side, variable)
-  /// TODO: Delete. We'll be using queues for async communication.
-  SendToFiber {
-    fiber: String,
-    message: String,
-    args: Vec<(String, Expr)>,
-    next: StepId,
-    future_id: FutureLabel,
-  },
-  // TODO: Delete. Select is better
-  Await(AwaitSpecOld),
   /// `ret_to` is the continuation step in the caller
   /// bind - local variable into which response will be written
   /// TODO: allow it only for in-fiber calls. Cross-fiber calls - through queues
@@ -258,28 +231,6 @@ pub enum AwaitSpec {
     ret_to: StepId,
     /// variable ref where queue id is located
     future_id: LocalVarRef,
-  },
-  Queue {
-    /// variable ref where queue name is located
-    queue_name: LocalVarRef,
-    /// variable name - where message from the queue will be put
-    /// TODO: check types of messages that they match
-    message_var: LocalVarRef,
-    /// next step after await is resolved in this arm
-    next: StepId,
-  },
-}
-
-/// Almost the same as AwaitSpec, but uses outdated FutureLabel
-/// TODO: remove it when will do the removal work of FutureLabel
-/// But for now I want to keep it in order to have running test-scenarious
-#[derive(Debug, Clone)]
-pub enum AwaitSpecOld {
-  Future {
-    bind: Option<LocalVarRef>,
-    ret_to: StepId,
-    // TODO: get futureid from variable, so use LocalVarRef instead of Label. remove label
-    future_id: FutureLabel,
   },
   Queue {
     /// variable ref where queue name is located
@@ -488,50 +439,6 @@ fn uses_correct_variables(
           }
         }
       }
-      Step::SendToFiber { fiber, message, args, .. } => {
-        for (_name, expr) in args {
-          collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
-        }
-        // Type-check provided args against callee signature if available
-        if let Some(callee) = ir.fibers.get(fiber.as_str()).and_then(|ff| ff.funcs.get(message)) {
-          for InVar(pname, pty) in &callee.in_vars {
-            if let Some((_, aexpr)) = args.iter().find(|(n, _)| n == pname) {
-              if let Some(at) = infer_expr_type(ir, f, aexpr, &vars_map) {
-                if &at != pty {
-                  explanation.push_str(&format!(
-                    "{:?} argument '{}' type mismatch: expected {:?}, got {:?}\n",
-                    id, pname, pty, at
-                  ));
-                }
-              }
-            } else {
-              explanation.push_str(&format!("{:?} missing argument '{}' for {}.{}\n", id, pname, fiber, message));
-            }
-          }
-        }
-      }
-      Step::Await(spec) => match spec {
-        AwaitSpecOld::Future { bind, ret_to: _, future_id: _ } => {
-          if let Some(var_ref) = bind {
-            if !vars_map.contains_key(var_ref.0) {
-              explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_ref.0));
-            }
-          }
-        }
-        AwaitSpecOld::Queue { queue_name, message_var, next: _ } => {
-          // queue id should be String
-          if let Some(t) = vars_map.get(queue_name.0) {
-            if *t != Type::String {
-              explanation.push_str(&format!("{:?} queue_name '{}' must be String, got {:?}\n", id, queue_name.0, t));
-            }
-          } else {
-            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, queue_name.0));
-          }
-          if !vars_map.contains_key(message_var.0) {
-            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
-          }
-        }
-      },
       Step::Call { target, args, bind, .. } => {
         for expr in args {
           collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
