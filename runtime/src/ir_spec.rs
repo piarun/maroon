@@ -653,48 +653,6 @@ pub fn sample_ir() -> IR {
               },
             ),
             (
-              "add".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sum", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("sum")],
-                      code: "a+b".to_string(),
-                      next: StepId::new("return"),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
-                ],
-              },
-            ),
-            (
-              "sub".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sub", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("sub")],
-                      code: r#"
-let out = a - b;
-out
-"#
-                      .to_string(),
-                      next: StepId::new("return"),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sub")) }),
-                ],
-              },
-            ),
-            (
               "mult".to_string(),
               Func {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
@@ -710,25 +668,6 @@ out
                     },
                   ),
                   (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("mult")) }),
-                ],
-              },
-            ),
-            (
-              "div".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("div", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("div")],
-                      code: "a/b".to_string(),
-                      next: StepId::new("return"),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("div")) }),
                 ],
               },
             ),
@@ -781,35 +720,6 @@ out
                     },
                   ),
                   (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
-                ],
-              },
-            ),
-            (
-              "subAdd".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64), InVar("c", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sumAB", Type::UInt64), LocalVar("subABC", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
-                      args: vec![Expr::Var(LocalVarRef("a")), Expr::Var(LocalVarRef("b"))],
-                      bind: Some(LocalVarRef("sumAB")),
-                      ret_to: StepId::new("sub_sum"),
-                    },
-                  ),
-                  (
-                    StepId::new("sub_sum"),
-                    Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var(LocalVarRef("sumAB")), Expr::Var(LocalVarRef("c"))],
-                      bind: Some(LocalVarRef("subABC")),
-                      ret_to: StepId::new("finalize"),
-                    },
-                  ),
-                  (StepId::new("finalize"), Step::Return { value: RetValue::Var(LocalVarRef("subABC")) }),
                 ],
               },
             ),
@@ -917,25 +827,6 @@ out
                   ),
                   (StepId::new("return_result"), Step::Return { value: RetValue::Var(LocalVarRef("fac_call_res")) }),
                 ],
-              },
-            ),
-          ]),
-        },
-      ),
-      (
-        FiberType::new("application"),
-        Fiber {
-          fibers_limit: 2,
-          init_vars: vec![],
-          heap: HashMap::new(),
-          funcs: HashMap::from([
-            (
-              "main".to_string(),
-              Func {
-                in_vars: vec![],
-                out: Type::Void,
-                locals:vec![],
-                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
               },
             ),
           ]),

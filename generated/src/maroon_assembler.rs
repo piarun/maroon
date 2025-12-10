@@ -54,9 +54,6 @@ pub struct FutureU64(pub String);
 pub struct FutureUnit(pub String);
 
 #[derive(Clone, Debug, Default)]
-pub struct ApplicationHeap {}
-
-#[derive(Clone, Debug, Default)]
 pub struct GlobalHeap {
   pub binarySearchValues: Vec<u64>,
 }
@@ -101,7 +98,6 @@ pub struct TestTaskExecutorIncrementerInVars {
 
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
-  pub application: ApplicationHeap,
   pub global: GlobalHeap,
   pub root: RootHeap,
   pub testCalculator: TestCalculatorHeap,
@@ -117,8 +113,6 @@ pub struct Heap {
 pub enum State {
   Completed,
   Idle,
-  ApplicationMainEntry,
-  GlobalAddEntry,
   GlobalBinarySearchCalculateDiv,
   GlobalBinarySearchCmpLess,
   GlobalBinarySearchEntry,
@@ -130,7 +124,6 @@ pub enum State {
   GlobalBinarySearchReturnFound,
   GlobalBinarySearchReturnIfEqual,
   GlobalBinarySearchReturnResult,
-  GlobalDivEntry,
   GlobalFactorialEntry,
   GlobalFactorialFactorialCall,
   GlobalFactorialMultiply,
@@ -139,10 +132,6 @@ pub enum State {
   GlobalFactorialSubtract,
   GlobalMainEntry,
   GlobalMultEntry,
-  GlobalSubEntry,
-  GlobalSubAddEntry,
-  GlobalSubAddFinalize,
-  GlobalSubAddSubSum,
   RootMainEntry,
   RootMainReturn,
   TestCalculatorMainCalculate,
@@ -343,8 +332,6 @@ pub enum StepResult {
 
 pub fn func_args_count(e: &State) -> usize {
   match e {
-    State::ApplicationMainEntry => 0,
-    State::GlobalAddEntry => 3,
     State::GlobalBinarySearchEntry => 6,
     State::GlobalBinarySearchCalculateDiv => 6,
     State::GlobalBinarySearchCmpLess => 6,
@@ -356,7 +343,6 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalBinarySearchReturnFound => 6,
     State::GlobalBinarySearchReturnIfEqual => 6,
     State::GlobalBinarySearchReturnResult => 6,
-    State::GlobalDivEntry => 3,
     State::GlobalFactorialEntry => 4,
     State::GlobalFactorialFactorialCall => 4,
     State::GlobalFactorialMultiply => 4,
@@ -365,10 +351,6 @@ pub fn func_args_count(e: &State) -> usize {
     State::GlobalFactorialSubtract => 4,
     State::GlobalMainEntry => 0,
     State::GlobalMultEntry => 3,
-    State::GlobalSubEntry => 3,
-    State::GlobalSubAddEntry => 5,
-    State::GlobalSubAddFinalize => 5,
-    State::GlobalSubAddSubSum => 5,
     State::RootMainEntry => 0,
     State::RootMainReturn => 0,
     State::TestCalculatorMainEntry => 3,
@@ -438,16 +420,6 @@ pub fn global_step(
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
-    State::ApplicationMainEntry => StepResult::ReturnVoid,
-    State::GlobalAddEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let sum: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      {
-        let out = { a + b };
-        StepResult::Return(Value::U64(out))
-      }
-    }
     State::GlobalBinarySearchEntry => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
@@ -492,14 +464,7 @@ pub fn global_step(
     }
     State::GlobalBinarySearchGoLeft => {
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalBinarySearchRecursiveCall),
-        StackEntry::Retrn(Some(5)),
-        StackEntry::Value("a".to_string(), Value::U64(div)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalSubEntry),
-      ])
+      StepResult::GoTo(State::GlobalBinarySearchRecursiveCall)
     }
     State::GlobalBinarySearchGoLeftCheckOverflow => {
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
@@ -511,14 +476,7 @@ pub fn global_step(
     }
     State::GlobalBinarySearchGoRight => {
       let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalBinarySearchRecursiveCall),
-        StackEntry::Retrn(Some(6)),
-        StackEntry::Value("a".to_string(), Value::U64(div)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalAddEntry),
-      ])
+      StepResult::GoTo(State::GlobalBinarySearchRecursiveCall)
     }
     State::GlobalBinarySearchRecursiveCall => {
       let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -555,15 +513,6 @@ pub fn global_step(
       let facCallRes: Option<u64> =
         if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
       StepResult::Return(Value::OptionU64(facCallRes))
-    }
-    State::GlobalDivEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      {
-        let out = { a / b };
-        StepResult::Return(Value::U64(out))
-      }
     }
     State::GlobalFactorialEntry => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
@@ -605,14 +554,7 @@ pub fn global_step(
     State::GlobalFactorialReturn1 => StepResult::Return(Value::U64(1u64)),
     State::GlobalFactorialSubtract => {
       let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalFactorialFactorialCall),
-        StackEntry::Retrn(Some(3)),
-        StackEntry::Value("a".to_string(), Value::U64(n)),
-        StackEntry::Value("b".to_string(), Value::U64(1u64)),
-        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalSubEntry),
-      ])
+      StepResult::GoTo(State::GlobalFactorialFactorialCall)
     }
     State::GlobalMainEntry => StepResult::ReturnVoid,
     State::GlobalMultEntry => {
@@ -623,47 +565,6 @@ pub fn global_step(
         let out = { a * b };
         StepResult::Return(Value::U64(out))
       }
-    }
-    State::GlobalSubEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let sub: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let out = a - b;
-          out
-        };
-        StepResult::Return(Value::U64(out))
-      }
-    }
-    State::GlobalSubAddEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalSubAddSubSum),
-        StackEntry::Retrn(Some(3)),
-        StackEntry::Value("a".to_string(), Value::U64(a)),
-        StackEntry::Value("b".to_string(), Value::U64(b)),
-        StackEntry::Value("sum".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalAddEntry),
-      ])
-    }
-    State::GlobalSubAddFinalize => {
-      let subABC: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(subABC))
-    }
-    State::GlobalSubAddSubSum => {
-      let c: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let sumAB: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalSubAddFinalize),
-        StackEntry::Retrn(Some(2)),
-        StackEntry::Value("a".to_string(), Value::U64(sumAB)),
-        StackEntry::Value("b".to_string(), Value::U64(c)),
-        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalSubEntry),
-      ])
     }
     State::RootMainEntry => StepResult::CreateFibers {
       details: vec![(FiberType::new("testInfiniteSummator"), vec![])],
@@ -1187,61 +1088,6 @@ pub fn global_step(
 pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;
 pub type ResultFn = fn(&[StackEntry]) -> Value;
 
-pub fn application_prepare_main() -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::State(State::ApplicationMainEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn application_result_main(stack: &[StackEntry]) -> () {
-  let _ = stack;
-  ()
-}
-
-fn application_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = application_prepare_main();
-  stack
-}
-
-fn application_result_main_value(stack: &[StackEntry]) -> Value {
-  Value::Unit(application_result_main(stack))
-}
-
-pub fn global_prepare_add(
-  a: u64,
-  b: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("sum".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalAddEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_add(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_add_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.add") };
-  let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.add") };
-  let (stack, _heap) = global_prepare_add(a, b);
-  stack
-}
-
-fn global_result_add_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_add(stack))
-}
-
 pub fn global_prepare_binarySearch(
   e: u64,
   left: u64,
@@ -1281,39 +1127,6 @@ fn global_prepare_binarySearch_from_values(args: Vec<Value>) -> Vec<StackEntry> 
 
 fn global_result_binarySearch_value(stack: &[StackEntry]) -> Value {
   Value::OptionU64(global_result_binarySearch(stack))
-}
-
-pub fn global_prepare_div(
-  a: u64,
-  b: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalDivEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_div(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_div_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.div") };
-  let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.div") };
-  let (stack, _heap) = global_prepare_div(a, b);
-  stack
-}
-
-fn global_result_div_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_div(stack))
 }
 
 pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
@@ -1399,76 +1212,6 @@ fn global_prepare_mult_from_values(args: Vec<Value>) -> Vec<StackEntry> {
 
 fn global_result_mult_value(stack: &[StackEntry]) -> Value {
   Value::U64(global_result_mult(stack))
-}
-
-pub fn global_prepare_sub(
-  a: u64,
-  b: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("sub".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalSubEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_sub(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_sub_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.sub") };
-  let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.sub") };
-  let (stack, _heap) = global_prepare_sub(a, b);
-  stack
-}
-
-fn global_result_sub_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_sub(stack))
-}
-
-pub fn global_prepare_subAdd(
-  a: u64,
-  b: u64,
-  c: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("c".to_string(), Value::U64(c)));
-  stack.push(StackEntry::Value("sumAB".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("subABC".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalSubAddEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_subAdd(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_subAdd_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
-  let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
-  let c: u64 = if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for global.subAdd") };
-  let (stack, _heap) = global_prepare_subAdd(a, b, c);
-  stack
-}
-
-fn global_result_subAdd_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_subAdd(stack))
 }
 
 pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
@@ -1691,15 +1434,10 @@ fn testTaskExecutorIncrementer_result_main_value(stack: &[StackEntry]) -> Value 
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
-    "application.main" => application_prepare_main_from_values,
-    "global.add" => global_prepare_add_from_values,
     "global.binary_search" => global_prepare_binarySearch_from_values,
-    "global.div" => global_prepare_div_from_values,
     "global.factorial" => global_prepare_factorial_from_values,
     "global.main" => global_prepare_main_from_values,
     "global.mult" => global_prepare_mult_from_values,
-    "global.sub" => global_prepare_sub_from_values,
-    "global.subAdd" => global_prepare_subAdd_from_values,
     "root.main" => root_prepare_main_from_values,
     "testCalculator.main" => testCalculator_prepare_main_from_values,
     "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
@@ -1713,15 +1451,6 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 }
 
 pub type HeapInitFn = fn(Vec<Value>) -> Heap;
-
-pub fn application_prepare_heap() -> Heap {
-  let mut heap = Heap::default();
-  heap
-}
-
-fn application_prepare_heap_from_values(args: Vec<Value>) -> Heap {
-  application_prepare_heap()
-}
 
 pub fn global_prepare_heap() -> Heap {
   let mut heap = Heap::default();
@@ -1815,7 +1544,6 @@ fn testTaskExecutorIncrementer_prepare_heap_from_values(args: Vec<Value>) -> Hea
 
 pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
   match fiber.0.as_str() {
-    "application" => application_prepare_heap_from_values,
     "global" => global_prepare_heap_from_values,
     "root" => root_prepare_heap_from_values,
     "testCalculator" => testCalculator_prepare_heap_from_values,

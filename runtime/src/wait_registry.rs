@@ -272,22 +272,22 @@ mod tests {
     let mut wr = WaitRegistry::default();
     wr.register_select(
       1,
-      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "a".to_string(), next: State::GlobalAddEntry }],
+      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "a".to_string(), next: State::Completed }],
     );
     wr.register_select(
       2,
-      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "b".to_string(), next: State::GlobalDivEntry }],
+      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "b".to_string(), next: State::Idle }],
     );
 
     let out1 = wr.wake_one(&WaitKey::Queue("q".to_string())).expect("wake #1");
     assert_eq!(out1.fiber_id, 1);
     assert_eq!(out1.bind.as_deref(), Some("a"));
-    assert_eq!(out1.next, State::GlobalAddEntry);
+    assert_eq!(out1.next, State::Completed);
 
     let out2 = wr.wake_one(&WaitKey::Queue("q".to_string())).expect("wake #2");
     assert_eq!(out2.fiber_id, 2);
     assert_eq!(out2.bind.as_deref(), Some("b"));
-    assert_eq!(out2.next, State::GlobalDivEntry);
+    assert_eq!(out2.next, State::Idle);
 
     assert!(wr.per_key.get(&WaitKey::Queue("q".to_string())).is_none());
   }
@@ -356,17 +356,14 @@ mod tests {
     registry.register_select(
       100500,
       vec![
-        SelectArm::Queue { queue_name: "q1".to_string(), bind: "var1".to_string(), next: State::GlobalDivEntry },
-        SelectArm::Queue { queue_name: "q2".to_string(), bind: "var2".to_string(), next: State::GlobalAddEntry },
+        SelectArm::Queue { queue_name: "q1".to_string(), bind: "var1".to_string(), next: State::Completed },
+        SelectArm::Queue { queue_name: "q2".to_string(), bind: "var2".to_string(), next: State::Idle },
         SelectArm::FutureVar { future_id: "id1".to_string(), bind: Some("var3".to_string()), next: State::Completed },
       ],
     );
 
     let result = registry.wake_one(&WaitKey::Queue("q2".to_string()));
-    assert_eq!(
-      Some(WakeOutcome { fiber_id: 100500, bind: Some("var2".to_string()), next: State::GlobalAddEntry }),
-      result
-    );
+    assert_eq!(Some(WakeOutcome { fiber_id: 100500, bind: Some("var2".to_string()), next: State::Idle }), result);
     assert!(registry.nodes.len() == 0, "{:?}", registry.nodes);
     assert!(registry.per_key.len() == 0, "{:?}", registry.nodes);
     assert!(registry.regs.len() == 0, "{:?}", registry.nodes);
