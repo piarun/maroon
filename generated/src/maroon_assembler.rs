@@ -70,6 +70,9 @@ pub struct FutureTestIncrementTask(pub String);
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FutureU64(pub String);
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FutureUnit(pub String);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
@@ -113,6 +116,9 @@ pub struct TestCreateQueueHeap {}
 pub struct TestRootFiberHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestRootFiberSleepTestHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -134,6 +140,7 @@ pub struct Heap {
   pub testCalculator: TestCalculatorHeap,
   pub testCreateQueue: TestCreateQueueHeap,
   pub testRootFiber: TestRootFiberHeap,
+  pub testRootFiberSleepTest: TestRootFiberSleepTestHeap,
   pub testSelectQueue: TestSelectQueueHeap,
   pub testTaskExecutorIncrementer: TestTaskExecutorIncrementerHeap,
 }
@@ -210,6 +217,11 @@ pub enum State {
   TestRootFiberMainReturn,
   TestRootFiberMainReturnDbg,
   TestRootFiberMainSendCalculationRequest,
+  TestRootFiberSleepTestMainCreatePrimitives,
+  TestRootFiberSleepTestMainEntry,
+  TestRootFiberSleepTestMainReturn,
+  TestRootFiberSleepTestMainReturnDbg,
+  TestRootFiberSleepTestMainSeelect,
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
@@ -234,6 +246,7 @@ pub enum Value {
   BookSnapshot(BookSnapshot),
   FutureTestIncrementTask(FutureTestIncrementTask),
   FutureU64(FutureU64),
+  FutureUnit(FutureUnit),
   OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
@@ -278,6 +291,7 @@ pub enum StackEntry {
 pub enum FutureKind {
   FutureTestIncrementTask,
   FutureU64,
+  FutureUnit,
 }
 
 pub fn wrap_future_id(
@@ -287,6 +301,7 @@ pub fn wrap_future_id(
   match kind {
     FutureKind::FutureTestIncrementTask => Value::FutureTestIncrementTask(FutureTestIncrementTask(id)),
     FutureKind::FutureU64 => Value::FutureU64(FutureU64(id)),
+    FutureKind::FutureUnit => Value::FutureUnit(FutureUnit(id)),
   }
 }
 
@@ -308,6 +323,9 @@ pub enum SelectArm {
 pub enum CreatePrimitiveValue {
   Future,
   Queue { name: String, public: bool },
+  // Create a scheduled timer future that resolves after `ms` milliseconds.
+  // The created future is a Void future (Unit), i.e., it signals completion with no value.
+  Schedule { ms: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,6 +458,11 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestRootFiberMainReturn => 10,
     State::TestRootFiberMainReturnDbg => 10,
     State::TestRootFiberMainSendCalculationRequest => 10,
+    State::TestRootFiberSleepTestMainEntry => 3,
+    State::TestRootFiberSleepTestMainCreatePrimitives => 3,
+    State::TestRootFiberSleepTestMainReturn => 3,
+    State::TestRootFiberSleepTestMainReturnDbg => 3,
+    State::TestRootFiberSleepTestMainSeelect => 3,
     State::TestSelectQueueMainEntry => 4,
     State::TestSelectQueueMainCompare => 4,
     State::TestSelectQueueMainIncFromFut => 4,
@@ -1288,6 +1311,31 @@ pub fn global_step(
         next: State::TestRootFiberMainAwaitResponse,
       }
     }
+    State::TestRootFiberSleepTestMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(2, Value::U64(150u64))]),
+      StackEntry::State(State::TestRootFiberSleepTestMainCreatePrimitives),
+    ]),
+    State::TestRootFiberSleepTestMainCreatePrimitives => StepResult::Create {
+      primitives: vec![CreatePrimitiveValue::Schedule {
+        ms: if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() },
+      }],
+      success_next: State::TestRootFiberSleepTestMainSeelect,
+      success_binds: vec!["scheduledFutId".to_string()],
+      success_kinds: vec![SuccessBindKind::Future(FutureKind::FutureUnit)],
+      fail_next: State::TestRootFiberSleepTestMainReturnDbg,
+      fail_binds: vec!["createScheduleError".to_string()],
+    },
+    State::TestRootFiberSleepTestMainReturn => StepResult::ReturnVoid,
+    State::TestRootFiberSleepTestMainReturnDbg => StepResult::DebugPrintVars(State::TestRootFiberSleepTestMainReturn),
+    State::TestRootFiberSleepTestMainSeelect => {
+      let scheduledFutId: FutureUnit =
+        if let StackEntry::Value(_, Value::FutureUnit(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::FutureVar {
+        future_id: scheduledFutId.0.clone(),
+        bind: None,
+        next: State::TestRootFiberSleepTestMainReturnDbg,
+      }])
+    }
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainInitFutureId),
@@ -2118,6 +2166,31 @@ fn testRootFiber_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(testRootFiber_result_main(stack))
 }
 
+pub fn testRootFiberSleepTest_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("scheduledFutId".to_string(), Value::FutureUnit(FutureUnit::default())));
+  stack.push(StackEntry::Value("createScheduleError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("await_milliseconds".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestRootFiberSleepTestMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testRootFiberSleepTest_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testRootFiberSleepTest_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testRootFiberSleepTest_prepare_main();
+  stack
+}
+
+fn testRootFiberSleepTest_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testRootFiberSleepTest_result_main(stack))
+}
+
 pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -2197,6 +2270,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "testCalculator.main" => testCalculator_prepare_main_from_values,
     "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
     "testRootFiber.main" => testRootFiber_prepare_main_from_values,
+    "testRootFiberSleepTest.main" => testRootFiberSleepTest_prepare_main_from_values,
     "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
@@ -2227,6 +2301,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "testCalculator.main" => testCalculator_result_main_value,
     "testCreateQueue.main" => testCreateQueue_result_main_value,
     "testRootFiber.main" => testRootFiber_result_main_value,
+    "testRootFiberSleepTest.main" => testRootFiberSleepTest_result_main_value,
     "testSelectQueue.main" => testSelectQueue_result_main_value,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
@@ -2301,6 +2376,15 @@ fn testRootFiber_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   testRootFiber_prepare_heap()
 }
 
+pub fn testRootFiberSleepTest_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testRootFiberSleepTest_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testRootFiberSleepTest_prepare_heap()
+}
+
 pub fn testSelectQueue_prepare_heap() -> Heap {
   let mut heap = Heap::default();
   heap
@@ -2334,6 +2418,7 @@ pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
     "testCalculator" => testCalculator_prepare_heap_from_values,
     "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
     "testRootFiber" => testRootFiber_prepare_heap_from_values,
+    "testRootFiberSleepTest" => testRootFiberSleepTest_prepare_heap_from_values,
     "testSelectQueue" => testSelectQueue_prepare_heap_from_values,
     "testTaskExecutorIncrementer" => testTaskExecutorIncrementer_prepare_heap_from_values,
     _ => |_| Heap::default(),
