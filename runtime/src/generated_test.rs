@@ -2,7 +2,7 @@ use crate::{
   fiber::{Fiber, RunResult},
   trace::TraceEvent,
 };
-use dsl::ir::{FiberType, FutureLabel};
+use dsl::ir::FiberType;
 use generated::maroon_assembler::{
   BookSnapshot, GlobalHeap, Heap, Level, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult,
   TestIncrementTask, Trade, Value,

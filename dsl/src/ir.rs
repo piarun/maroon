@@ -55,9 +55,11 @@ pub struct IR {
 #[derive(Debug, Clone)]
 pub struct Fiber {
   /// Limit of independent runtime fibers that can be created from this IR fiber definition
+  /// TODO: Delete this one. Not needed
   pub fibers_limit: u64,
   pub heap: HashMap<String, Type>,
   /// input queue messages that fiber accepts
+  /// TODO: Delete this one. Not needed in the new concept
   pub in_messages: Vec<MessageSpec>,
   pub init_vars: Vec<InVar>,
 
@@ -96,6 +98,7 @@ pub enum Step {
   /// doesn't awaits by default. I think that makes sense?
   /// but it can be used with await
   /// args: (name on the incoming side, variable)
+  /// TODO: Delete. We'll be using queues for async communication.
   SendToFiber {
     fiber: String,
     message: String,
@@ -103,6 +106,7 @@ pub enum Step {
     next: StepId,
     future_id: FutureLabel,
   },
+  // TODO: Delete. Select is better
   Await(AwaitSpecOld),
   /// `ret_to` is the continuation step in the caller
   /// bind - local variable into which response will be written
@@ -735,21 +739,15 @@ fn uses_correct_variables(
               Some(t) => match p {
                 RuntimePrimitive::Queue { .. } => {
                   if *t != Type::String {
-                    explanation.push_str(&format!(
-                      "{:?} Create: success bind '{}' must be String, got {:?}\n",
-                      id, b.0, t
-                    ));
+                    explanation
+                      .push_str(&format!("{:?} Create: success bind '{}' must be String, got {:?}\n", id, b.0, t));
                   }
                 }
-                RuntimePrimitive::Future => {
-                  match t {
-                    Type::Future(_) => {}
-                    other => explanation.push_str(&format!(
-                      "{:?} Create: success bind '{}' must be Future<T>, got {:?}\n",
-                      id, b.0, other
-                    )),
-                  }
-                }
+                RuntimePrimitive::Future => match t {
+                  Type::Future(_) => {}
+                  other => explanation
+                    .push_str(&format!("{:?} Create: success bind '{}' must be Future<T>, got {:?}\n", id, b.0, other)),
+                },
               },
               None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
             }

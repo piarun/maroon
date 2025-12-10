@@ -301,10 +301,14 @@ pub fn sample_ir() -> IR {
                 locals: vec![
                   LocalVar("rootQueueName", Type::String),
                   LocalVar("calculatorTask", Type::Custom("TestCalculatorTask".to_string())),
+                  LocalVar("calculatorTask2", Type::Custom("TestCalculatorTask".to_string())),
                   LocalVar("responseFutureId", Type::Future(Box::new(Type::UInt64))),
+                  LocalVar("responseFutureId2", Type::Future(Box::new(Type::UInt64))),
                   LocalVar("responseFromCalculator", Type::String),
+                  LocalVar("responseFromCalculator2", Type::String),
                   LocalVar("createQueueError", Type::Option(Box::new(Type::String))),
                   LocalVar("createFutureError", Type::Option(Box::new(Type::String))),
+                  LocalVar("createFutureError2", Type::Option(Box::new(Type::String))),
                 ],
                 steps: vec![
                   (
@@ -336,6 +340,10 @@ pub fn sample_ir() -> IR {
                           f_name: FiberType::new("testCalculator"),
                           init_vars: vec![LocalVarRef("rootQueueName")],
                         },
+                        CreateFiberDetail {
+                          f_name: FiberType::new("testCalculator"),
+                          init_vars: vec![LocalVarRef("rootQueueName")],
+                        },
                       ],
                       next: StepId::new("create_future"),
                     },
@@ -343,16 +351,28 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("create_future"),
                     Step::Create { 
-                      primitives: vec![RuntimePrimitive::Future{}], 
-                      success: SuccessCreateBranch { next: StepId::new("prepareCalculationRequest"), id_binds: vec![LocalVarRef("responseFutureId")] }, 
-                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createFutureError")] }, 
+                      primitives: vec![
+                        RuntimePrimitive::Future{},
+                        RuntimePrimitive::Future{},
+                      ], 
+                      success: SuccessCreateBranch { 
+                        next: StepId::new("prepareCalculationRequests"), 
+                        id_binds: vec![
+                          LocalVarRef("responseFutureId"),
+                          LocalVarRef("responseFutureId2"),
+                        ],
+                      }, 
+                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createFutureError"),LocalVarRef("createFutureError2")] }, 
                     },
                   ),
                   (
-                    StepId::new("prepareCalculationRequest"),
+                    StepId::new("prepareCalculationRequests"),
                     Step::RustBlock { 
-                      binds: vec![LocalVarRef("calculatorTask")], 
-                      code: "TestCalculatorTask{a:10,b:15,responseFutureId: responseFutureId}".to_string(), 
+                      binds: vec![
+                        LocalVarRef("calculatorTask"),
+                        LocalVarRef("calculatorTask2"),
+                      ], 
+                      code: "(TestCalculatorTask{a:10,b:15,responseFutureId: responseFutureId}, TestCalculatorTask{a:2,b:4,responseFutureId: responseFutureId2})".to_string(), 
                       next: StepId::new("send_calculation_request"),
                     },
                   ),
@@ -363,7 +383,11 @@ pub fn sample_ir() -> IR {
                         SetPrimitive::QueueMessage { 
                           f_var_queue_name: LocalVarRef("rootQueueName"), 
                           var_name: LocalVarRef("calculatorTask"),
-                        }
+                        },
+                        SetPrimitive::QueueMessage { 
+                          f_var_queue_name: LocalVarRef("rootQueueName"), 
+                          var_name: LocalVarRef("calculatorTask2"),
+                        },
                       ], 
                       next: StepId::new("await_response"),
                     },
@@ -373,6 +397,16 @@ pub fn sample_ir() -> IR {
                     Step::Select { arms: vec![
                       AwaitSpec::Future { 
                         bind: Some(LocalVarRef("responseFromCalculator")), 
+                        ret_to: StepId::new("await_response_2"), 
+                        future_id: LocalVarRef("responseFutureId2"),
+                      },
+                    ] },
+                  ),
+                  (
+                    StepId::new("await_response_2"),
+                    Step::Select { arms: vec![
+                      AwaitSpec::Future { 
+                        bind: Some(LocalVarRef("responseFromCalculator2")), 
                         ret_to: StepId::new("return_dbg"), 
                         future_id: LocalVarRef("responseFutureId"),
                       },
