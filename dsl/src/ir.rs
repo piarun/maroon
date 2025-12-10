@@ -1,4 +1,3 @@
-use common::logical_time::LogicalTimeAbsoluteMs;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,16 +57,10 @@ pub struct Fiber {
   /// TODO: Delete this one. Not needed
   pub fibers_limit: u64,
   pub heap: HashMap<String, Type>,
-  /// input queue messages that fiber accepts
-  /// TODO: Delete this one. Not needed in the new concept
-  pub in_messages: Vec<MessageSpec>,
   pub init_vars: Vec<InVar>,
 
   pub funcs: HashMap<String, Func>,
 }
-
-#[derive(Debug, Clone)]
-pub struct MessageSpec(pub &'static str, pub Vec<(&'static str, Type)>); // (func_name, [(var_name, type)])
 
 #[derive(Debug, Clone)]
 pub struct Func {
@@ -89,11 +82,6 @@ pub struct LocalVarRef(pub &'static str);
 
 #[derive(Debug, Clone)]
 pub enum Step {
-  ScheduleTimer {
-    ms: LogicalTimeAbsoluteMs,
-    next: StepId,
-    future_id: FutureLabel,
-  },
   /// send a message to a fiber (by name) of a specific kind with arguments, then continue
   /// doesn't awaits by default. I think that makes sense?
   /// but it can be used with await
@@ -110,7 +98,7 @@ pub enum Step {
   Await(AwaitSpecOld),
   /// `ret_to` is the continuation step in the caller
   /// bind - local variable into which response will be written
-  /// THINK: should I get rid of call and alway do it through SendToFiber+Await?
+  /// TODO: allow it only for in-fiber calls. Cross-fiber calls - through queues
   Call {
     target: FuncRef,
     args: Vec<Expr>,
@@ -466,7 +454,6 @@ fn uses_correct_variables(
     match step {
       Step::Debug(_, _) => {}
       Step::DebugPrintVars(_) => {}
-      Step::ScheduleTimer { .. } => {}
       Step::CreateFibers { details, .. } => {
         for d in details {
           // Fiber must exist
@@ -901,9 +888,9 @@ fn resolve_struct_fields<'a>(
   t: &'a Type,
 ) -> Option<&'a Vec<StructField>> {
   match t {
-    Type::Struct(name, fields, _) => Some(fields),
+    Type::Struct(_name, fields, _) => Some(fields),
     // Treat PubQueueMessage as a struct for field/type resolution
-    Type::PubQueueMessage { name, fields, .. } => Some(fields),
+    Type::PubQueueMessage { name: _, fields, .. } => Some(fields),
     Type::Custom(name) => ir.types.iter().find_map(|tt| match tt {
       Type::Struct(n, fields, _) if n == name => Some(fields),
       Type::PubQueueMessage { name: n, fields, .. } if n == name => Some(fields),

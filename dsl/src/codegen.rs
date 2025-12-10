@@ -265,11 +265,6 @@ pub fn generate_rust_types(ir: &IR) -> String {
       }
       collect_future_wrappers(ir, &func.out, &mut future_wrappers);
     }
-    for msg in &fiber.in_messages {
-      for (_fname, fty) in &msg.1 {
-        collect_future_wrappers(ir, fty, &mut future_wrappers);
-      }
-    }
   }
 
   for w in future_wrappers.iter() {
@@ -279,25 +274,9 @@ pub fn generate_rust_types(ir: &IR) -> String {
     ));
   }
 
-  // 2) Emit message structs per fiber.in_messages (sorted by fiber, then message name)
+  // 2) Emit per-fiber heap structs and a unified Heap enum
   let mut fibers_sorted: Vec<(&FiberType, &Fiber)> = ir.fibers.iter().collect();
   fibers_sorted.sort_by(|a, b| a.0.0.cmp(&b.0.0));
-  for (fiber_name, fiber) in fibers_sorted.iter() {
-    let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.0.cmp(&b.0));
-    for msg in &msgs {
-      let msg_ty = variant_name(&[fiber_name.0.as_str(), &msg.0, "Msg"]);
-      out.push_str(&format!("#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\npub struct {} {{\n", msg_ty));
-      let mut fields_sorted = msg.1.clone();
-      fields_sorted.sort_by(|a, b| a.0.cmp(&b.0));
-      for (fname, fty) in &fields_sorted {
-        out.push_str(&format!("  pub {}: {},\n", camel_ident(fname), rust_type(fty)));
-      }
-      out.push_str("}\n\n");
-    }
-  }
-
-  // 3) Emit per-fiber heap structs and a unified Heap enum
   let mut heap_structs: Vec<(String, String)> = Vec::new();
   for (fiber_name, fiber) in fibers_sorted.iter() {
     let heap_struct = variant_name(&[fiber_name.0.as_str(), "Heap"]);
@@ -332,7 +311,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("}\n\n");
 
-  // 4) Emit State enum variants for all steps of all funcs (always include entry).
+  // 3) Emit State enum variants for all steps of all funcs (always include entry).
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum State {\n");
   // Always include `Completed` and `Idle` as catch-alls to mirror runtime expectations.
   out.push_str("  Completed,\n  Idle,\n");
@@ -389,7 +368,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("}\n\n");
 
-  // 5) Emit Value enum compacted by Rust types actually used in IR (params, locals, returns, message fields).
+  // 4) Emit Value enum compacted by Rust types actually used in IR (params, locals, returns, message fields).
   use std::collections::BTreeMap;
   let mut used_types: BTreeMap<String, Type> = BTreeMap::new();
   for (_, fiber) in fibers_sorted.iter() {
@@ -407,13 +386,6 @@ pub fn generate_rust_types(ir: &IR) -> String {
         used_types.insert(type_variant_name(ty), ty.clone());
       }
       used_types.insert(type_variant_name(&func.out), func.out.clone());
-    }
-    let mut msgs = fiber.in_messages.clone();
-    msgs.sort_by(|a, b| a.0.cmp(&b.0));
-    for msg in &msgs {
-      for (_, fty) in &msg.1 {
-        used_types.insert(type_variant_name(fty), fty.clone());
-      }
     }
   }
 
@@ -498,7 +470,7 @@ pub fn generate_rust_types(ir: &IR) -> String {
   }
   out.push_str("    _ => panic!(\"private_to_pub is only for PubQueueMessage values\"),\n  }\n}\n\n");
 
-  // 6) Emit runtime-aligned scaffolding types and global_step
+  // 5) Emit runtime-aligned scaffolding types and global_step
   // StackEntry
   out.push_str(
     r"#[derive(Clone, Debug, PartialEq, Eq)]
@@ -511,16 +483,20 @@ pub enum StackEntry {
   // In-place updates to the current frame (offset -> new Value)
   FrameAssign(Vec<(usize, Value)>),
 }
-"
+",
   );
 
   // FutureKind enum (dynamic variants)
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq)]\npub enum FutureKind {\n");
-  for w in future_wrappers.iter() { out.push_str(&format!("  {},\n", w)); }
+  for w in future_wrappers.iter() {
+    out.push_str(&format!("  {},\n", w));
+  }
   out.push_str("}\n\n");
   // Helper to wrap String id into a typed Future Value
   out.push_str("pub fn wrap_future_id(kind: FutureKind, id: String) -> Value {\n  match kind {\n");
-  for w in future_wrappers.iter() { out.push_str(&format!("    FutureKind::{} => Value::{}({}(id)),\n", w, w, w)); }
+  for w in future_wrappers.iter() {
+    out.push_str(&format!("    FutureKind::{} => Value::{}({}(id)),\n", w, w, w));
+  }
   out.push_str("  }\n}\n\n");
   // SuccessBindKind and the rest
   out.push_str(
@@ -587,7 +563,8 @@ pub enum StepResult {
   // Runtime may ignore this for now; present for forward-compat.
   CreateFibers { details: Vec<(FiberType, Vec<Value>)>, next: State },
 }
-");
+",
+  );
 
   // Emit helper that tells how many Value entries are on the stack for a given State.
   out.push_str(&generate_func_args_count(ir));
@@ -1149,7 +1126,6 @@ fn generate_global_step(ir: &IR) -> String {
           match entry_step {
             Step::Debug(_, _) => {}
             Step::DebugPrintVars(_) => {}
-            Step::ScheduleTimer { .. } => {}
             // handled below to capture referenced init_vars
             Step::SendToFiber { args, .. } => {
               for (_, e) in args {
@@ -1236,8 +1212,9 @@ fn generate_global_step(ir: &IR) -> String {
                 "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
               ));
             } else {
-              out
-                .push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
+              out.push_str(&format!(
+                "      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"
+              ));
             }
           }
           match entry_step {
@@ -1342,8 +1319,13 @@ fn generate_global_step(ir: &IR) -> String {
                     // If bound var type is Future<T>, map to correct FutureKind; else String
                     if let Some(ty) = var_type_of(func, b.0) {
                       if let Type::Future(inner) = ty {
-                        format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
-                      } else { "SuccessBindKind::String".to_string() }
+                        format!(
+                          "SuccessBindKind::Future(FutureKind::{})",
+                          format!("Future{}", type_variant_name(inner))
+                        )
+                      } else {
+                        "SuccessBindKind::String".to_string()
+                      }
                     } else {
                       "SuccessBindKind::String".to_string()
                     }
@@ -1378,13 +1360,6 @@ fn generate_global_step(ir: &IR) -> String {
             Step::DebugPrintVars(next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
-            }
-            Step::ScheduleTimer { ms, next, future_id } => {
-              let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-              out.push_str(&format!(
-                "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
-                ms.0, next_v, future_id.0
-              ));
             }
             Step::SetValues { values, next } => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -1453,15 +1428,15 @@ fn generate_global_step(ir: &IR) -> String {
                       _ => format!("{}.clone()", id_ident),
                     };
                     match bind {
-                    Some(name) => arm_parts.push(format!(
-                      "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
-                      id_expr, name.0, next_v
-                    )),
-                    None => arm_parts.push(format!(
-                      "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
-                      id_expr, next_v
-                    )),
-                  }
+                      Some(name) => arm_parts.push(format!(
+                        "SelectArm::FutureVar {{ future_id: {}, bind: Some(\"{}\".to_string()), next: State::{} }}",
+                        id_expr, name.0, next_v
+                      )),
+                      None => arm_parts.push(format!(
+                        "SelectArm::FutureVar {{ future_id: {}, bind: None, next: State::{} }}",
+                        id_expr, next_v
+                      )),
+                    }
                   }
                 }
               }
@@ -1665,7 +1640,6 @@ fn generate_global_step(ir: &IR) -> String {
         match step {
           Step::Debug(_, _) => {}
           Step::DebugPrintVars(_) => {}
-          Step::ScheduleTimer { .. } => {}
           // handled below to capture referenced init_vars
           Step::SendToFiber { args, .. } => {
             for (_, e) in args {
@@ -1755,7 +1729,9 @@ fn generate_global_step(ir: &IR) -> String {
               "      let {local_ident}: {rust_ty} = heap.{heap_field}.in_vars.{local_ident}.clone();\n"
             ));
           } else {
-            out.push_str(&format!("      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"));
+            out.push_str(&format!(
+              "      // NOTE: Referenced variable '{var_name}' not found among params/locals/init_vars.\n"
+            ));
           }
         }
         match step {
@@ -1853,8 +1829,12 @@ fn generate_global_step(ir: &IR) -> String {
                   if let Some(ty) = var_type_of(func, b.0) {
                     if let Type::Future(inner) = ty {
                       format!("SuccessBindKind::Future(FutureKind::{})", format!("Future{}", type_variant_name(inner)))
-                    } else { "SuccessBindKind::String".to_string() }
-                  } else { "SuccessBindKind::String".to_string() }
+                    } else {
+                      "SuccessBindKind::String".to_string()
+                    }
+                  } else {
+                    "SuccessBindKind::String".to_string()
+                  }
                 }
                 None => "SuccessBindKind::String".to_string(),
               };
@@ -1885,13 +1865,6 @@ fn generate_global_step(ir: &IR) -> String {
           Step::DebugPrintVars(next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
-          }
-          Step::ScheduleTimer { ms, next, future_id } => {
-            let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
-            out.push_str(&format!(
-              "      StepResult::ScheduleTimer {{ ms: {}u64, next: State::{}, future_id: FutureLabel::new(\"{}\") }}\n",
-              ms.0, next_v, future_id.0
-            ));
           }
           Step::SetValues { values, next } => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
@@ -2162,7 +2135,6 @@ mod tests {
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
             )]),
-            in_messages: vec![MessageSpec("GetUser", vec![("key", Type::String)])],
             init_vars: vec![],
             funcs: HashMap::from([(
               "get".into(),
@@ -2177,13 +2149,7 @@ mod tests {
         ),
         (
           FiberType::new("global"),
-          Fiber {
-            fibers_limit: 1,
-            heap: HashMap::new(),
-            in_messages: vec![],
-            init_vars: vec![],
-            funcs: HashMap::new(),
-          },
+          Fiber { fibers_limit: 1, heap: HashMap::new(), init_vars: vec![], funcs: HashMap::new() },
         ),
       ]),
     };
@@ -2191,7 +2157,6 @@ mod tests {
     let code = generate_rust_types(&ir);
     // Spot-check a few important bits are present.
     assert!(code.contains("pub struct User"));
-    assert!(code.contains("pub struct UserManagerGetUserMsg"));
     assert!(code.contains("pub struct Heap"));
     assert!(code.contains("pub enum State"));
     assert!(code.contains("UserManagerGetEntry"));
