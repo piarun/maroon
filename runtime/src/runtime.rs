@@ -4,7 +4,7 @@ use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
-use dsl::ir::{FiberType, IR};
+use dsl::ir::FiberType;
 use generated::maroon_assembler::{
   CreatePrimitiveValue, SetPrimitiveValue, StackEntry, SuccessBindKind, Value, pub_to_private, wrap_future_id,
 };
@@ -91,23 +91,8 @@ pub struct Runtime<T: Timer> {
 
   // fibers that can be executed
   active_fibers: VecDeque<Fiber>,
-  // fibers that have some tasks, but can't be executed because they're awaiting something
-  // deprecating
-  parked_fibers: HashMap<FutureId, FiberBox>,
 
   scheduled: BinaryHeap<ScheduledBlob>,
-
-  // created but idle fibers
-  // deprecating
-  fiber_pool: HashMap<FiberType, Vec<Fiber>>,
-
-  // queue for in_messages that will be executed in the order when fiber is available
-  // Vec - for predictable order
-  // deprecating
-  fiber_in_message_queue: Vec<(FiberType, VecDeque<FiberInMessage>)>,
-
-  // deprecating
-  fiber_limiter: HashMap<FiberType, u64>,
 
   timer: T,
 
@@ -147,36 +132,15 @@ pub struct Runtime<T: Timer> {
   awaiting_fibers: HashMap<u64, Fiber>,
 }
 
-struct FiberBox {
-  fiber: Fiber,
-
-  // information to which variable on stack we should bind the result for the `fiber`
-  // is used when fiber is parked and awaits some result
-  result_var_bind: Option<String>,
-}
-
-#[derive(Debug)]
-struct FiberInMessage {
-  fiber_type: FiberType,
-  function_name: String,
-  args: Vec<Value>,
-  context: Option<RunContext>,
-}
-
 impl<T: Timer> Runtime<T> {
   pub fn new(
     timer: T,
-    ir: IR,
     interface: Endpoint<(UniqueU64BlobId, Value), (LogicalTimeAbsoluteMs, Vec<TaskBlueprint>)>,
   ) -> Runtime<T> {
     Runtime {
-      fiber_limiter: ir.fibers.iter().map(|fi| (fi.0.clone(), fi.1.fibers_limit)).collect(),
       active_fibers: VecDeque::new(),
       active_tasks: LinkedList::new(),
-      parked_fibers: HashMap::new(),
       scheduled: BinaryHeap::new(),
-      fiber_pool: HashMap::new(),
-      fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
       next_created_future_id: 0,
@@ -208,12 +172,6 @@ scheduled:
 {}
 active fibers:
 {}
-in_message queue:
-{}
-fiber_pool:
-{}
-limiter:
-{}
 -----END STATE------",
       self.timer.from_start(),
       self.scheduled.iter().map(|s| format!("  t:{} f:{}", s.when, s.what)).collect::<Vec<String>>().join("\n"),
@@ -223,52 +181,7 @@ limiter:
         .map(|s| format!("  {}:{}.{}", s.unique_id, s.f_type, s.function_key))
         .collect::<Vec<String>>()
         .join("\n"),
-      self.fiber_in_message_queue.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n"),
-      self.fiber_pool.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n"),
-      self.fiber_limiter.iter().map(|s| format!("  {} {:?}", s.0, s.1)).collect::<Vec<String>>().join("\n")
     );
-  }
-
-  fn push_fiber_in_message(
-    &mut self,
-    _type: &FiberType,
-    msg: FiberInMessage,
-  ) {
-    self
-      .fiber_in_message_queue
-      .iter_mut()
-      .find(|(t, _)| t == _type)
-      .expect("IR initalization was incorrect, all types should be here")
-      .1
-      .push_back(msg);
-  }
-
-  // returns None if there is no idle Fibers and the limit has reached
-  pub fn get_fiber(
-    &mut self,
-    f_type: &FiberType,
-  ) -> Option<Fiber> {
-    if let Some(fiber) = self.fiber_pool.get_mut(f_type).and_then(Vec::pop) {
-      return Some(fiber);
-    }
-
-    let limit = self.fiber_limiter.get_mut(f_type).expect("you shouldnt create tasks that are not part of ir");
-
-    if *limit == 0 {
-      return None;
-    }
-
-    *limit -= 1;
-    let id = self.next_fiber_id;
-    self.next_fiber_id += 1;
-    return Some(Fiber::new_empty(f_type.clone(), id));
-  }
-
-  pub fn has_available_fiber(
-    &self,
-    f_type: &FiberType,
-  ) -> bool {
-    !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
 
   pub async fn run(
@@ -287,12 +200,7 @@ limiter:
       if let Some(blob) = self.scheduled.peek() {
         if now >= blob.when {
           let blob = self.scheduled.pop().unwrap();
-          if let Some(task_box) = self.parked_fibers.remove(&blob.what) {
-            self.active_fibers.push_front(task_box.fiber);
-          } else {
-            // we end up here because parked_fibers is for 'old' api that will be removed later
-            self.resolved_futures.push_front((blob.what, Value::Unit(())));
-          }
+          self.resolved_futures.push_front((blob.what, Value::Unit(())));
         }
       }
 
@@ -304,59 +212,8 @@ limiter:
         let res = fiber.run(&mut local_dbg);
         local_dbg.push_str(&format!("--- await {}:{} ---\n", fiber.f_type, fiber.unique_id));
         match res {
-          RunResult::Done(result) => {
+          RunResult::Done => {
             local_dbg.push_str(&format!("--- exit {}:{} ---\n", fiber.f_type, fiber.unique_id));
-
-            let options = fiber.context.clone();
-            // TODO: when fiber type won't be a string - remove this clone
-            self.fiber_pool.entry(fiber.f_type.clone()).or_default().push(fiber);
-
-            if let Some(global_id) = options.global_id {
-              // I'm ignoring an error here
-              // because if there is an error - the receiving channel is closed
-              // if it's closed due to shutdown or some error, doesn't matter => current level errors don't really matter
-              self.interface.send((global_id, result.clone()));
-            }
-
-            if let Some(future_id) = options.future_id {
-              if let Some(mut task_box) = self.parked_fibers.remove(&future_id) {
-                if let Some(var) = task_box.result_var_bind {
-                  task_box.fiber.assign_local(var, result);
-                }
-                self.active_fibers.push_front(task_box.fiber);
-              }
-            }
-          }
-          RunResult::AsyncCall { f_type, func, args, future_id } => {
-            if let Some(mut available_fiber) = self.get_fiber(&f_type) {
-              available_fiber.load_task(func, args, Some(RunContext { future_id: Some(future_id), global_id: None }));
-              // TODO: in that case when task will be finished with work - asynced available_fiber will be taken for execution
-              self.active_fibers.push_front(available_fiber);
-            } else {
-              self.push_fiber_in_message(
-                &f_type,
-                FiberInMessage {
-                  fiber_type: f_type.clone(),
-                  function_name: func,
-                  args,
-                  context: Some(RunContext { future_id: Some(future_id), global_id: None }),
-                },
-              );
-            }
-
-            self.active_fibers.push_front(fiber);
-          }
-          RunResult::Await(future_id, var_bind) => {
-            // specify bind parameters here
-            self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
-          }
-          RunResult::AwaitOld(future_id, var_bind) => {
-            // legacy variant: same handling as Await
-            self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
-          }
-          RunResult::ScheduleTimer { ms, future_id } => {
-            self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
-            self.active_fibers.push_front(fiber);
           }
           RunResult::Select(states) => {
             self.wait_index.register_select(fiber.unique_id, states);
@@ -545,74 +402,51 @@ limiter:
         }
       }
 
-      // below are old parts that I'll delete soon
-      // but I'm keeping them for now to not make all the tests red immediately
-      // but I'll be slowly rewriting them to a new API
-      //
-      //
-      // get in_message and put it into available Fiber(if there is one)
-      // here I don't put all of them into work, but pick the first one and immediately start execution
-      let to_push: Option<(FiberType, usize)> =
-        self.fiber_in_message_queue.iter().enumerate().find_map(|(index, (f_type, in_msg_queue))| {
-          if !in_msg_queue.is_empty() && self.has_available_fiber(f_type) {
-            Some((f_type.clone(), index))
-          } else {
-            None
+      {
+        // this part reads messages from external source
+        // and puts them where they should be
+        loop {
+          let now = self.timer.from_start();
+
+          let mut next = self.active_tasks.pop_front();
+          if next.is_none() {
+            if self.interface.receiver.is_empty() {
+              tokio::time::sleep(Duration::from_millis(5)).await;
+              break;
+            } else {
+              let (time, requests) = self.interface.receiver.recv().await.expect("checked, not empty");
+              next = Some((time, VecDeque::from(requests)));
+            }
           }
-        });
 
-      // I'm doing this in two steps because of borrow protection, I can't iter_mut and (mut self).get_fiber() inside, so I'm finding the index first, and the mutating
-      if let Some((f_type, index)) = to_push {
-        let msg = self.fiber_in_message_queue.get_mut(index).expect("checked").1.pop_front().expect("checked");
-        let mut available_fiber = self.get_fiber(&f_type).expect("checked before");
-        available_fiber.load_task(msg.function_name, msg.args, msg.context);
-        self.active_fibers.push_front(available_fiber);
-        continue 'main_loop;
-      };
-
-      // this part I won't delete because it reads messages from external source
-      // and puts them where they should be
-      'process_active_tasks: loop {
-        let now = self.timer.from_start();
-
-        let mut next = self.active_tasks.pop_front();
-        if next.is_none() {
-          if self.interface.receiver.is_empty() {
-            tokio::time::sleep(Duration::from_millis(5)).await;
+          let Some((time_stamp, mut current_queue)) = next else {
             break;
-          } else {
-            let (time, requests) = self.interface.receiver.recv().await.expect("checked, not empty");
-            next = Some((time, VecDeque::from(requests)));
+          };
+
+          if time_stamp > now {
+            // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
+            // but it should be probably not just sleep, but select or smth
+            let sleep_distance = time_stamp.0 - now.0;
+            tokio::time::sleep(Duration::from_millis(sleep_distance)).await;
+            println!("smth in active_tasks, but not now, sleeping {}ms", sleep_distance);
+            self.active_tasks.push_front((time_stamp, current_queue));
+            break;
           }
-        }
 
-        let Some((time_stamp, mut current_queue)) = next else {
-          break;
-        };
+          while let Some(blueprint) = current_queue.pop_front() {
+            if let Some(queue) = self.queue_messages.get_mut(&blueprint.q_name) {
+              let was_empty = queue.is_empty();
+              // here I can have only messages that `can`` be passed from the outside
+              // so for them this function won't fail but for other types it will panic
+              let p_value = pub_to_private(blueprint.value, format!("{}", self.next_created_future_id));
+              self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
+              self.next_created_future_id += 1;
 
-        if time_stamp > now {
-          // TODO: not continue but some sleep, since we shouldn't work on it yet + we shouldn't just waste CPU cycles
-          // but it should be probably not just sleep, but select or smth
-          let sleep_distance = time_stamp.0 - now.0;
-          tokio::time::sleep(Duration::from_millis(sleep_distance)).await;
-          println!("smth in active_tasks, but not now, sleeping {}ms", sleep_distance);
-          self.active_tasks.push_front((time_stamp, current_queue));
-          break;
-        }
-
-        while let Some(blueprint) = current_queue.pop_front() {
-          if let Some(queue) = self.queue_messages.get_mut(&blueprint.q_name) {
-            let was_empty = queue.is_empty();
-            // here I can have only messages that `can`` be passed from the outside
-            // so for them this function won't fail but for other types it will panic
-            let p_value = pub_to_private(blueprint.value, format!("{}", self.next_created_future_id));
-            self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
-            self.next_created_future_id += 1;
-
-            queue.push_back(p_value);
-            if was_empty {
-              // if it was empty => not in non_empty_queues => adding
-              self.non_empty_queues.push_back(blueprint.q_name);
+              queue.push_back(p_value);
+              if was_empty {
+                // if it was empty => not in non_empty_queues => adding
+                self.non_empty_queues.push_back(blueprint.q_name);
+              }
             }
           }
         }
@@ -623,7 +457,6 @@ limiter:
 
 #[cfg(test)]
 mod tests {
-  use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
   use generated::maroon_assembler::TestCreateQueueMessagePub;
@@ -639,7 +472,7 @@ mod tests {
       let (_a2b_runtime, b2a_runtime) =
         create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-      let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+      let mut rt = Runtime::new(MonotonicTimer::new(), b2a_runtime);
       let debug_out = rt.debug_handle();
       tokio::spawn(async move {
         rt.run("testRootFiberSleepTest".to_string()).await;
@@ -670,7 +503,7 @@ await_milliseconds=150
       let (_a2b_runtime, b2a_runtime) =
         create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-      let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+      let mut rt = Runtime::new(MonotonicTimer::new(), b2a_runtime);
       let debug_out = rt.debug_handle();
       tokio::spawn(async move {
         rt.run("testRootFiberSleepTest".to_string()).await;
@@ -695,7 +528,7 @@ await_milliseconds=150
     let (a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let mut rt = Runtime::new(MonotonicTimer::new(), b2a_runtime);
     let debug_out = rt.debug_handle();
     tokio::spawn(async move {
       rt.run("testCreateQueue".to_string()).await;
@@ -755,7 +588,7 @@ f_res_inc=12
     let (_a2b_runtime, b2a_runtime) =
       create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
 
-    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let mut rt = Runtime::new(MonotonicTimer::new(), b2a_runtime);
     let debug_out = rt.debug_handle();
     tokio::spawn(async move {
       rt.run("testRootFiber".to_string()).await;

@@ -700,13 +700,6 @@ fn generate_prepare_and_result_helpers(ir: &IR) -> String {
   }
   out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
 
-  out.push_str("pub fn get_result_fn(key: &str) -> ResultFn {\n  match key {\n");
-  result_arms.sort();
-  for arm in result_arms {
-    out.push_str(&arm);
-  }
-  out.push_str("    _ => panic!(\"shouldnt be here\"),\n  }\n}\n\n");
-
   out
 }
 

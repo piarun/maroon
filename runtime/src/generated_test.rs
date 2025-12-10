@@ -4,7 +4,7 @@ use crate::{
 };
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  GlobalHeap, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, TestIncrementTask, Value,
+  SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, TestIncrementTask, Value,
 };
 
 #[test]
@@ -53,7 +53,7 @@ fn test_future_response() {
 
   // make sure that fiber can successfully continue and finish
   let final_run = fiber.run(&mut dbg);
-  assert_eq!(RunResult::Done(Value::Unit(())), final_run);
+  assert_eq!(RunResult::Done, final_run);
 
   assert_eq!(
     r#"start function
@@ -140,10 +140,10 @@ fn test_select_resume_mechanism() {
   // Continue execution; should complete
   {
     let queue_run_result = queue_response.run(&mut dbg);
-    assert_eq!(RunResult::Done(Value::Unit(())), queue_run_result);
+    assert_eq!(RunResult::Done, queue_run_result);
 
     let future_run_result = future_response.run(&mut dbg);
-    assert_eq!(RunResult::Done(Value::Unit(())), future_run_result);
+    assert_eq!(RunResult::Done, future_run_result);
   }
 
   // check traces
@@ -232,137 +232,4 @@ fn test_select_resume_mechanism() {
     expected_future_trace.extend(expected_inc_and_compare_tail);
     assert_eq!(expected_future_trace, future_response.trace_sink);
   }
-}
-
-#[test]
-fn add_function() {
-  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
-  some_t.load_task("add", vec![Value::U64(4), Value::U64(8)], None);
-  let mut dbg = String::new();
-  let result = some_t.run(&mut dbg);
-
-  assert_eq!(RunResult::Done(Value::U64(12)), result);
-}
-
-#[test]
-fn sub_add_function() {
-  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
-  some_t.load_task("subAdd", vec![Value::U64(6), Value::U64(5), Value::U64(4)], None);
-  let mut dbg = String::new();
-  let result = some_t.run(&mut dbg);
-
-  assert_eq!(RunResult::Done(Value::U64(7)), result);
-}
-
-#[test]
-fn factorial_function() {
-  let mut some_t = Fiber::new_empty(FiberType::new("global"), 1);
-  some_t.load_task("factorial", vec![Value::U64(3)], None);
-  let mut dbg = String::new();
-  let result = some_t.run(&mut dbg);
-
-  assert_eq!(RunResult::Done(Value::U64(6)), result);
-  assert_eq!(
-    vec![
-      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialSubtract) },
-      TraceEvent {
-        state: State::GlobalFactorialSubtract,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialFactorialCall),
-          StackEntry::Retrn(Some(3)),
-          StackEntry::Value("a".to_string(), Value::U64(3)),
-          StackEntry::Value("b".to_string(), Value::U64(1)),
-          StackEntry::Value("sub".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalSubEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalSubEntry, result: StepResult::Return(Value::U64(2)) },
-      TraceEvent {
-        state: State::GlobalFactorialFactorialCall,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialMultiply),
-          StackEntry::Retrn(Some(4)),
-          StackEntry::Value("n".to_string(), Value::U64(2)),
-          StackEntry::Value("fac_call_res".to_string(), Value::U64(0)),
-          StackEntry::Value("subtract_res".to_string(), Value::U64(0)),
-          StackEntry::Value("result".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalFactorialEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialSubtract) },
-      TraceEvent {
-        state: State::GlobalFactorialSubtract,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialFactorialCall),
-          StackEntry::Retrn(Some(3)),
-          StackEntry::Value("a".to_string(), Value::U64(2)),
-          StackEntry::Value("b".to_string(), Value::U64(1)),
-          StackEntry::Value("sub".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalSubEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalSubEntry, result: StepResult::Return(Value::U64(1)) },
-      TraceEvent {
-        state: State::GlobalFactorialFactorialCall,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialMultiply),
-          StackEntry::Retrn(Some(4)),
-          StackEntry::Value("n".to_string(), Value::U64(1)),
-          StackEntry::Value("fac_call_res".to_string(), Value::U64(0)),
-          StackEntry::Value("subtract_res".to_string(), Value::U64(0)),
-          StackEntry::Value("result".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalFactorialEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalFactorialEntry, result: StepResult::GoTo(State::GlobalFactorialReturn1) },
-      TraceEvent { state: State::GlobalFactorialReturn1, result: StepResult::Return(Value::U64(1)) },
-      TraceEvent {
-        state: State::GlobalFactorialMultiply,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialReturn),
-          StackEntry::Retrn(Some(2)),
-          StackEntry::Value("a".to_string(), Value::U64(2)),
-          StackEntry::Value("b".to_string(), Value::U64(1)),
-          StackEntry::Value("mult".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalMultEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalMultEntry, result: StepResult::Return(Value::U64(2)) },
-      TraceEvent { state: State::GlobalFactorialReturn, result: StepResult::Return(Value::U64(2)) },
-      TraceEvent {
-        state: State::GlobalFactorialMultiply,
-        result: StepResult::Next(vec![
-          StackEntry::State(State::GlobalFactorialReturn),
-          StackEntry::Retrn(Some(2)),
-          StackEntry::Value("a".to_string(), Value::U64(3)),
-          StackEntry::Value("b".to_string(), Value::U64(2)),
-          StackEntry::Value("mult".to_string(), Value::U64(0)),
-          StackEntry::State(State::GlobalMultEntry),
-        ]),
-      },
-      TraceEvent { state: State::GlobalMultEntry, result: StepResult::Return(Value::U64(6)) },
-      TraceEvent { state: State::GlobalFactorialReturn, result: StepResult::Return(Value::U64(6)) },
-    ],
-    some_t.trace_sink,
-  );
-}
-
-#[test]
-fn b_search_function() {
-  let search_elements = vec![1, 2, 3, 4, 5, 6, 7];
-  let elements_len = search_elements.len() as u64;
-
-  let heap = Heap { global: GlobalHeap { binarySearchValues: search_elements }, ..Default::default() };
-
-  // initialize heap for this fiber before loading the task
-  let mut some_t = Fiber::new_with_heap(FiberType::new("global"), heap, 1);
-
-  some_t.load_task("binary_search", vec![Value::U64(4), Value::U64(0), Value::U64(elements_len - 1)], None);
-  let mut dbg = String::new();
-  let result = some_t.run(&mut dbg);
-  assert_eq!(RunResult::Done(Value::OptionU64(Some(3))), result);
-
-  some_t.load_task("binary_search", vec![Value::U64(10), Value::U64(0), Value::U64(elements_len - 1)], None);
-  let result = some_t.run(&mut dbg);
-  assert_eq!(RunResult::Done(Value::OptionU64(None)), result);
 }

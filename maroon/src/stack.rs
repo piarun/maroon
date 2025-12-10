@@ -11,7 +11,6 @@ use epoch_coordinator::interface::create_interface_pair as create_epoch_coordina
 use generated::maroon_assembler::Value;
 use libp2p::PeerId;
 use log::{debug, info};
-use runtime::ir_spec::sample_ir;
 use runtime::runtime::{Runtime, TaskBlueprint};
 use tokio::sync::oneshot;
 
@@ -55,7 +54,7 @@ impl MaroonStack {
     // TODO: copy it to other components as well
     let timer = MonotonicTimer::new();
 
-    let runtime = Runtime::new(timer.clone(), sample_ir(), b2a_runtime);
+    let runtime = Runtime::new(timer.clone(), b2a_runtime);
 
     Ok((MaroonStack { id, p2p, epoch_coordinator, app: app, runtime }, StackRemoteControl { state_invoker }))
   }

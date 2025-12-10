@@ -1,9 +1,7 @@
-use common::logical_time::LogicalTimeAbsoluteMs;
-use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
   CreatePrimitiveValue, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, SuccessBindKind, Value,
-  func_args_count, get_heap_init_fn, get_prepare_fn, get_result_fn, global_step,
+  func_args_count, get_heap_init_fn, get_prepare_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -19,42 +17,15 @@ pub struct Fiber {
   pub f_type: FiberType,
   pub unique_id: u64,
 
-  pub context: RunContext,
-
   /// here we put full fiber history
   /// right now - pairs (state, result), later maybe more
   /// TODO: make it optional, so if I don't want - I won't include it
   pub trace_sink: Vec<TraceEvent>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RunContext {
-  /// not None if there is binded task that is awaiting finishing this future_id
-  /// TODO: not sure it's a good way to put that kind of information inside the task
-  ///    why task should know if it's binded to smth or not?
-  pub future_id: Option<FutureId>,
-
-  /// global_id from TaskBlueprint
-  pub global_id: Option<UniqueU64BlobId>,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunResult {
-  Done(Value),
-  /// futureId, varBind
-  Await(FutureId, Option<String>),
-  /// legacy await variant (kept while we migrate AwaitSpec)
-  AwaitOld(FutureId, Option<String>),
-  AsyncCall {
-    f_type: FiberType,
-    func: String,
-    args: Vec<Value>,
-    future_id: FutureId,
-  },
-  ScheduleTimer {
-    ms: LogicalTimeAbsoluteMs,
-    future_id: FutureId,
-  },
+  Done,
   /// Select arms matching IR: can await either futures or queue messages
   Select(Vec<SelectArm>),
   /// Broadcast primitive updates to runtime; fiber has already queued next state
@@ -95,12 +66,6 @@ impl std::fmt::Display for FutureId {
   }
 }
 
-impl FutureId {
-  pub fn new(id: impl Into<String>) -> Self {
-    Self(id.into())
-  }
-}
-
 impl Fiber {
   /// creates a Fiber able to run from main function
   pub fn new(
@@ -115,66 +80,7 @@ impl Fiber {
       hif(init_vars.clone())
     };
 
-    Fiber {
-      f_type,
-      unique_id,
-      stack: f(vec![]),
-      heap: heap,
-      function_key: f_name,
-      context: RunContext::default(),
-      trace_sink: vec![],
-    }
-  }
-
-  /// Create an empty fiber with a default heap and no loaded task.
-  /// TODO: remove it as it creates unusable fiber in a new paradigm
-  pub fn new_empty(
-    f_type: FiberType,
-    unique_id: u64,
-  ) -> Fiber {
-    Fiber {
-      f_type,
-      unique_id,
-      stack: Vec::new(),
-      heap: Heap::default(),
-      function_key: String::new(),
-      context: RunContext::default(),
-      trace_sink: vec![],
-    }
-  }
-
-  /// TODO: remove it as it creates unusable fiber in a new paradigm
-  pub fn new_with_heap(
-    f_type: FiberType,
-    heap: Heap,
-    unique_id: u64,
-  ) -> Fiber {
-    Fiber {
-      f_type,
-      unique_id,
-      stack: Vec::new(),
-      heap: heap,
-      function_key: String::new(),
-      context: RunContext::default(),
-      trace_sink: vec![],
-    }
-  }
-
-  /// load a task into this fiber, clearing the current stack but preserving the heap
-  ///
-  /// TODO: should I check and if stack is not empty - panic?
-  /// That might identify potential problems or unxepectedly left variables
-  pub fn load_task(
-    &mut self,
-    func_name: impl Into<String>,
-    init_values: Vec<Value>,
-    context: Option<RunContext>,
-  ) {
-    self.stack.clear();
-    self.function_key = format!("{}.{}", self.f_type, func_name.into());
-    let f = get_prepare_fn(self.function_key.as_str());
-    self.stack = f(init_values);
-    self.context = context.unwrap_or_default();
+    Fiber { f_type, unique_id, stack: f(vec![]), heap: heap, function_key: f_name, trace_sink: vec![] }
   }
 
   pub fn print_stack(
@@ -229,18 +135,15 @@ impl Fiber {
     loop {
       let head_opt = self.stack.pop();
       if head_opt.is_none() {
-        // Empty stack indicates completion for void-returning functions.
-        // Delegate to result mapper which will return Unit(()) for void.
-        let f = get_result_fn(&self.function_key);
-        return RunResult::Done(f(&self.stack));
+        // Empty stack indicates completion
+        return RunResult::Done;
       }
       let head = head_opt.unwrap();
 
       let StackEntry::State(state) = head else {
         // if no next state - return
         self.stack.push(head);
-        let f = get_result_fn(&self.function_key);
-        return RunResult::Done(f(&self.stack));
+        return RunResult::Done;
       };
 
       let arguments_number = func_args_count(&state);

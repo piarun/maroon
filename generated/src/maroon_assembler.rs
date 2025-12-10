@@ -1712,29 +1712,6 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
   }
 }
 
-pub fn get_result_fn(key: &str) -> ResultFn {
-  match key {
-    "application.main" => application_result_main_value,
-    "global.add" => global_result_add_value,
-    "global.binary_search" => global_result_binarySearch_value,
-    "global.div" => global_result_div_value,
-    "global.factorial" => global_result_factorial_value,
-    "global.main" => global_result_main_value,
-    "global.mult" => global_result_mult_value,
-    "global.sub" => global_result_sub_value,
-    "global.subAdd" => global_result_subAdd_value,
-    "root.main" => root_result_main_value,
-    "testCalculator.main" => testCalculator_result_main_value,
-    "testCreateQueue.main" => testCreateQueue_result_main_value,
-    "testInfiniteSummator.main" => testInfiniteSummator_result_main_value,
-    "testRootFiber.main" => testRootFiber_result_main_value,
-    "testRootFiberSleepTest.main" => testRootFiberSleepTest_result_main_value,
-    "testSelectQueue.main" => testSelectQueue_result_main_value,
-    "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
-    _ => panic!("shouldnt be here"),
-  }
-}
-
 pub type HeapInitFn = fn(Vec<Value>) -> Heap;
 
 pub fn application_prepare_heap() -> Heap {
