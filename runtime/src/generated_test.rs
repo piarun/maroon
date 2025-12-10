@@ -83,8 +83,8 @@ fn test_select_resume_mechanism() {
       bind: "counter".to_string(),
       next: State::TestSelectQueueMainStartWork,
     },
-    SelectArm::Future {
-      future_id: FutureLabel::new("testSelectQueue_future_1".to_string()),
+    SelectArm::FutureVar {
+      future_id: "testSelectQueue_future_1".to_string(),
       bind: Some("responseFromFut".to_string()),
       next: State::TestSelectQueueMainIncFromFut,
     },
@@ -97,6 +97,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainEntry,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
+          StackEntry::State(State::TestSelectQueueMainInitFutureId),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainInitFutureId,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::String("testSelectQueue_future_1".to_string()))]),
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },
@@ -174,6 +181,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainEntry,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
+          StackEntry::State(State::TestSelectQueueMainInitFutureId),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainInitFutureId,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::String("testSelectQueue_future_1".to_string()))]),
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },
@@ -190,6 +204,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainEntry,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
+          StackEntry::State(State::TestSelectQueueMainInitFutureId),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainInitFutureId,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::String("testSelectQueue_future_1".to_string()))]),
           StackEntry::State(State::TestSelectQueueMainSelectCounter),
         ]),
       },

@@ -5,7 +5,9 @@ use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value, pub_to_private};
+use generated::maroon_assembler::{
+  CreatePrimitiveValue, SetPrimitiveValue, StackEntry, SuccessBindKind, Value, pub_to_private, wrap_future_id,
+};
 use std::collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -143,8 +145,9 @@ pub struct Runtime<T: Timer> {
   /// 4. if queue is empty - don't add name here
   /// 5. requeue q only if queue_messages[q] is still non-empty
   non_empty_queues: VecDeque<String>,
-
-  message_futures: HashMap<FutureId, Value>,
+  /// push resolved futures with their results
+  /// fiber awakening will happen in the same order as resolved futures get into the queue
+  resolved_futures: VecDeque<(FutureId, Value)>,
 
   /// Shared debug output sink used by all fibers, safe to share with tests
   /// I don't think it's a good way of doing it longterm,
@@ -196,7 +199,7 @@ impl<T: Timer> Runtime<T> {
 
       queue_messages: HashMap::new(),
       non_empty_queues: VecDeque::new(),
-      message_futures: HashMap::new(),
+      resolved_futures: VecDeque::new(),
 
       dbg_out: Arc::new(Mutex::new(String::new())),
 
@@ -358,6 +361,10 @@ limiter:
             // specify bind parameters here
             self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
           }
+          RunResult::AwaitOld(future_id, var_bind) => {
+            // legacy variant: same handling as Await
+            self.parked_fibers.insert(future_id, FiberBox { fiber: fiber, result_var_bind: var_bind });
+          }
           RunResult::ScheduleTimer { ms, future_id } => {
             self.scheduled.push(ScheduledBlob { when: self.timer.from_start() + ms, what: future_id });
             self.active_fibers.push_front(fiber);
@@ -365,6 +372,18 @@ limiter:
           RunResult::Select(states) => {
             self.wait_index.register_select(fiber.unique_id, states);
             self.awaiting_fibers.insert(fiber.unique_id, fiber);
+          }
+          RunResult::CreateFibers { details } => {
+            for (f_type, init_vars) in details {
+              local_dbg.push_str(&format!("created: {:?}:{}. init_vars:\n", f_type, self.next_fiber_id));
+              for v in init_vars.iter() {
+                local_dbg.push_str(&format!("    {:?}\n", v));
+              }
+              let nf = Fiber::new(f_type, self.next_fiber_id, &init_vars);
+              self.next_fiber_id += 1;
+              self.active_fibers.push_back(nf);
+            }
+            self.active_fibers.push_front(fiber);
           }
           RunResult::SetValues(values) => {
             for v in values {
@@ -387,7 +406,7 @@ limiter:
                   if let Some(u_id) = self.public_futures.remove(&id) {
                     self.interface.send((u_id, value));
                   } else {
-                    self.message_futures.insert(FutureId(id), value);
+                    self.resolved_futures.push_back((FutureId(id), value));
                   }
                 }
               }
@@ -395,7 +414,7 @@ limiter:
             // continue immediately, no need to wait anything
             self.active_fibers.push_front(fiber);
           }
-          RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
+          RunResult::Create { primitives, success_next, success_binds, success_kinds, fail_next, fail_binds } => {
             let mut candidate_queues = HashSet::<String>::new();
             let mut errors = Vec::<Option<String>>::with_capacity(primitives.len());
             let mut has_error = false;
@@ -448,7 +467,11 @@ limiter:
               // Bind success ids into locals
               for (idx, var_name) in success_binds.iter().enumerate() {
                 let id = ids.get(idx).cloned().expect("no way it doesn't exist");
-                fiber.assign_local(var_name.clone(), Value::String(id));
+                let v = match success_kinds.get(idx) {
+                  Some(SuccessBindKind::String) | None => Value::String(id),
+                  Some(SuccessBindKind::Future(kind)) => wrap_future_id(kind.clone(), id),
+                };
+                fiber.assign_local(var_name.clone(), v);
               }
               fiber.stack.push(StackEntry::State(success_next));
               self.active_fibers.push_front(fiber);
@@ -458,6 +481,32 @@ limiter:
         if !local_dbg.is_empty() {
           if let Ok(mut g) = self.dbg_out.lock() {
             g.push_str(&local_dbg);
+          }
+        }
+      }
+
+      {
+        // try to resolve fiber for a resolved Future if any is available
+        if let Some((future_id, value)) = self.resolved_futures.pop_front() {
+          if let Some(awaiter) = self.wait_index.wake_one(&WaitKey::Future(future_id.clone())) {
+            // It's not possible that I have smth in wait_index but don't have it in awaiting_fibers
+            // if fiber has been removed from awaiting_fibers it should be removed from wait_index as well, no exceptions
+            let mut w_fiber = self.awaiting_fibers.remove(&awaiter.fiber_id).expect("data consistency violation");
+            if let Some(bind_var) = awaiter.bind {
+              w_fiber.assign_local_and_push_next(bind_var, value, awaiter.next);
+            } else {
+              w_fiber.push_next(awaiter.next);
+            }
+            self.active_fibers.push_front(w_fiber);
+          } else {
+            // if nobody is here for this future - probably it's because they haven't started to await it yet, but they will at some point
+            // that's why I'm pushing it back to the queue
+            //
+            // TODO: potential memory leak if we create future but for some reason are not waiting for it
+            // that's quite critical and will hit us at some point if won't be fixed
+            // I don't know yet where it should be fixed, probably on IR/DSL level? like in Rust?
+            // if variable with future is dropped - we can remove it, if not yet - then it's needed
+            self.resolved_futures.push_back((future_id, value));
           }
         }
       }
@@ -815,6 +864,61 @@ f_res_inc=12
 --- start testCreateQueue:0 ---
 --- await testCreateQueue:0 ---
 --- exit testCreateQueue:0 ---
+"#,
+      result.expect("should be object").as_str()
+    );
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn creating_fiber_cross_fiber_communication() {
+    let (a2b_runtime, b2a_runtime) =
+      create_a_b_duplex_pair::<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>();
+
+    let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
+    let debug_out = rt.debug_handle();
+    tokio::spawn(async move {
+      rt.run("testRootFiber".to_string()).await;
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let result = debug_out.lock();
+    assert_eq!(
+      r#"--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
+--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
+created: FiberType("testCalculator"):1. init_vars:
+    String("rootQueue")
+--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
+--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
+--- start testRootFiber:0 ---
+--- await testRootFiber:0 ---
+--- start testCalculator:1 ---
+request=TestCalculatorTask(TestCalculatorTask { a: 0, b: 0, responseFutureId: FutureU64("") })
+result=0
+respFutureId=FutureU64(FutureU64(""))
+--- await testCalculator:1 ---
+--- start testCalculator:1 ---
+got task from the queue
+request=TestCalculatorTask(TestCalculatorTask { a: 10, b: 15, responseFutureId: FutureU64("0") })
+result=0
+respFutureId=FutureU64(FutureU64(""))
+--- await testCalculator:1 ---
+--- start testCalculator:1 ---
+--- await testCalculator:1 ---
+--- exit testCalculator:1 ---
+--- start testRootFiber:0 ---
+rootQueueName=rootQueue
+calculatorTask=TestCalculatorTask(TestCalculatorTask { a: 10, b: 15, responseFutureId: FutureU64("0") })
+responseFutureId=FutureU64(FutureU64("0"))
+responseFromCalculator=150
+createQueueError=OptionString(None)
+createFutureError=OptionString(None)
+--- await testRootFiber:0 ---
+--- exit testRootFiber:0 ---
 "#,
       result.expect("should be object").as_str()
     );

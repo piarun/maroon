@@ -103,7 +103,7 @@ pub enum Step {
     next: StepId,
     future_id: FutureLabel,
   },
-  Await(AwaitSpec),
+  Await(AwaitSpecOld),
   /// `ret_to` is the continuation step in the caller
   /// bind - local variable into which response will be written
   /// THINK: should I get rid of call and alway do it through SendToFiber+Await?
@@ -167,6 +167,17 @@ pub enum Step {
     fail: FailCreateBranch,
   },
 
+  /// Spawns one or more new fibers and continues immediately
+  ///
+  /// Semantics:
+  /// - Each entry in `details` starts a new fiber of the given type at its `main` function
+  ///   with the provided `init_vars`
+  /// - There is no success/failure branching; creation is best-effort and non-blocking
+  CreateFibers {
+    details: Vec<CreateFiberDetail>,
+    next: StepId,
+  },
+
   /// DEBUG section
   /// Prints smth to dbgOut
 
@@ -178,11 +189,23 @@ pub enum Step {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateFiberDetail {
+  /// Target fiber type name as declared in `IR.fibers`
+  /// Must match an existing fiber key. The new fiber starts at its `main` function
+  pub f_name: FiberType,
+
+  /// Arguments for the spawned fiber's `main` function
+  /// These are positional and must match the target fiber's `init_vars`
+  /// in length, types and order.
+  pub init_vars: Vec<LocalVarRef>,
+}
+
+#[derive(Debug, Clone)]
 pub struct SuccessCreateBranch {
   /// where to go in case of success
   pub next: StepId,
   /// ids of created primitives will be put here in the same order as requested
-  /// LocalVars should have type String, as we use this type for queues/futures ids
+  /// LocalVars should have type String for queues and Type::Future for futures
   pub id_binds: Vec<LocalVarRef>,
 }
 
@@ -201,6 +224,7 @@ pub enum RuntimePrimitive {
   Future,
   /// `name` should be unique and should reference LocalVar typed as String
   /// if `public` == true - new messages can come not from other fibers but from gateways as well
+  /// TODO: provide message types here as well so I can do some transpile and compile-time checks on types
   Queue {
     name: LocalVarRef,
     public: bool,
@@ -233,6 +257,28 @@ pub enum Opcode {
 
 #[derive(Debug, Clone)]
 pub enum AwaitSpec {
+  Future {
+    bind: Option<LocalVarRef>,
+    ret_to: StepId,
+    /// variable ref where queue id is located
+    future_id: LocalVarRef,
+  },
+  Queue {
+    /// variable ref where queue name is located
+    queue_name: LocalVarRef,
+    /// variable name - where message from the queue will be put
+    /// TODO: check types of messages that they match
+    message_var: LocalVarRef,
+    /// next step after await is resolved in this arm
+    next: StepId,
+  },
+}
+
+/// Almost the same as AwaitSpec, but uses outdated FutureLabel
+/// TODO: remove it when will do the removal work of FutureLabel
+/// But for now I want to keep it in order to have running test-scenarious
+#[derive(Debug, Clone)]
+pub enum AwaitSpecOld {
   Future {
     bind: Option<LocalVarRef>,
     ret_to: StepId,
@@ -413,6 +459,40 @@ fn uses_correct_variables(
       Step::Debug(_, _) => {}
       Step::DebugPrintVars(_) => {}
       Step::ScheduleTimer { .. } => {}
+      Step::CreateFibers { details, .. } => {
+        for d in details {
+          // Fiber must exist
+          if let Some(target_fiber) = ir.fibers.get(d.f_name.0.as_str()) {
+            // init_vars arity must match
+            if d.init_vars.len() != target_fiber.init_vars.len() {
+              explanation.push_str(&format!(
+                "{:?} CreateFibers '{}' expects {} init vars, got {}\n",
+                id,
+                d.f_name,
+                target_fiber.init_vars.len(),
+                d.init_vars.len()
+              ));
+            }
+            // type-check positional init vars
+            for (idx, var_ref) in d.init_vars.iter().enumerate() {
+              if let Some(t) = vars_map.get(var_ref.0) {
+                if let Some(InVar(_pname, pty)) = target_fiber.init_vars.get(idx) {
+                  if t != pty {
+                    explanation.push_str(&format!(
+                      "{:?} CreateFibers '{}' arg {} type mismatch: expected {:?}, got {:?}\n",
+                      id, d.f_name, idx, pty, t
+                    ));
+                  }
+                }
+              } else {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_ref.0));
+              }
+            }
+          } else {
+            explanation.push_str(&format!("{:?} CreateFibers references unknown fiber '{}'\n", id, d.f_name));
+          }
+        }
+      }
       Step::SendToFiber { fiber, message, args, .. } => {
         for (_name, expr) in args {
           collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
@@ -436,14 +516,14 @@ fn uses_correct_variables(
         }
       }
       Step::Await(spec) => match spec {
-        AwaitSpec::Future { bind, ret_to: _, future_id: _ } => {
+        AwaitSpecOld::Future { bind, ret_to: _, future_id: _ } => {
           if let Some(var_ref) = bind {
             if !vars_map.contains_key(var_ref.0) {
               explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_ref.0));
             }
           }
         }
-        AwaitSpec::Queue { queue_name, message_var, next: _ } => {
+        AwaitSpecOld::Queue { queue_name, message_var, next: _ } => {
           // queue id should be String
           if let Some(t) = vars_map.get(queue_name.0) {
             if *t != Type::String {
@@ -567,7 +647,11 @@ fn uses_correct_variables(
                     .push_str(&format!("{:?} queue_name '{}' must be String, got {:?}\n", id, queue_name.0, t));
                 }
               } else {
-                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, queue_name.0));
+                // Allow referencing fiber-level init vars by name
+                let is_init_var = ir.fibers.values().any(|f| f.init_vars.iter().any(|iv| iv.0 == queue_name.0));
+                if !is_init_var {
+                  explanation.push_str(&format!("{:?} references {} that is not defined\n", id, queue_name.0));
+                }
               }
               if !vars_map.contains_key::<str>(message_var.0) {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
@@ -643,15 +727,30 @@ fn uses_correct_variables(
           ));
         }
         for (i, p) in primitives.iter().enumerate() {
-          // success id bind must be String
+          // success id bind type must match the primitive kind:
+          // - Queue => String
+          // - Future => Future<T>
           if let Some(b) = success.id_binds.get(i) {
             match vars_map.get(b.0) {
-              Some(t) => {
-                if *t != Type::String {
-                  explanation
-                    .push_str(&format!("{:?} Create: success bind '{}' must be String, got {:?}\n", id, b.0, t));
+              Some(t) => match p {
+                RuntimePrimitive::Queue { .. } => {
+                  if *t != Type::String {
+                    explanation.push_str(&format!(
+                      "{:?} Create: success bind '{}' must be String, got {:?}\n",
+                      id, b.0, t
+                    ));
+                  }
                 }
-              }
+                RuntimePrimitive::Future => {
+                  match t {
+                    Type::Future(_) => {}
+                    other => explanation.push_str(&format!(
+                      "{:?} Create: success bind '{}' must be Future<T>, got {:?}\n",
+                      id, b.0, other
+                    )),
+                  }
+                }
+              },
               None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
             }
           }

@@ -120,6 +120,12 @@ impl WaitRegistry {
           self.list_push_back(&key, node_id);
           arm_handles.push(ArmHandle { key, node_id, kind: ArmKind::Future, resume: ArmResume { bind, next } });
         }
+        SelectArm::FutureVar { future_id, bind, next } => {
+          let key = WaitKey::Future(FutureId(future_id));
+          let node_id = self.nodes.insert(WaitNode { prev: None, next: None, reg_id, fiber_id });
+          self.list_push_back(&key, node_id);
+          arm_handles.push(ArmHandle { key, node_id, kind: ArmKind::Future, resume: ArmResume { bind, next } });
+        }
       }
     }
 
