@@ -1,24 +1,34 @@
 use crate::fiber::*;
-use crate::wait_registry::WaitRegistry;
+use crate::wait_registry::{WaitKey, WaitRegistry};
 use common::duplex_channel::Endpoint;
 use common::logical_clock::Timer;
 use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::{FiberType, IR};
-use generated::maroon_assembler::{SetPrimitiveValue, Value};
-use std::collections::{BinaryHeap, HashMap, LinkedList, VecDeque};
+use generated::maroon_assembler::{CreatePrimitiveValue, SetPrimitiveValue, StackEntry, Value, pub_to_private};
+use std::collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskBlueprint {
   pub global_id: UniqueU64BlobId,
+  pub source: TaskBPSource,
+}
 
-  pub fiber_type: FiberType,
-  // function key to provide an information which function should be executed, ex: `add` or `sub`...
-  pub function_key: String,
-  // input parameters for the function
-  pub init_values: Vec<Value>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskBPSource {
+  FiberFunc {
+    fiber_type: FiberType,
+    // function key to provide an information which function should be executed, ex: `add` or `sub`...
+    function_key: String,
+    // input parameters for the function
+    init_values: Vec<Value>,
+  },
+  Queue {
+    q_name: String,
+    value: Value,
+  },
 }
 
 #[derive(Debug)]
@@ -115,10 +125,25 @@ pub struct Runtime<T: Timer> {
 
   // monotonically increasing id for newly created fibers
   next_fiber_id: u64,
+  // monotonically increasing id for newly created futures (via Create)
+  next_created_future_id: u64,
+  /// only for futures that are linked to the external messages(that are coming from gateways)
+  public_futures: HashMap<String, UniqueU64BlobId>,
 
+  /// message queues
   /// key - queue name
-  /// value - queue of messages that are awaiting to be processed
-  message_queues: HashMap<String, VecDeque<Value>>,
+  /// value - queue of messages
+  queue_messages: HashMap<String, VecDeque<Value>>,
+  /// order of non-empty queues in which I should check queues
+  /// when smth adds message to the empty `queue_messages` - it should add queueName to this queue
+  /// when smth works with this list it should:
+  /// 1. pop_front
+  /// 2. find queue in `queue_messages`
+  /// 3. If a waiter exists for queue, pop one message and wake it; otherwise rotate q without poppingpop front message from step 2
+  /// 4. if queue is empty - don't add name here
+  /// 5. requeue q only if queue_messages[q] is still non-empty
+  non_empty_queues: VecDeque<String>,
+
   message_futures: HashMap<FutureId, Value>,
 
   /// Shared debug output sink used by all fibers, safe to share with tests
@@ -165,9 +190,12 @@ impl<T: Timer> Runtime<T> {
       fiber_in_message_queue: ir.fibers.iter().map(|f| (f.0.clone(), VecDeque::default())).collect(),
       timer: timer,
       next_fiber_id: 0,
+      next_created_future_id: 0,
+      public_futures: HashMap::new(),
       awaiting_fibers: HashMap::new(),
 
-      message_queues: HashMap::new(),
+      queue_messages: HashMap::new(),
+      non_empty_queues: VecDeque::new(),
       message_futures: HashMap::new(),
 
       dbg_out: Arc::new(Mutex::new(String::new())),
@@ -253,13 +281,12 @@ limiter:
   ) -> bool {
     !self.fiber_pool.get(f_type).is_none_or(Vec::is_empty) || self.fiber_limiter.get(f_type).is_some_and(|x| *x > 0)
   }
+
   pub async fn run(
     &mut self,
     root_type: String,
   ) {
-    self.message_queues.insert("test_queue".to_string(), VecDeque::new());
-
-    let root = Fiber::new(FiberType(root_type), 0, &vec![Value::String("test_queue".to_string())]);
+    let root = Fiber::new(FiberType(root_type), 0, &vec![]);
     self.next_fiber_id = 1;
     self.active_fibers.push_back(root);
 
@@ -281,9 +308,12 @@ limiter:
       while let Some(mut fiber) = self.active_fibers.pop_front() {
         // Accumulate debug output locally, then append with a single lock
         let mut local_dbg = String::new();
-        match fiber.run(&mut local_dbg) {
+        local_dbg.push_str(&format!("--- start {}:{} ---\n", fiber.f_type, fiber.unique_id));
+        let res = fiber.run(&mut local_dbg);
+        local_dbg.push_str(&format!("--- await {}:{} ---\n", fiber.f_type, fiber.unique_id));
+        match res {
           RunResult::Done(result) => {
-            println!("FIBER {} IS FINISHED. Result: {:?}", &fiber, result);
+            local_dbg.push_str(&format!("--- exit {}:{} ---\n", fiber.f_type, fiber.unique_id));
 
             let options = fiber.context.clone();
             // TODO: when fiber type won't be a string - remove this clone
@@ -296,17 +326,14 @@ limiter:
               self.interface.send((global_id, result.clone()));
             }
 
-            let Some(future_id) = options.future_id else {
-              continue;
-            };
-            let Some(mut task_box) = self.parked_fibers.remove(&future_id) else {
-              continue;
-            };
-
-            if let Some(var) = task_box.result_var_bind {
-              task_box.fiber.assign_local(var, result);
+            if let Some(future_id) = options.future_id {
+              if let Some(mut task_box) = self.parked_fibers.remove(&future_id) {
+                if let Some(var) = task_box.result_var_bind {
+                  task_box.fiber.assign_local(var, result);
+                }
+                self.active_fibers.push_front(task_box.fiber);
+              }
             }
-            self.active_fibers.push_front(task_box.fiber);
           }
           RunResult::AsyncCall { f_type, func, args, future_id } => {
             if let Some(mut available_fiber) = self.get_fiber(&f_type) {
@@ -343,21 +370,128 @@ limiter:
             for v in values {
               match v {
                 SetPrimitiveValue::QueueMessage { queue_name, value } => {
-                  self.message_queues.entry(queue_name).or_default().push_back(value);
+                  if let Some(queue) = self.queue_messages.get_mut(&queue_name) {
+                    let is_empty = queue.is_empty();
+                    queue.push_back(value);
+                    if is_empty {
+                      self.non_empty_queues.push_back(queue_name);
+                    }
+                  } else {
+                    // todo: how to send an error here? should I send an error here?
+                    panic!("it means smb is trying to send value to non-existing queue");
+                    // self.queue_messages.insert(queue_name.clone(), VecDeque::from(vec![value]));
+                    // self.non_empty_queues.push_back(queue_name);
+                  }
                 }
                 SetPrimitiveValue::Future { id, value } => {
-                  self.message_futures.insert(FutureId(id), value);
+                  if let Some(u_id) = self.public_futures.remove(&id) {
+                    self.interface.send((u_id, value));
+                  } else {
+                    self.message_futures.insert(FutureId(id), value);
+                  }
                 }
               }
             }
             // continue immediately, no need to wait anything
             self.active_fibers.push_front(fiber);
           }
+          RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
+            let mut candidate_queues = HashSet::<String>::new();
+            let mut errors = Vec::<Option<String>>::with_capacity(primitives.len());
+            let mut has_error = false;
+
+            // Validate and compute ids for all primitives first (atomic behavior)
+            for primitive in primitives.iter() {
+              match primitive {
+                CreatePrimitiveValue::Queue { name, public: _ } => {
+                  if self.queue_messages.contains_key(name) || candidate_queues.contains(name) {
+                    errors.push(Some("already_exists".to_string()));
+                    has_error = true;
+                  } else {
+                    errors.push(None);
+                    candidate_queues.insert(name.clone());
+                  }
+                }
+                CreatePrimitiveValue::Future => {
+                  errors.push(None);
+                }
+              }
+            }
+
+            if has_error {
+              // Bind per-primitive Option<String> errors and go to fail branch
+              for (idx, var_name) in fail_binds.iter().enumerate() {
+                let v = match errors.get(idx).cloned().unwrap_or(None) {
+                  Some(e) => Value::OptionString(Some(e)),
+                  None => Value::OptionString(None),
+                };
+                fiber.assign_local(var_name.clone(), v);
+              }
+              fiber.stack.push(StackEntry::State(fail_next));
+              self.active_fibers.push_front(fiber);
+            } else {
+              let mut ids = Vec::<String>::with_capacity(primitives.len());
+
+              // Apply creations for all primitives since validation succeeded
+              for primitive in primitives {
+                match primitive {
+                  CreatePrimitiveValue::Queue { name, public: _ } => {
+                    ids.push(name.clone());
+                    self.queue_messages.insert(name, VecDeque::new());
+                  }
+                  CreatePrimitiveValue::Future => {
+                    ids.push(format!("{}", self.next_created_future_id));
+                    self.next_created_future_id += 1;
+                  }
+                }
+              }
+              // Bind success ids into locals
+              for (idx, var_name) in success_binds.iter().enumerate() {
+                let id = ids.get(idx).cloned().expect("no way it doesn't exist");
+                fiber.assign_local(var_name.clone(), Value::String(id));
+              }
+              fiber.stack.push(StackEntry::State(success_next));
+              self.active_fibers.push_front(fiber);
+            }
+          }
         }
         if !local_dbg.is_empty() {
           if let Ok(mut g) = self.dbg_out.lock() {
             g.push_str(&local_dbg);
           }
+        }
+      }
+
+      // try to get message from next message_queue and run fiber
+      // maybe later I should add some index here so we don't hit here if one of the condition doesn't match
+      if let Some(q_name) = self.non_empty_queues.pop_front() {
+        if let Some(awaiter_info) = self.wait_index.wake_one(&WaitKey::Queue(q_name.clone())) {
+          let mut fb = self
+            .awaiting_fibers
+            .remove(&awaiter_info.fiber_id)
+            .expect("if fiber is in wait_index, it should be in awaiters. Otherwise data consistency is violated");
+
+          let m_queue = self
+            .queue_messages
+            .get_mut(&q_name)
+            .expect("should be here and non empty. Otherwise it shouldn't end up in non_empty_queues");
+          let v = m_queue.pop_front().expect("should be non empty. Otherwise it shouldn't end up in non_empty_queues");
+
+          // Bind the dequeued message into the awaiting fiber and push its next state
+          if let Some(bind_name) = awaiter_info.bind {
+            fb.assign_local_and_push_next(bind_name, v, awaiter_info.next);
+          } else {
+            // No bind requested; just continue to the next state
+            fb.stack.push(StackEntry::State(awaiter_info.next));
+          }
+
+          self.active_fibers.push_front(fb);
+          if !m_queue.is_empty() {
+            self.non_empty_queues.push_back(q_name);
+          }
+          continue 'main_loop;
+        } else {
+          self.non_empty_queues.push_back(q_name);
         }
       }
 
@@ -386,6 +520,8 @@ limiter:
         continue 'main_loop;
       };
 
+      // this part I won't delete because it reads messages from external source
+      // and puts them where they should be
       'process_active_tasks: loop {
         let now = self.timer.from_start();
 
@@ -415,29 +551,48 @@ limiter:
         }
 
         while let Some(blueprint) = current_queue.pop_front() {
-          if let Some(mut fiber) = self.get_fiber(&blueprint.fiber_type) {
-            fiber.load_task(
-              blueprint.function_key,
-              blueprint.init_values,
-              Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-            );
-            self.active_fibers.push_back(fiber);
+          match blueprint.source {
+            TaskBPSource::FiberFunc { fiber_type, function_key, init_values } => {
+              if let Some(mut fiber) = self.get_fiber(&fiber_type) {
+                fiber.load_task(
+                  function_key.clone(),
+                  init_values.clone(),
+                  Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
+                );
+                self.active_fibers.push_back(fiber);
 
-            if !current_queue.is_empty() {
-              self.active_tasks.push_front((time_stamp, current_queue));
+                if !current_queue.is_empty() {
+                  self.active_tasks.push_front((time_stamp, current_queue));
+                }
+                break 'process_active_tasks;
+              } else {
+                self.push_fiber_in_message(
+                  &fiber_type,
+                  FiberInMessage {
+                    fiber_type: fiber_type.clone(),
+                    function_name: function_key,
+                    args: init_values,
+                    context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
+                  },
+                );
+              }
             }
-            break 'process_active_tasks;
-          } else {
-            let ftype = blueprint.fiber_type.clone();
-            self.push_fiber_in_message(
-              &ftype,
-              FiberInMessage {
-                fiber_type: ftype.clone(),
-                function_name: blueprint.function_key,
-                args: blueprint.init_values,
-                context: Some(RunContext { future_id: None, global_id: Some(blueprint.global_id) }),
-              },
-            );
+            TaskBPSource::Queue { q_name, value } => {
+              if let Some(queue) = self.queue_messages.get_mut(&q_name) {
+                let was_empty = queue.is_empty();
+                // here I can have only messages that `can`` be passed from the outside
+                // so for them this function won't fail but for other types it will panic
+                let p_value = pub_to_private(value, format!("{}", self.next_created_future_id));
+                self.public_futures.insert(format!("{}", self.next_created_future_id), blueprint.global_id);
+                self.next_created_future_id += 1;
+
+                queue.push_back(p_value);
+                if was_empty {
+                  // if it was empty => not in non_empty_queues => adding
+                  self.non_empty_queues.push_back(q_name);
+                }
+              }
+            }
           }
         }
       }
@@ -450,6 +605,7 @@ mod tests {
   use crate::ir_spec::sample_ir;
   use common::duplex_channel::create_a_b_duplex_pair;
   use common::logical_clock::MonotonicTimer;
+  use generated::maroon_assembler::{TestCreateQueueMessage, TestCreateQueueMessagePub};
   use std::fmt::Debug;
   use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -471,15 +627,19 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(4), Value::U64(8)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(4), Value::U64(8)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(0), Value::U64(8)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(0), Value::U64(8)],
+          },
         },
       ],
     ));
@@ -506,9 +666,11 @@ mod tests {
       LogicalTimeAbsoluteMs(10),
       vec![TaskBlueprint {
         global_id: UniqueU64BlobId(9),
-        fiber_type: FiberType::new("application"),
-        function_key: "sleep_and_pow".to_string(),
-        init_values: vec![Value::U64(2), Value::U64(4)],
+        source: TaskBPSource::FiberFunc {
+          fiber_type: FiberType::new("application"),
+          function_key: "sleep_and_pow".to_string(),
+          init_values: vec![Value::U64(2), Value::U64(4)],
+        },
       }],
     ));
 
@@ -533,39 +695,51 @@ mod tests {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(9),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(4)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(4)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(10),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(8)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(8)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(300),
-          fiber_type: FiberType::new("global"),
-          function_key: "add".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(8)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("global"),
+            function_key: "add".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(8)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(11),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(7)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(12),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(7)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(13),
-          fiber_type: FiberType::new("application"),
-          function_key: "sleep_and_pow".to_string(),
-          init_values: vec![Value::U64(2), Value::U64(7)],
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "sleep_and_pow".to_string(),
+            init_values: vec![Value::U64(2), Value::U64(7)],
+          },
         },
       ],
     ));
@@ -592,11 +766,58 @@ mod tests {
     let mut rt = Runtime::new(MonotonicTimer::new(), sample_ir(), b2a_runtime);
     let debug_out = rt.debug_handle();
     tokio::spawn(async move {
-      rt.run("testTaskExecutorIncrementer".to_string()).await;
+      rt.run("testCreateQueue".to_string()).await;
     });
 
+    _ = a2b_runtime.send((
+      LogicalTimeAbsoluteMs(0),
+      vec![TaskBlueprint {
+        global_id: UniqueU64BlobId(9),
+        source: TaskBPSource::Queue {
+          q_name: "randomQueueName".to_string(),
+          value: Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: 10 }),
+        },
+      }],
+    ));
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    compare_channel_data_with_exp(vec![(UniqueU64BlobId(9), Value::U64(12))], a2b_runtime.receiver).await;
+
     let result = debug_out.lock();
-    assert_eq!("", result.expect("should be object").as_str());
+    assert_eq!(
+      r#"--- start testCreateQueue:0 ---
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: FutureU64("") })
+f_queueName=randomQueueName
+created_queue_name=
+f_queueCreationError=OptionString(Some("already_exists"))
+f_future_id_response=FutureU64(FutureU64(""))
+f_res_inc=0
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 0, publicFutureId: FutureU64("") })
+f_queueName=randomQueueName
+created_queue_name=randomQueueName
+f_queueCreationError=OptionString(None)
+f_future_id_response=FutureU64(FutureU64(""))
+f_res_inc=0
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+value=TestCreateQueueMessage(TestCreateQueueMessage { value: 10, publicFutureId: FutureU64("0") })
+f_queueName=randomQueueName
+created_queue_name=randomQueueName
+f_queueCreationError=OptionString(None)
+f_future_id_response=FutureU64(FutureU64("0"))
+f_res_inc=12
+--- await testCreateQueue:0 ---
+--- start testCreateQueue:0 ---
+--- await testCreateQueue:0 ---
+--- exit testCreateQueue:0 ---
+"#,
+      result.expect("should be object").as_str()
+    );
   }
 
   async fn compare_channel_data_with_exp<T: PartialEq + Debug>(

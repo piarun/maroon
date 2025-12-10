@@ -103,7 +103,7 @@ pub fn sample_ir() -> IR {
                   // I make such weird names to make sure that in tests I don't use the same strings and conversion happens correctly
                   // I also want to explicitly verify names conversion, because right now it jumps between snake and camel case, which should be fixed for sure
                   LocalVar("f_task", Type::Custom("TestIncrementTask".to_string())),
-                  LocalVar("f_respFutureId", Type::String),
+                  LocalVar("f_respFutureId", Type::Future(Box::new(Type::Custom("TestIncrementTask".to_string())))),
                   LocalVar("f_respQueueName", Type::String),
                   LocalVar("f_tasksQueueName", Type::String),
                 ],
@@ -139,7 +139,7 @@ pub fn sample_ir() -> IR {
                   Step::RustBlock { binds: vec![LocalVarRef("f_task"), LocalVarRef("f_respQueueName"), LocalVarRef("f_respFutureId")], code: r#"
                     let mut t_m = fTask;
                     t_m.inStrValue += 1;
-                    (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+                    (t_m.clone(), t_m.inStrRespQueueName, FutureTestIncrementTask(t_m.inStrRespFutureId))
                   "#.
                   to_string(), next: StepId::new("debug2") },
                 ),
@@ -158,6 +158,117 @@ pub fn sample_ir() -> IR {
                       SetPrimitive::Future { f_var_name: LocalVarRef("f_respFutureId"), var_name: LocalVarRef("f_task") },
                       SetPrimitive::QueueMessage { f_var_queue_name: LocalVarRef("f_respQueueName"), var_name: LocalVarRef("f_task") },
                     ],
+                    next: StepId::new("return"),
+                  },
+                ),
+                (
+                  StepId::new("return"),
+                  Step::ReturnVoid,
+                ),
+              ]},
+            ),
+          ]),
+        }
+      ),
+      (
+        // fiber for testing create queue mechanism
+        FiberType::new("testCreateQueue"),
+        Fiber {
+          fibers_limit: 0,
+          init_vars: vec![],
+          heap: HashMap::new(),
+          in_messages: vec![],
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func{
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("value", Type::Custom("TestCreateQueueMessage".to_string())), 
+                  LocalVar("f_queueName", Type::String),
+                  LocalVar("created_queue_name", Type::String),
+                  LocalVar("f_queueCreationError", Type::Option(Box::new(Type::String))),
+                  LocalVar("f_future_id_response", Type::Future(Box::new(Type::UInt64))),
+                  LocalVar("f_res_inc", Type::UInt64),
+                ],
+                steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::Let { local: "f_queueName".to_string(), expr: Expr::Str("randomQueueName".to_string()), next: StepId::new("wrong_queue_creation") },
+                ),
+                (
+                  StepId::new("wrong_queue_creation"),
+                  Step::Create {
+                    primitives: vec![
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                    ],
+                    success: SuccessCreateBranch { next: StepId::new("return"), id_binds: vec![LocalVarRef("created_queue_name"), LocalVarRef("created_queue_name")] }, 
+                    fail: FailCreateBranch { next: StepId::new("debug_vars"), error_binds: vec![LocalVarRef("f_queueCreationError"), LocalVarRef("f_queueCreationError")] }, 
+                  },
+                ),
+                (
+                  StepId::new("debug_vars"),
+                  Step::DebugPrintVars(StepId::new("clean_up")),
+                ),
+                (
+                  StepId::new("clean_up"),
+                  Step::RustBlock {
+                    binds: vec![
+                      LocalVarRef("created_queue_name"),
+                      LocalVarRef("f_queueCreationError"),
+                    ],
+                    code: r#"(String::new(), None)"#.to_string(), 
+                    next: StepId::new("correct_creation"), 
+                  },
+                ),
+                (
+                  StepId::new("correct_creation"),
+                  Step::Create {
+                    primitives: vec![
+                      RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
+                    ],
+                    success: SuccessCreateBranch { next: StepId::new("debug_vars_2"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
+                    fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] }, 
+                  },
+                ),
+                (
+                  StepId::new("debug_vars_2"),
+                  Step::DebugPrintVars(StepId::new("await_on_queue")),
+                ),
+                (
+                  StepId::new("await_on_queue"),
+                  Step::Select {
+                    arms: vec![AwaitSpec::Queue {
+                      queue_name: LocalVarRef("created_queue_name"), 
+                      message_var: LocalVarRef("value"), 
+                      next: StepId::new("extract_fut_and_inc"),
+                    }],
+                  },
+                ),
+                (
+                  StepId::new("extract_fut_and_inc"),
+                  Step::RustBlock {
+                    binds: vec![
+                      LocalVarRef("f_future_id_response"),
+                      LocalVarRef("f_res_inc"),
+                    ],
+                    code: "(value.publicFutureId, value.value + 2)".to_string(), 
+                    next: StepId::new("debug_vars_3"),
+                  },
+                ),
+                (
+                  StepId::new("debug_vars_3"),
+                  Step::DebugPrintVars(StepId::new("answer")),
+                ),
+                (
+                  StepId::new("answer"),
+                  Step::SetValues {
+                    values: vec![SetPrimitive::Future {
+                      f_var_name: LocalVarRef("f_future_id_response"), 
+                      var_name: LocalVarRef("f_res_inc"),
+                    }],
                     next: StepId::new("return"),
                   },
                 ),
@@ -923,6 +1034,15 @@ BookSnapshot { bids: bids_depth, asks: asks_depth }
         ],
         String::new(),
       ),
+      Type::PubQueueMessage{
+        name:"TestCreateQueueMessage".to_string(),
+        fields:vec![
+          StructField { name: "value".to_string(), ty: Type::UInt64},
+          // just returns the same value as was put as an input
+          StructField { name: "public_future_id".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
+        ],
+        rust_additions:String::new(),
+      },
   ],
   }
 }

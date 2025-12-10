@@ -12,6 +12,8 @@ fn is_copy_type(t: &Type) -> bool {
     | Type::Map(_, _)
     | Type::Array(_)
     | Type::Struct(_, _, _)
+    | Type::PubQueueMessage { .. }
+    | Type::Future(_)
     | Type::Custom(_) => false,
   }
 }
@@ -24,6 +26,8 @@ fn type_variant_name(t: &Type) -> String {
     Type::MaxQueue(inner) => format!("MaxQueue{}", type_variant_name(inner)),
     Type::MinQueue(inner) => format!("MinQueue{}", type_variant_name(inner)),
     Type::Struct(name, _, _) => pascal_case(name),
+    Type::PubQueueMessage { name, .. } => pascal_case(name),
+    Type::Future(inner) => format!("Future{}", type_variant_name(inner)),
     Type::Custom(name) => pascal_case(name),
     Type::Option(inner) => format!("Option{}", type_variant_name(inner)),
     Type::Array(inner) => format!("Array{}", type_variant_name(inner)),
@@ -42,6 +46,8 @@ fn rust_type(t: &Type) -> String {
     Type::Array(t) => format!("Vec<{}>", rust_type(t)),
     Type::Struct(name, _, _) => pascal_case(name),
     Type::Option(t) => format!("Option<{}>", rust_type(t)),
+    Type::PubQueueMessage { name, .. } => pascal_case(name),
+    Type::Future(inner) => format!("Future{}", type_variant_name(inner)),
     Type::Custom(name) => pascal_case(name),
   }
 }
@@ -148,8 +154,129 @@ pub fn generate_rust_types(ir: &IR) -> String {
         out.push_str(impl_block);
         out.push_str("\n\n");
       }
+      Type::PubQueueMessage { name, fields, rust_additions } => {
+        // Generate public and private variants for PubQueueMessage
+        let ty_pub = format!("{}Pub", pascal_case(name));
+        let ty_priv = pascal_case(name);
+
+        // Public variant: all fields except `public_future_id`
+        out.push_str(&format!(
+          "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+          ty_pub
+        ));
+        for f in fields.iter().filter(|f| f.name != "public_future_id") {
+          out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+        }
+        out.push_str("}\n\n");
+
+        // Private variant: includes all fields
+        out.push_str(&format!(
+          "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {} {{\n",
+          ty_priv
+        ));
+        for f in fields {
+          out.push_str(&format!("  pub {}: {},\n", camel_ident(&f.name), rust_type(&f.ty)));
+        }
+        out.push_str("}\n\n");
+
+        // Additional user-provided impls for this type block
+        let ib = rust_additions.trim();
+        if !ib.is_empty() {
+          out.push_str(ib);
+          out.push_str("\n\n");
+        }
+      }
       _ => {}
     }
+  }
+
+  // 1.5) Emit wrapper structs for all Future<T> types used anywhere in IR
+  use std::collections::BTreeSet as __BTS_FUTS;
+  let mut future_wrappers: __BTS_FUTS<String> = __BTS_FUTS::new();
+  // Helper to collect wrapper names recursively
+  fn collect_future_wrappers(
+    ir: &IR,
+    ty: &Type,
+    acc: &mut std::collections::BTreeSet<String>,
+  ) {
+    match ty {
+      Type::Future(inner) => {
+        acc.insert(format!("Future{}", type_variant_name(inner)));
+        collect_future_wrappers(ir, inner, acc);
+      }
+      Type::Option(inner) | Type::Array(inner) | Type::MaxQueue(inner) | Type::MinQueue(inner) => {
+        collect_future_wrappers(ir, inner, acc);
+      }
+      Type::Map(k, v) => {
+        collect_future_wrappers(ir, k, acc);
+        collect_future_wrappers(ir, v, acc);
+      }
+      Type::Custom(name) => {
+        if let Some(tdef) = ir.types.iter().find(|tt| match tt {
+          Type::Struct(n, _, _) if n == name => true,
+          Type::PubQueueMessage { name: n, .. } if n == name => true,
+          _ => false,
+        }) {
+          match tdef {
+            Type::Struct(_, fields, _) => {
+              for f in fields {
+                collect_future_wrappers(ir, &f.ty, acc);
+              }
+            }
+            Type::PubQueueMessage { fields, .. } => {
+              for f in fields {
+                collect_future_wrappers(ir, &f.ty, acc);
+              }
+            }
+            _ => {}
+          }
+        }
+      }
+      _ => {}
+    }
+  }
+  // From top-level types
+  for t in &ir.types {
+    match t {
+      Type::Struct(_, fields, _) => {
+        for f in fields {
+          collect_future_wrappers(ir, &f.ty, &mut future_wrappers);
+        }
+      }
+      Type::PubQueueMessage { fields, .. } => {
+        for f in fields {
+          collect_future_wrappers(ir, &f.ty, &mut future_wrappers);
+        }
+      }
+      other => collect_future_wrappers(ir, other, &mut future_wrappers),
+    }
+  }
+  // From fibers (params, locals, returns, messages, heap)
+  for (_fname, fiber) in ir.fibers.iter() {
+    for (_hname, hty) in &fiber.heap {
+      collect_future_wrappers(ir, hty, &mut future_wrappers);
+    }
+    for (_func_name, func) in &fiber.funcs {
+      for InVar(_, ty) in &func.in_vars {
+        collect_future_wrappers(ir, ty, &mut future_wrappers);
+      }
+      for LocalVar(_, ty) in &func.locals {
+        collect_future_wrappers(ir, ty, &mut future_wrappers);
+      }
+      collect_future_wrappers(ir, &func.out, &mut future_wrappers);
+    }
+    for msg in &fiber.in_messages {
+      for (_fname, fty) in &msg.1 {
+        collect_future_wrappers(ir, fty, &mut future_wrappers);
+      }
+    }
+  }
+
+  for w in future_wrappers.iter() {
+    out.push_str(&format!(
+      "#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\npub struct {}(pub String);\n\n",
+      w
+    ));
   }
 
   // 2) Emit message structs per fiber.in_messages (sorted by fiber, then message name)
@@ -290,11 +417,86 @@ pub fn generate_rust_types(ir: &IR) -> String {
     }
   }
 
+  // Ensure Value enum includes both public and private variants for all PubQueueMessage types
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, .. } = t {
+      let priv_name = pascal_case(name);
+      let pub_name = format!("{}Pub", priv_name);
+      // Insert/ensure private variant exists (maps to the private struct type)
+      used_types.entry(priv_name.clone()).or_insert_with(|| Type::PubQueueMessage {
+        name: name.clone(),
+        fields: Vec::new(),
+        rust_additions: String::new(),
+      });
+      // Insert public variant referencing a struct with that name so rust_type resolves
+      used_types.entry(pub_name.clone()).or_insert_with(|| Type::Struct(pub_name.clone(), Vec::new(), String::new()));
+    }
+  }
+
   out.push_str("#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\npub enum Value {\n");
   for (vname, ty) in used_types.iter() {
     out.push_str(&format!("  {}({}),\n", vname, rust_type(ty)));
   }
   out.push_str("}\n\n");
+
+  // Converters for PubQueueMessage values
+  // Convert public -> private with a provided future id
+  out.push_str("pub fn pub_to_private(val: Value, future_id: String) -> Value {\n  match val {\n");
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, fields, .. } = t {
+      let ty_pub = format!("{}Pub", pascal_case(name));
+      let ty_priv = pascal_case(name);
+      // Copy all non-future fields
+      let mut copies: Vec<String> = Vec::new();
+      let mut future_assign: Option<String> = None;
+      for f in fields {
+        if f.name == "public_future_id" {
+          match &f.ty {
+            Type::String => future_assign = Some("future_id".to_string()),
+            Type::Future(inner) => future_assign = Some(format!("Future{}(future_id)", type_variant_name(inner))),
+            _ => future_assign = Some("future_id".to_string()),
+          }
+          continue;
+        }
+        let idf = camel_ident(&f.name);
+        copies.push(format!("{}: m.{}", idf, idf));
+      }
+      let future_field = camel_ident("public_future_id");
+      let future_assign = future_assign.unwrap_or_else(|| "future_id".to_string());
+      out.push_str(&format!(
+        "    Value::{}(m) => Value::{}({} {{ {} , {}: {} }}),\n",
+        ty_pub,
+        ty_priv,
+        ty_priv,
+        copies.join(", "),
+        future_field,
+        future_assign
+      ));
+    }
+  }
+  out.push_str("    _ => panic!(\"pub_to_private is only for PubQueueMessage values\"),\n  }\n}\n\n");
+
+  // Convert private -> public by dropping the future id field
+  out.push_str("pub fn private_to_pub(val: Value) -> Value {\n  match val {\n");
+  for t in &ir.types {
+    if let Type::PubQueueMessage { name, fields, .. } = t {
+      let ty_pub = format!("{}Pub", pascal_case(name));
+      let ty_priv = pascal_case(name);
+      let mut copies: Vec<String> = Vec::new();
+      for f in fields.iter().filter(|f| f.name != "public_future_id") {
+        let idf = camel_ident(&f.name);
+        copies.push(format!("{}: m.{}", idf, idf));
+      }
+      out.push_str(&format!(
+        "    Value::{}(m) => Value::{}({} {{ {} }}),\n",
+        ty_priv,
+        ty_pub,
+        ty_pub,
+        copies.join(", ")
+      ));
+    }
+  }
+  out.push_str("    _ => panic!(\"private_to_pub is only for PubQueueMessage values\"),\n  }\n}\n\n");
 
   // 6) Emit runtime-aligned scaffolding types and global_step
   out.push_str(
@@ -317,6 +519,12 @@ pub enum SelectArm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreatePrimitiveValue {
+  Future,
+  Queue { name: String, public: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SetPrimitiveValue {
   QueueMessage { queue_name: String, value: Value },
   Future { id: String, value: Value },
@@ -329,6 +537,14 @@ pub enum StepResult {
   ScheduleTimer{ ms: u64, next: State, future_id: FutureLabel },
   GoTo(State),
   Select(Vec<SelectArm>),
+  // Atomically create runtime primitives and branch based on outcome.
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -633,7 +849,6 @@ fn render_expr_code(
       s.push_str("tmp }");
       s
     }
-    Expr::Str(_) => todo!(),
   }
 }
 
@@ -671,6 +886,12 @@ fn default_value_expr(t: &Type) -> String {
     Type::Map(k, v) => format!("std::collections::HashMap::<{}, {}>::new()", rust_type(k), rust_type(v)),
     Type::Struct(name, _, _) | Type::Custom(name) => {
       format!("{}::default()", pascal_case(name))
+    }
+    Type::PubQueueMessage { name, .. } => {
+      format!("{}::default()", pascal_case(name))
+    }
+    Type::Future(inner) => {
+      format!("Future{}::default()", type_variant_name(inner))
     }
   }
 }
@@ -922,6 +1143,13 @@ fn generate_global_step(ir: &IR) -> String {
                 }
               }
             }
+            Step::Create { primitives, .. } => {
+              for p in primitives {
+                if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
+                  referenced.insert(name.0.to_string());
+                }
+              }
+            }
             Step::Await(_) => {}
             Step::Select { arms } => {
               for arm in arms {
@@ -970,6 +1198,51 @@ fn generate_global_step(ir: &IR) -> String {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
             }
+            Step::Create { primitives, success, fail } => {
+              let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
+              let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
+              // Build primitives vec
+              let mut parts: Vec<String> = Vec::new();
+              for p in primitives {
+                match p {
+                  crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
+                  crate::ir::RuntimePrimitive::Queue { name, public } => {
+                    let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == name.0) {
+                      format!("{}", pi)
+                    } else if let Some(li) = func.locals.iter().position(|l| l.0 == name.0) {
+                      format!("{}", func.in_vars.len() + li)
+                    } else {
+                      "0".to_string()
+                    };
+                    let q_expr = format!(
+                      "if let StackEntry::Value(_, Value::String(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                      idx_expr
+                    );
+                    parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
+                  }
+                }
+              }
+              // Build bind name vectors
+              let mut s_binds: Vec<String> = Vec::new();
+              for b in &success.id_binds {
+                s_binds.push(format!("\"{}\".to_string()", b.0));
+              }
+              let mut f_binds: Vec<String> = Vec::new();
+              for b in &fail.error_binds {
+                f_binds.push(format!("\"{}\".to_string()", b.0));
+              }
+              out.push_str("      StepResult::Create { primitives: vec![");
+              out.push_str(&parts.join(", "));
+              out.push_str("], success_next: State::");
+              out.push_str(&success_v);
+              out.push_str(", success_binds: vec![");
+              out.push_str(&s_binds.join(", "));
+              out.push_str("], fail_next: State::");
+              out.push_str(&fail_v);
+              out.push_str(", fail_binds: vec![");
+              out.push_str(&f_binds.join(", "));
+              out.push_str("] }\n");
+            }
             Step::DebugPrintVars(next) => {
               let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
               out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
@@ -1007,9 +1280,16 @@ fn generate_global_step(ir: &IR) -> String {
                       local_ident = format!("{}.clone()", local_ident);
                     }
                     let f_ident = camel_ident(f_var_name.0);
+                    let fid_expr = match var_type_of(func, f_var_name.0) {
+                      Some(Type::Future(inner)) => {
+                        let _ = inner; // silence unused
+                        format!("{}.0.clone()", f_ident)
+                      }
+                      _ => format!("{}.clone()", f_ident),
+                    };
                     vparts.push(format!(
-                      "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
-                      f_ident, vname, local_ident
+                      "SetPrimitiveValue::Future {{ id: {}, value: Value::{}({}) }}",
+                      fid_expr, vname, local_ident
                     ));
                   }
                 }
@@ -1268,6 +1548,13 @@ fn generate_global_step(ir: &IR) -> String {
               }
             }
           }
+          Step::Create { primitives, .. } => {
+            for p in primitives {
+              if let crate::ir::RuntimePrimitive::Queue { name, .. } = p {
+                referenced.insert(name.0.to_string());
+              }
+            }
+          }
           Step::Await(_) => {}
           Step::Select { arms } => {
             for arm in arms {
@@ -1319,6 +1606,49 @@ fn generate_global_step(ir: &IR) -> String {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::Debug(\"{}\", State::{})\n", msg, next_v));
           }
+          Step::Create { primitives, success, fail } => {
+            let success_v = variant_name(&[fiber_name.0.as_str(), func_name, &success.next.0]);
+            let fail_v = variant_name(&[fiber_name.0.as_str(), func_name, &fail.next.0]);
+            let mut parts: Vec<String> = Vec::new();
+            for p in primitives {
+              match p {
+                crate::ir::RuntimePrimitive::Future => parts.push("CreatePrimitiveValue::Future".to_string()),
+                crate::ir::RuntimePrimitive::Queue { name, public } => {
+                  let idx_expr = if let Some(pi) = func.in_vars.iter().position(|p| p.0 == name.0) {
+                    format!("{}", pi)
+                  } else if let Some(li) = func.locals.iter().position(|l| l.0 == name.0) {
+                    format!("{}", func.in_vars.len() + li)
+                  } else {
+                    "0".to_string()
+                  };
+                  let q_expr = format!(
+                    "if let StackEntry::Value(_, Value::String(x)) = &vars[{}] {{ x.clone() }} else {{ unreachable!() }}",
+                    idx_expr
+                  );
+                  parts.push(format!("CreatePrimitiveValue::Queue {{ name: {}, public: {} }}", q_expr, public));
+                }
+              }
+            }
+            let mut s_binds: Vec<String> = Vec::new();
+            for b in &success.id_binds {
+              s_binds.push(format!("\"{}\".to_string()", b.0));
+            }
+            let mut f_binds: Vec<String> = Vec::new();
+            for b in &fail.error_binds {
+              f_binds.push(format!("\"{}\".to_string()", b.0));
+            }
+            out.push_str("      StepResult::Create { primitives: vec![");
+            out.push_str(&parts.join(", "));
+            out.push_str("], success_next: State::");
+            out.push_str(&success_v);
+            out.push_str(", success_binds: vec![");
+            out.push_str(&s_binds.join(", "));
+            out.push_str("], fail_next: State::");
+            out.push_str(&fail_v);
+            out.push_str(", fail_binds: vec![");
+            out.push_str(&f_binds.join(", "));
+            out.push_str("] }\n");
+          }
           Step::DebugPrintVars(next) => {
             let next_v = variant_name(&[fiber_name.0.as_str(), func_name, &next.0]);
             out.push_str(&format!("      StepResult::DebugPrintVars(State::{})\n", next_v));
@@ -1352,9 +1682,17 @@ fn generate_global_step(ir: &IR) -> String {
                   let mut local_ident = camel_ident(var_name.0);
                   local_ident = format!("{}.clone()", local_ident);
                   let f_ident = camel_ident(f_var_name.0);
+                  // Determine how to extract id: from Future<T>.id or directly if String
+                  let fid_expr = match var_type_of(func, f_var_name.0) {
+                    Some(Type::Future(inner)) => {
+                      let _ = inner; // suppress unused warning in generation
+                      format!("{}.0.clone()", f_ident)
+                    }
+                    _ => format!("{}.clone()", f_ident),
+                  };
                   vparts.push(format!(
-                    "SetPrimitiveValue::Future {{ id: {}.clone(), value: Value::{}({}) }}",
-                    f_ident, vname, local_ident
+                    "SetPrimitiveValue::Future {{ id: {}, value: Value::{}({}) }}",
+                    fid_expr, vname, local_ident
                   ));
                 }
               }

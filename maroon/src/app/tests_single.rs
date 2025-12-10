@@ -13,7 +13,7 @@ use libp2p::PeerId;
 use protocol::node2gw::TxUpdate;
 use protocol::transaction::{Meta, TxStatus};
 use runtime::ir::FiberType;
-use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBlueprint};
+use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput, TaskBPSource, TaskBlueprint};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -327,15 +327,19 @@ async fn app_executes_after_epoch_confirmed() {
       vec![
         TaskBlueprint {
           global_id: UniqueU64BlobId(0),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(1), Value::U64(1)]
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(1), Value::U64(1)],
+          },
         },
         TaskBlueprint {
           global_id: UniqueU64BlobId(1),
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(1), Value::U64(1)]
+          source: TaskBPSource::FiberFunc {
+            fiber_type: FiberType::new("application"),
+            function_key: "async_foo".to_string(),
+            init_values: vec![Value::U64(1), Value::U64(1)],
+          },
         }
       ]
     )),

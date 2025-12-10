@@ -2,8 +2,8 @@ use common::logical_time::LogicalTimeAbsoluteMs;
 use common::range_key::UniqueU64BlobId;
 use dsl::ir::FiberType;
 use generated::maroon_assembler::{
-  Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count, get_heap_init_fn,
-  get_prepare_fn, get_result_fn, global_step,
+  CreatePrimitiveValue, Heap, SelectArm, SetPrimitiveValue, StackEntry, State, StepResult, Value, func_args_count,
+  get_heap_init_fn, get_prepare_fn, get_result_fn, global_step,
 };
 
 use crate::trace::TraceEvent;
@@ -57,6 +57,14 @@ pub enum RunResult {
   Select(Vec<SelectArm>),
   /// Broadcast primitive updates to runtime; fiber has already queued next state
   SetValues(Vec<SetPrimitiveValue>),
+  /// Request to atomically create primitives; runtime will decide branch
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
 }
 
 impl std::fmt::Display for Fiber {
@@ -352,6 +360,10 @@ impl Fiber {
         }
         StepResult::Select(arms) => {
           return RunResult::Select(arms);
+        }
+        StepResult::Create { primitives, success_next, success_binds, fail_next, fail_binds } => {
+          // Do not push next yet; runtime will decide the branch and re-queue us
+          return RunResult::Create { primitives, success_next, success_binds, fail_next, fail_binds };
         }
         StepResult::SetValues { values, next } => {
           self.stack.push(StackEntry::State(next));

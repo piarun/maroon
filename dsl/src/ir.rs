@@ -158,6 +158,15 @@ pub enum Step {
     next: StepId,
   },
 
+  /// creates runtime primitives atomically(all or none)
+  /// goes to success if all primitives are created
+  /// goes to fail if at least one primitive can't be created
+  Create {
+    primitives: Vec<RuntimePrimitive>,
+    success: SuccessCreateBranch,
+    fail: FailCreateBranch,
+  },
+
   /// DEBUG section
   /// Prints smth to dbgOut
 
@@ -166,6 +175,36 @@ pub enum Step {
   /// Prints all vars (in the current stack frame) values in the order of
   /// definition in the function, then continues to `next` step.
   DebugPrintVars(StepId),
+}
+
+#[derive(Debug, Clone)]
+pub struct SuccessCreateBranch {
+  /// where to go in case of success
+  pub next: StepId,
+  /// ids of created primitives will be put here in the same order as requested
+  /// LocalVars should have type String, as we use this type for queues/futures ids
+  pub id_binds: Vec<LocalVarRef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FailCreateBranch {
+  /// where to go in case of failure
+  pub next: StepId,
+  /// errors for creating primitives will be listed here in the same order as requested
+  /// error_binds should bind to Option<String> local variable
+  /// None - if no error for the given primitive
+  pub error_binds: Vec<LocalVarRef>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RuntimePrimitive {
+  Future,
+  /// `name` should be unique and should reference LocalVar typed as String
+  /// if `public` == true - new messages can come not from other fibers but from gateways as well
+  Queue {
+    name: LocalVarRef,
+    public: bool,
+  },
 }
 
 #[derive(Debug, Clone)]
@@ -256,8 +295,21 @@ pub enum Type {
   MaxQueue(Box<Type>),
   MinQueue(Box<Type>),
   Option(Box<Type>),
+  /// Typed future handle. Represents a runtime future id associated with a payload of type T
+  Future(Box<Type>),
   /// reference to types defined in IR.types
   Custom(String),
+  /// Same as struct but public queues must create messages only via this construction
+  /// because it adds up some runtime things
+  /// but this type can be used by any other piece of code with no issues
+  PubQueueMessage {
+    name: String,
+    fields: Vec<StructField>,
+    /// some rust code that you can put here and it will be translated as is
+    /// this approach sounds not great IMHO, but I think it will be resolved one or another way
+    /// when we come to DSL implementation
+    rust_additions: String,
+  },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -285,7 +337,7 @@ impl IR {
           }
         }
 
-        if let Some(correct) = uses_correct_variables(func.1) {
+        if let Some(correct) = uses_correct_variables(self, func.1) {
           explanation.push_str(&correct);
         }
 
@@ -308,11 +360,40 @@ impl IR {
     if !has_root_fiber {
       explanation.push_str("no 'root' fiber\n");
     }
+    // Validate PubQueueMessage types contain mandatory `public_future_id: String` field
+    for t in &self.types {
+      if let Type::PubQueueMessage { name, fields, .. } = t {
+        let mut found = false;
+        for f in fields {
+          if f.name == "public_future_id" {
+            // Accept String (legacy) or Future<_>
+            if f.ty == Type::String {
+              found = true;
+              break;
+            }
+            if let Type::Future(_) = f.ty {
+              found = true;
+              break;
+            }
+          }
+        }
+        if !found {
+          explanation.push_str(&format!(
+            "PubQueueMessage '{}' must include field public_future_id: String or Future<T>\n",
+            name
+          ));
+        }
+      }
+    }
+
     (explanation.len() == 0, explanation)
   }
 }
 
-fn uses_correct_variables(f: &Func) -> Option<String> {
+fn uses_correct_variables(
+  ir: &IR,
+  f: &Func,
+) -> Option<String> {
   let mut explanation = String::new();
   let mut vars_map = HashMap::<String, Type>::new();
   // include parameters as in-scope vars
@@ -332,9 +413,26 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
       Step::Debug(_, _) => {}
       Step::DebugPrintVars(_) => {}
       Step::ScheduleTimer { .. } => {}
-      Step::SendToFiber { args, .. } => {
+      Step::SendToFiber { fiber, message, args, .. } => {
         for (_name, expr) in args {
           collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+        }
+        // Type-check provided args against callee signature if available
+        if let Some(callee) = ir.fibers.get(fiber.as_str()).and_then(|ff| ff.funcs.get(message)) {
+          for InVar(pname, pty) in &callee.in_vars {
+            if let Some((_, aexpr)) = args.iter().find(|(n, _)| n == pname) {
+              if let Some(at) = infer_expr_type(ir, f, aexpr, &vars_map) {
+                if &at != pty {
+                  explanation.push_str(&format!(
+                    "{:?} argument '{}' type mismatch: expected {:?}, got {:?}\n",
+                    id, pname, pty, at
+                  ));
+                }
+              }
+            } else {
+              explanation.push_str(&format!("{:?} missing argument '{}' for {}.{}\n", id, pname, fiber, message));
+            }
+          }
         }
       }
       Step::Await(spec) => match spec {
@@ -345,15 +443,58 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
             }
           }
         }
-        AwaitSpec::Queue { queue_name: _, message_var, next: _ } => {
+        AwaitSpec::Queue { queue_name, message_var, next: _ } => {
+          // queue id should be String
+          if let Some(t) = vars_map.get(queue_name.0) {
+            if *t != Type::String {
+              explanation.push_str(&format!("{:?} queue_name '{}' must be String, got {:?}\n", id, queue_name.0, t));
+            }
+          } else {
+            explanation.push_str(&format!("{:?} references {} that is not defined\n", id, queue_name.0));
+          }
           if !vars_map.contains_key(message_var.0) {
             explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
           }
         }
       },
-      Step::Call { args, bind, .. } => {
+      Step::Call { target, args, bind, .. } => {
         for expr in args {
           collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+        }
+        // Type-check against callee signature
+        if let Some(callee) = ir.fibers.get(target.fiber.as_str()).and_then(|ff| ff.funcs.get(target.func.as_str())) {
+          if callee.in_vars.len() != args.len() {
+            explanation.push_str(&format!(
+              "{:?} call {}.{} expects {} args, got {}\n",
+              id,
+              target.fiber,
+              target.func,
+              callee.in_vars.len(),
+              args.len()
+            ));
+          }
+          for (idx, aexpr) in args.iter().enumerate() {
+            if let Some(InVar(pname, pty)) = callee.in_vars.get(idx) {
+              if let Some(at) = infer_expr_type(ir, f, aexpr, &vars_map) {
+                if &at != pty {
+                  explanation.push_str(&format!(
+                    "{:?} call arg '{}' type mismatch: expected {:?}, got {:?}\n",
+                    id, pname, pty, at
+                  ));
+                }
+              }
+            }
+          }
+          if let Some(LocalVarRef(name)) = bind {
+            if let Some(bt) = vars_map.get::<str>(name) {
+              if &callee.out != bt {
+                explanation.push_str(&format!(
+                  "{:?} bind '{}' type mismatch: expected {:?}, got {:?}\n",
+                  id, name, callee.out, bt
+                ));
+              }
+            }
+          }
         }
         if let Some(LocalVarRef(name)) = bind {
           if !vars_map.contains_key::<str>(name) {
@@ -363,16 +504,44 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
       }
       Step::Return { value } => {
         collect_vars_from_ret_value(value, &vars_map, &mut explanation, id);
+        let inferred = infer_ret_value_type(ir, f, value, &vars_map);
+        if !return_type_compatible(&f.out, value, inferred.as_ref()) {
+          if let Some(rty) = inferred {
+            explanation
+              .push_str(&format!("{:?} return type mismatch: function returns {:?}, got {:?}\n", id, f.out, rty));
+          } else {
+            explanation.push_str(&format!("{:?} return type mismatch: function returns {:?}\n", id, f.out));
+          }
+        }
       }
       Step::ReturnVoid => {}
       Step::If { cond, .. } => {
         collect_vars_from_expr(cond, &vars_map, &mut explanation, id);
+        // best-effort operand checks for comparisons
+        if let Expr::Equal(l, r) | Expr::Greater(l, r) | Expr::Less(l, r) = cond {
+          let lt = infer_expr_type(ir, f, l, &vars_map);
+          let rt = infer_expr_type(ir, f, r, &vars_map);
+          if let (Some(lt), Some(rt)) = (lt, rt) {
+            if std::mem::discriminant(&lt) != std::mem::discriminant(&rt) {
+              explanation
+                .push_str(&format!("{:?} condition operand types mismatch: left {:?}, right {:?}\n", id, lt, rt));
+            }
+            if matches!(cond, Expr::Greater(_, _) | Expr::Less(_, _)) && lt != Type::UInt64 {
+              explanation.push_str(&format!("{:?} comparison expects UInt64 operands, got {:?}\n", id, lt));
+            }
+          }
+        }
       }
       Step::Let { local, expr, .. } => {
         if !vars_map.contains_key::<str>(local.as_str()) {
           explanation.push_str(&format!("{:?} references {} that is not defined\n", id, local));
         }
         collect_vars_from_expr(expr, &vars_map, &mut explanation, id);
+        if let (Some(lt), Some(rt)) = (vars_map.get(local), infer_expr_type(ir, f, expr, &vars_map)) {
+          if lt != &rt {
+            explanation.push_str(&format!("{:?} let '{}' type mismatch: expected {:?}, got {:?}\n", id, local, lt, rt));
+          }
+        }
       }
       Step::RustBlock { binds, .. } => {
         for b in binds {
@@ -391,7 +560,15 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
                 }
               }
             }
-            AwaitSpec::Queue { message_var, .. } => {
+            AwaitSpec::Queue { queue_name, message_var, .. } => {
+              if let Some(t) = vars_map.get(queue_name.0) {
+                if *t != Type::String {
+                  explanation
+                    .push_str(&format!("{:?} queue_name '{}' must be String, got {:?}\n", id, queue_name.0, t));
+                }
+              } else {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, queue_name.0));
+              }
               if !vars_map.contains_key::<str>(message_var.0) {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, message_var.0));
               }
@@ -406,16 +583,98 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
               if !vars_map.contains_key::<str>(f_var_queue_name.0) {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_queue_name.0));
               }
+              if let Some(t) = vars_map.get(f_var_queue_name.0) {
+                if *t != Type::String {
+                  explanation
+                    .push_str(&format!("{:?} queue id '{}' must be String, got {:?}\n", id, f_var_queue_name.0, t));
+                }
+              }
               if !vars_map.contains_key::<str>(var_name.0) {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
               }
             }
             SetPrimitive::Future { f_var_name, var_name } => {
-              if !vars_map.contains_key::<str>(f_var_name.0) {
+              // future variable must exist and be of type Future<T>
+              if let Some(fty) = vars_map.get(f_var_name.0) {
+                match fty {
+                  Type::Future(inner_ty) => {
+                    // value variable must exist and match inner T
+                    if let Some(vty) = vars_map.get(var_name.0) {
+                      if vty != inner_ty.as_ref() {
+                        explanation.push_str(&format!(
+                          "{:?} SetValues::Future value '{}' type mismatch: expected {:?}, got {:?}\n",
+                          id, var_name.0, inner_ty, vty
+                        ));
+                      }
+                    } else {
+                      explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+                    }
+                  }
+                  other => {
+                    explanation.push_str(&format!(
+                      "{:?} future handle '{}' must be Future<T>, got {:?}\n",
+                      id, f_var_name.0, other
+                    ));
+                  }
+                }
+              } else {
                 explanation.push_str(&format!("{:?} references {} that is not defined\n", id, f_var_name.0));
               }
-              if !vars_map.contains_key::<str>(var_name.0) {
-                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, var_name.0));
+            }
+          }
+        }
+      }
+      Step::Create { primitives, success, fail } => {
+        // length checks
+        if success.id_binds.len() != primitives.len() {
+          explanation.push_str(&format!(
+            "{:?} Create: id_binds length {} does not match primitives {}\n",
+            id,
+            success.id_binds.len(),
+            primitives.len()
+          ));
+        }
+        if fail.error_binds.len() != primitives.len() {
+          explanation.push_str(&format!(
+            "{:?} Create: error_binds length {} does not match primitives {}\n",
+            id,
+            fail.error_binds.len(),
+            primitives.len()
+          ));
+        }
+        for (i, p) in primitives.iter().enumerate() {
+          // success id bind must be String
+          if let Some(b) = success.id_binds.get(i) {
+            match vars_map.get(b.0) {
+              Some(t) => {
+                if *t != Type::String {
+                  explanation
+                    .push_str(&format!("{:?} Create: success bind '{}' must be String, got {:?}\n", id, b.0, t));
+                }
+              }
+              None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
+            }
+          }
+          // fail bind must be Option<String>
+          if let Some(b) = fail.error_binds.get(i) {
+            match vars_map.get(b.0) {
+              Some(Type::Option(inner)) if **inner == Type::String => {}
+              Some(other) => explanation
+                .push_str(&format!("{:?} Create: error bind '{}' must be Option<String>, got {:?}\n", id, b.0, other)),
+              None => explanation.push_str(&format!("{:?} references {} that is not defined\n", id, b.0)),
+            }
+          }
+          // primitive-specific checks
+          match p {
+            RuntimePrimitive::Future => {}
+            RuntimePrimitive::Queue { name: qname, public: _ } => {
+              if let Some(t) = vars_map.get(qname.0) {
+                if *t != Type::String {
+                  explanation
+                    .push_str(&format!("{:?} Create: queue name var '{}' must be String, got {:?}\n", id, qname.0, t));
+                }
+              } else {
+                explanation.push_str(&format!("{:?} references {} that is not defined\n", id, qname.0));
               }
             }
           }
@@ -429,6 +688,116 @@ fn uses_correct_variables(f: &Func) -> Option<String> {
   }
 
   return None;
+}
+
+// Best-effort type inference for simple Expr/RetValue shapes
+fn infer_expr_type(
+  ir: &IR,
+  _func: &Func,
+  expr: &Expr,
+  vars: &HashMap<String, Type>,
+) -> Option<Type> {
+  match expr {
+    Expr::UInt64(_) => Some(Type::UInt64),
+    Expr::Str(_) => Some(Type::String),
+    Expr::Var(LocalVarRef(name)) => vars.get::<str>(name).cloned(),
+    Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
+      // boolean-like, not represented in Type enum
+      // validate operands elsewhere; no concrete type returned
+      let _ = (infer_expr_type(ir, _func, a, vars), infer_expr_type(ir, _func, b, vars));
+      None
+    }
+    Expr::IsSome(inner) => {
+      if let Some(Type::Option(_)) = infer_expr_type(ir, _func, inner, vars) {
+        None
+      } else {
+        None
+      }
+    }
+    Expr::Unwrap(inner) => match infer_expr_type(ir, _func, inner, vars) {
+      Some(Type::Option(inner)) => Some(*inner.clone()),
+      _ => None,
+    },
+    Expr::GetField(base, field) => {
+      let bty = infer_expr_type(ir, _func, base, vars)?;
+      resolve_struct_field_type(ir, &bty, field)
+    }
+    Expr::StructUpdate { base, updates } => {
+      let bty = infer_expr_type(ir, _func, base, vars)?;
+      // Validate updates if possible
+      if let Some(fields) = resolve_struct_fields(ir, &bty) {
+        for (fname, e) in updates {
+          if let Some(fty) = fields.iter().find(|sf| &sf.name == fname).map(|sf| sf.ty.clone()) {
+            if let Some(ety) = infer_expr_type(ir, _func, e, vars) {
+              if fty != ety {
+                // mismatch; still return base type
+                // caller will add message elsewhere if needed
+              }
+            }
+          }
+        }
+      }
+      Some(bty)
+    }
+  }
+}
+
+fn infer_ret_value_type(
+  ir: &IR,
+  _func: &Func,
+  rv: &RetValue,
+  vars: &HashMap<String, Type>,
+) -> Option<Type> {
+  match rv {
+    RetValue::Var(LocalVarRef(name)) => vars.get::<str>(name).cloned(),
+    RetValue::UInt64(_) => Some(Type::UInt64),
+    RetValue::Str(_) => Some(Type::String),
+    RetValue::Some(inner) => infer_ret_value_type(ir, _func, inner, vars).map(|t| Type::Option(Box::new(t))),
+    RetValue::None => Some(Type::Option(Box::new(Type::Void))), // marker for Option<_>
+  }
+}
+
+fn return_type_compatible(
+  func_out: &Type,
+  rv: &RetValue,
+  inferred: Option<&Type>,
+) -> bool {
+  match (func_out, rv, inferred) {
+    // None is compatible with any Option<T>
+    (Type::Option(_), RetValue::None, _) => true,
+    // Some(x) must match Option<T>
+    (Type::Option(_), RetValue::Some(_), Some(Type::Option(_))) => true,
+    // Direct value must match exactly
+    (fo, _, Some(it)) => fo == it,
+    // If we can't infer, be permissive (don’t fail)
+    (_, _, None) => true,
+  }
+}
+
+fn resolve_struct_fields<'a>(
+  ir: &'a IR,
+  t: &'a Type,
+) -> Option<&'a Vec<StructField>> {
+  match t {
+    Type::Struct(name, fields, _) => Some(fields),
+    // Treat PubQueueMessage as a struct for field/type resolution
+    Type::PubQueueMessage { name, fields, .. } => Some(fields),
+    Type::Custom(name) => ir.types.iter().find_map(|tt| match tt {
+      Type::Struct(n, fields, _) if n == name => Some(fields),
+      Type::PubQueueMessage { name: n, fields, .. } if n == name => Some(fields),
+      _ => None,
+    }),
+    _ => None,
+  }
+}
+
+fn resolve_struct_field_type(
+  ir: &IR,
+  t: &Type,
+  field: &str,
+) -> Option<Type> {
+  let fields = resolve_struct_fields(ir, t)?;
+  fields.iter().find(|sf| sf.name == field).map(|sf| sf.ty.clone())
 }
 
 fn collect_vars_from_expr(

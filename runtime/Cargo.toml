@@ -6,8 +6,8 @@ name = "runtime"
 common = { path = "../common" }
 dsl = { path = "../dsl" }
 generated = { path = "../generated" }
-tokio = { workspace = true }
 slab = "0.4"
+tokio = { workspace = true }
 
 [build-dependencies]
 common = { path = "../common" }

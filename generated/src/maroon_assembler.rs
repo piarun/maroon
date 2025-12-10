@@ -46,6 +46,23 @@ pub struct TestIncrementTask {
   pub inStrRespQueueName: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestCreateQueueMessagePub {
+  pub value: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestCreateQueueMessage {
+  pub value: u64,
+  pub publicFutureId: FutureU64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FutureTestIncrementTask(pub String);
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FutureU64(pub String);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationAsyncFooMsg {
   pub a: u64,
@@ -73,6 +90,9 @@ pub struct OrderBookHeap {
 pub struct RootHeap {}
 
 #[derive(Clone, Debug, Default)]
+pub struct TestCreateQueueHeap {}
+
+#[derive(Clone, Debug, Default)]
 pub struct TestSelectQueueHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -91,6 +111,7 @@ pub struct Heap {
   pub global: GlobalHeap,
   pub orderBook: OrderBookHeap,
   pub root: RootHeap,
+  pub testCreateQueue: TestCreateQueueHeap,
   pub testSelectQueue: TestSelectQueueHeap,
   pub testTaskExecutorIncrementer: TestTaskExecutorIncrementerHeap,
 }
@@ -139,6 +160,17 @@ pub enum State {
   OrderBookMainEntry,
   OrderBookTopNDepthEntry,
   RootMainEntry,
+  TestCreateQueueMainAnswer,
+  TestCreateQueueMainAwaitOnQueue,
+  TestCreateQueueMainCleanUp,
+  TestCreateQueueMainCorrectCreation,
+  TestCreateQueueMainDebugVars,
+  TestCreateQueueMainDebugVars2,
+  TestCreateQueueMainDebugVars3,
+  TestCreateQueueMainEntry,
+  TestCreateQueueMainExtractFutAndInc,
+  TestCreateQueueMainReturn,
+  TestCreateQueueMainWrongQueueCreation,
   TestSelectQueueMainCompare,
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
@@ -160,11 +192,35 @@ pub enum State {
 pub enum Value {
   ArrayTrade(Vec<Trade>),
   BookSnapshot(BookSnapshot),
+  FutureTestIncrementTask(FutureTestIncrementTask),
+  FutureU64(FutureU64),
+  OptionString(Option<String>),
   OptionU64(Option<u64>),
   String(String),
+  TestCreateQueueMessage(TestCreateQueueMessage),
+  TestCreateQueueMessagePub(TestCreateQueueMessagePub),
   TestIncrementTask(TestIncrementTask),
   U64(u64),
   Unit(()),
+}
+
+pub fn pub_to_private(
+  val: Value,
+  future_id: String,
+) -> Value {
+  match val {
+    Value::TestCreateQueueMessagePub(m) => {
+      Value::TestCreateQueueMessage(TestCreateQueueMessage { value: m.value, publicFutureId: FutureU64(future_id) })
+    }
+    _ => panic!("pub_to_private is only for PubQueueMessage values"),
+  }
+}
+
+pub fn private_to_pub(val: Value) -> Value {
+  match val {
+    Value::TestCreateQueueMessage(m) => Value::TestCreateQueueMessagePub(TestCreateQueueMessagePub { value: m.value }),
+    _ => panic!("private_to_pub is only for PubQueueMessage values"),
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -185,6 +241,12 @@ pub enum SelectArm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreatePrimitiveValue {
+  Future,
+  Queue { name: String, public: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SetPrimitiveValue {
   QueueMessage { queue_name: String, value: Value },
   Future { id: String, value: Value },
@@ -194,9 +256,21 @@ pub enum SetPrimitiveValue {
 pub enum StepResult {
   Done,
   Next(Vec<StackEntry>),
-  ScheduleTimer { ms: u64, next: State, future_id: FutureLabel },
+  ScheduleTimer {
+    ms: u64,
+    next: State,
+    future_id: FutureLabel,
+  },
   GoTo(State),
   Select(Vec<SelectArm>),
+  // Atomically create runtime primitives and branch based on outcome.
+  Create {
+    primitives: Vec<CreatePrimitiveValue>,
+    success_next: State,
+    success_binds: Vec<String>,
+    fail_next: State,
+    fail_binds: Vec<String>,
+  },
   // Return can carry an optional value to be consumed by the runtime.
   Return(Value),
   ReturnVoid,
@@ -204,9 +278,18 @@ pub enum StepResult {
   // Await a future: (future_id, optional bind_var, next_state)
   Await(FutureLabel, Option<String>, State),
   // Send a message to a fiber with function and typed args, then continue to `next`.
-  SendToFiber { f_type: FiberType, func: String, args: Vec<Value>, next: State, future_id: FutureLabel },
+  SendToFiber {
+    f_type: FiberType,
+    func: String,
+    args: Vec<Value>,
+    next: State,
+    future_id: FutureLabel,
+  },
   // Broadcast updates to async primitives (queues/futures) and continue to `next`.
-  SetValues { values: Vec<SetPrimitiveValue>, next: State },
+  SetValues {
+    values: Vec<SetPrimitiveValue>,
+    next: State,
+  },
   // Debug
   // Print a string message and continue to the provided next state.
   Debug(&'static str, State),
@@ -255,6 +338,17 @@ pub fn func_args_count(e: &State) -> usize {
     State::OrderBookMainEntry => 0,
     State::OrderBookTopNDepthEntry => 2,
     State::RootMainEntry => 0,
+    State::TestCreateQueueMainEntry => 6,
+    State::TestCreateQueueMainAnswer => 6,
+    State::TestCreateQueueMainAwaitOnQueue => 6,
+    State::TestCreateQueueMainCleanUp => 6,
+    State::TestCreateQueueMainCorrectCreation => 6,
+    State::TestCreateQueueMainDebugVars => 6,
+    State::TestCreateQueueMainDebugVars2 => 6,
+    State::TestCreateQueueMainDebugVars3 => 6,
+    State::TestCreateQueueMainExtractFutAndInc => 6,
+    State::TestCreateQueueMainReturn => 6,
+    State::TestCreateQueueMainWrongQueueCreation => 6,
     State::TestSelectQueueMainEntry => 3,
     State::TestSelectQueueMainCompare => 3,
     State::TestSelectQueueMainIncFromFut => 3,
@@ -829,6 +923,108 @@ pub fn global_step(
       }
     }
     State::RootMainEntry => StepResult::ReturnVoid,
+    State::TestCreateQueueMainEntry => StepResult::Next(vec![
+      StackEntry::FrameAssign(vec![(1, Value::String("randomQueueName".to_string()))]),
+      StackEntry::State(State::TestCreateQueueMainWrongQueueCreation),
+    ]),
+    State::TestCreateQueueMainAnswer => {
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      StepResult::SetValues {
+        values: vec![SetPrimitiveValue::Future { id: fFutureIdResponse.0.clone(), value: Value::U64(fResInc.clone()) }],
+        next: State::TestCreateQueueMainReturn,
+      }
+    }
+    State::TestCreateQueueMainAwaitOnQueue => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Select(vec![SelectArm::Queue {
+        queue_name: createdQueueName.clone(),
+        bind: "value".to_string(),
+        next: State::TestCreateQueueMainExtractFutAndInc,
+      }])
+    }
+    State::TestCreateQueueMainCleanUp => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fQueuecreationerror: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let value: TestCreateQueueMessage =
+        if let StackEntry::Value(_, Value::TestCreateQueueMessage(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { (String::new(), None) };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(2, Value::String(o0)), (3, Value::OptionString(o1))]),
+          StackEntry::State(State::TestCreateQueueMainCorrectCreation),
+        ])
+      }
+    }
+    State::TestCreateQueueMainCorrectCreation => {
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::Create {
+        primitives: vec![CreatePrimitiveValue::Queue {
+          name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+          public: true,
+        }],
+        success_next: State::TestCreateQueueMainDebugVars2,
+        success_binds: vec!["created_queue_name".to_string()],
+        fail_next: State::TestCreateQueueMainReturn,
+        fail_binds: vec!["f_queueCreationError".to_string()],
+      }
+    }
+    State::TestCreateQueueMainDebugVars => StepResult::DebugPrintVars(State::TestCreateQueueMainCleanUp),
+    State::TestCreateQueueMainDebugVars2 => StepResult::DebugPrintVars(State::TestCreateQueueMainAwaitOnQueue),
+    State::TestCreateQueueMainDebugVars3 => StepResult::DebugPrintVars(State::TestCreateQueueMainAnswer),
+    State::TestCreateQueueMainExtractFutAndInc => {
+      let createdQueueName: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let fFutureIdResponse: FutureU64 =
+        if let StackEntry::Value(_, Value::FutureU64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let fQueuecreationerror: Option<String> =
+        if let StackEntry::Value(_, Value::OptionString(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fResInc: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let value: TestCreateQueueMessage =
+        if let StackEntry::Value(_, Value::TestCreateQueueMessage(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      {
+        let out = { (value.publicFutureId, value.value + 2) };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(4, Value::FutureU64(o0)), (5, Value::U64(o1))]),
+          StackEntry::State(State::TestCreateQueueMainDebugVars3),
+        ])
+      }
+    }
+    State::TestCreateQueueMainReturn => StepResult::ReturnVoid,
+    State::TestCreateQueueMainWrongQueueCreation => {
+      let fQueuename: String =
+        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      StepResult::Create {
+        primitives: vec![
+          CreatePrimitiveValue::Queue {
+            name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+            public: true,
+          },
+          CreatePrimitiveValue::Queue {
+            name: if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() },
+            public: true,
+          },
+        ],
+        success_next: State::TestCreateQueueMainReturn,
+        success_binds: vec!["created_queue_name".to_string(), "created_queue_name".to_string()],
+        fail_next: State::TestCreateQueueMainDebugVars,
+        fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
+      }
+    }
     State::TestSelectQueueMainEntry => StepResult::Next(vec![
       StackEntry::FrameAssign(vec![(2, Value::String("counterStartQueue".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainSelectCounter),
@@ -908,8 +1104,8 @@ pub fn global_step(
       StepResult::DebugPrintVars(State::TestTaskExecutorIncrementerMainReturnResult)
     }
     State::TestTaskExecutorIncrementerMainIncrement => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
@@ -920,22 +1116,22 @@ pub fn global_step(
         let out = {
           let mut t_m = fTask;
           t_m.inStrValue += 1;
-          (t_m.clone(), t_m.inStrRespQueueName, t_m.inStrRespFutureId)
+          (t_m.clone(), t_m.inStrRespQueueName, FutureTestIncrementTask(t_m.inStrRespFutureId))
         };
         let (o0, o1, o2) = out;
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![
             (0, Value::TestIncrementTask(o0)),
             (2, Value::String(o1)),
-            (1, Value::String(o2)),
+            (1, Value::FutureTestIncrementTask(o2)),
           ]),
           StackEntry::State(State::TestTaskExecutorIncrementerMainDebug2),
         ])
       }
     }
     State::TestTaskExecutorIncrementerMainInitQueueName => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
@@ -952,15 +1148,15 @@ pub fn global_step(
     }
     State::TestTaskExecutorIncrementerMainReturn => StepResult::ReturnVoid,
     State::TestTaskExecutorIncrementerMainReturnResult => {
-      let fRespfutureid: String =
-        if let StackEntry::Value(_, Value::String(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let fRespfutureid: FutureTestIncrementTask =
+        if let StackEntry::Value(_, Value::FutureTestIncrementTask(x)) = &vars[1] { x.clone() } else { unreachable!() };
       let fRespqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let fTask: TestIncrementTask =
         if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
       StepResult::SetValues {
         values: vec![
-          SetPrimitiveValue::Future { id: fRespfutureid.clone(), value: Value::TestIncrementTask(fTask.clone()) },
+          SetPrimitiveValue::Future { id: fRespfutureid.0.clone(), value: Value::TestIncrementTask(fTask.clone()) },
           SetPrimitiveValue::QueueMessage {
             queue_name: fRespqueuename.clone(),
             value: Value::TestIncrementTask(fTask.clone()),
@@ -1563,6 +1759,34 @@ fn root_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(root_result_main(stack))
 }
 
+pub fn testCreateQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("value".to_string(), Value::TestCreateQueueMessage(TestCreateQueueMessage::default())));
+  stack.push(StackEntry::Value("f_queueName".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("created_queue_name".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("f_queueCreationError".to_string(), Value::OptionString(None)));
+  stack.push(StackEntry::Value("f_future_id_response".to_string(), Value::FutureU64(FutureU64::default())));
+  stack.push(StackEntry::Value("f_res_inc".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestCreateQueueMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testCreateQueue_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testCreateQueue_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testCreateQueue_prepare_main();
+  stack
+}
+
+fn testCreateQueue_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testCreateQueue_result_main(stack))
+}
+
 pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
@@ -1592,7 +1816,10 @@ pub fn testTaskExecutorIncrementer_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
   stack.push(StackEntry::Retrn(Some(1)));
   stack.push(StackEntry::Value("f_task".to_string(), Value::TestIncrementTask(TestIncrementTask::default())));
-  stack.push(StackEntry::Value("f_respFutureId".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value(
+    "f_respFutureId".to_string(),
+    Value::FutureTestIncrementTask(FutureTestIncrementTask::default()),
+  ));
   stack.push(StackEntry::Value("f_respQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("f_tasksQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::State(State::TestTaskExecutorIncrementerMainEntry));
@@ -1635,6 +1862,7 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
     "order_book.main" => orderBook_prepare_main_from_values,
     "order_book.top_n_depth" => orderBook_prepare_topNDepth_from_values,
     "root.main" => root_prepare_main_from_values,
+    "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
     "testSelectQueue.main" => testSelectQueue_prepare_main_from_values,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_prepare_main_from_values,
     _ => panic!("shouldnt be here"),
@@ -1662,6 +1890,7 @@ pub fn get_result_fn(key: &str) -> ResultFn {
     "order_book.main" => orderBook_result_main_value,
     "order_book.top_n_depth" => orderBook_result_topNDepth_value,
     "root.main" => root_result_main_value,
+    "testCreateQueue.main" => testCreateQueue_result_main_value,
     "testSelectQueue.main" => testSelectQueue_result_main_value,
     "testTaskExecutorIncrementer.main" => testTaskExecutorIncrementer_result_main_value,
     _ => panic!("shouldnt be here"),
@@ -1706,6 +1935,15 @@ fn root_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   root_prepare_heap()
 }
 
+pub fn testCreateQueue_prepare_heap() -> Heap {
+  let mut heap = Heap::default();
+  heap
+}
+
+fn testCreateQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  testCreateQueue_prepare_heap()
+}
+
 pub fn testSelectQueue_prepare_heap() -> Heap {
   let mut heap = Heap::default();
   heap
@@ -1736,6 +1974,7 @@ pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
     "global" => global_prepare_heap_from_values,
     "order_book" => orderBook_prepare_heap_from_values,
     "root" => root_prepare_heap_from_values,
+    "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
     "testSelectQueue" => testSelectQueue_prepare_heap_from_values,
     "testTaskExecutorIncrementer" => testTaskExecutorIncrementer_prepare_heap_from_values,
     _ => |_| Heap::default(),
