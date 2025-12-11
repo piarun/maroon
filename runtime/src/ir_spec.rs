@@ -8,7 +8,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("root"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -39,7 +38,6 @@ pub fn sample_ir() -> IR {
         // awaits a new start counter value and then starts count
         FiberType::new("testSelectQueue"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -100,7 +98,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testTaskExecutorIncrementer"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![
             InVar("in_taskQueueName", Type::String),
           ],
@@ -184,7 +181,6 @@ pub fn sample_ir() -> IR {
         // fiber for testing create queue mechanism
         FiberType::new("testCreateQueue"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -293,7 +289,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testRootFiber"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -433,7 +428,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testCalculator"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![
             InVar("calculationRequestsQueueName", Type::String),
           ],
@@ -506,7 +500,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testRootFiberSleepTest"),
         Fiber {
-          fibers_limit: 0,
           heap: HashMap::new(),
           init_vars:vec![],
           funcs: HashMap::from([
@@ -559,7 +552,6 @@ pub fn sample_ir() -> IR {
        (
         FiberType::new("testInfiniteSummator"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -643,7 +635,6 @@ pub fn sample_ir() -> IR {
         // - works with heap (binary search)
         FiberType::new("testFunctionsCall"),
         Fiber {
-          fibers_limit: 100,
           init_vars: vec![
             InVar("multa", Type::UInt64),
             InVar("multb", Type::UInt64),

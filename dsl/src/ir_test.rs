@@ -15,7 +15,6 @@ fn is_valid_variables() {
     fibers: HashMap::from([(
       FiberType::new("root"),
       Fiber {
-        fibers_limit: 0,
         heap: HashMap::new(),
         init_vars: vec![],
         funcs: HashMap::from([(

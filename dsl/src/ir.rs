@@ -40,9 +40,6 @@ pub struct IR {
 
 #[derive(Debug, Clone)]
 pub struct Fiber {
-  /// Limit of independent runtime fibers that can be created from this IR fiber definition
-  /// TODO: Delete this one. Not needed
-  pub fibers_limit: u64,
   pub heap: HashMap<String, Type>,
   pub init_vars: Vec<InVar>,
 

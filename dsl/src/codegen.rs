@@ -745,7 +745,11 @@ fn generate_heap_init_helpers(ir: &IR) -> String {
       let def = default_value_expr(t);
       out.push_str(&format!(
         "  let {}: {} = if let Some(Value::{}(x)) = args.get({}) {{ x.clone() }} else {{ {} }};\n",
-        camel_ident(n), rty, vname, idx, def
+        camel_ident(n),
+        rty,
+        vname,
+        idx,
+        def
       ));
     }
     let call_params = fiber.init_vars.iter().map(|iv| camel_ident(iv.0)).collect::<Vec<_>>().join(", ");
@@ -2000,7 +2004,6 @@ mod tests {
         (
           FiberType::new("userManager"),
           Fiber {
-            fibers_limit: 1,
             heap: HashMap::from([(
               "users".into(),
               Type::Map(Box::new(Type::String), Box::new(Type::Custom("User".into()))),
@@ -2017,10 +2020,7 @@ mod tests {
             )]),
           },
         ),
-        (
-          FiberType::new("global"),
-          Fiber { fibers_limit: 1, heap: HashMap::new(), init_vars: vec![], funcs: HashMap::new() },
-        ),
+        (FiberType::new("global"), Fiber { heap: HashMap::new(), init_vars: vec![], funcs: HashMap::new() }),
       ]),
     };
 
