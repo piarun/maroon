@@ -7,5 +7,7 @@ mod generated_test;
 #[cfg(test)]
 mod ir_test;
 pub mod runtime;
+#[cfg(test)]
+mod test_helpers;
 mod trace;
 mod wait_registry;
