@@ -17,7 +17,6 @@ use common::{
     unique_blob_id_from_range_and_offset,
   },
 };
-use dsl::ir::FiberType;
 use epoch_coordinator::{
   self,
   epoch::Epoch,
@@ -30,8 +29,8 @@ use protocol::{
   node2gw::TxUpdate,
   transaction::{Transaction, TxStatus},
 };
+use runtime::runtime::TaskBlueprint;
 use runtime::runtime::{Input as RuntimeInput, Output as RuntimeOutput};
-use runtime::runtime::{TaskBPSource, TaskBlueprint};
 use std::{
   collections::{HashMap, HashSet},
   num::NonZeroUsize,
@@ -230,11 +229,8 @@ impl<L: Linearizer> App<L> {
 
               blueprints.push(TaskBlueprint {
                 global_id: tx.meta.id,
-                source: TaskBPSource::FiberFunc {
-                  fiber_type: FiberType::new(tx.blueprint.fiber_type.0.clone()),
-                  function_key: tx.blueprint.function_key.clone(),
-                  init_values: tx.blueprint.init_values.clone(),
-                },
+                q_name: tx.blueprint.queue_name.clone(),
+                value: tx.blueprint.param.clone(),
               });
             }
           }

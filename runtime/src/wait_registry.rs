@@ -112,14 +112,6 @@ impl WaitRegistry {
             resume: ArmResume { bind: Some(bind), next },
           });
         }
-        SelectArm::Future { future_id, bind, next } => {
-          // TODO: registry should be responsible for creating ids. I'll change it later
-          let fid = FutureId::from_label(future_id, fiber_id);
-          let key = WaitKey::Future(fid);
-          let node_id = self.nodes.insert(WaitNode { prev: None, next: None, reg_id, fiber_id });
-          self.list_push_back(&key, node_id);
-          arm_handles.push(ArmHandle { key, node_id, kind: ArmKind::Future, resume: ArmResume { bind, next } });
-        }
         SelectArm::FutureVar { future_id, bind, next } => {
           let key = WaitKey::Future(FutureId(future_id));
           let node_id = self.nodes.insert(WaitNode { prev: None, next: None, reg_id, fiber_id });
@@ -274,29 +266,28 @@ impl WaitRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use dsl::ir::FutureLabel;
 
   #[test]
   fn fifo_two_fibers_on_same_queue() {
     let mut wr = WaitRegistry::default();
     wr.register_select(
       1,
-      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "a".to_string(), next: State::GlobalAddEntry }],
+      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "a".to_string(), next: State::Completed }],
     );
     wr.register_select(
       2,
-      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "b".to_string(), next: State::GlobalDivEntry }],
+      vec![SelectArm::Queue { queue_name: "q".to_string(), bind: "b".to_string(), next: State::Idle }],
     );
 
     let out1 = wr.wake_one(&WaitKey::Queue("q".to_string())).expect("wake #1");
     assert_eq!(out1.fiber_id, 1);
     assert_eq!(out1.bind.as_deref(), Some("a"));
-    assert_eq!(out1.next, State::GlobalAddEntry);
+    assert_eq!(out1.next, State::Completed);
 
     let out2 = wr.wake_one(&WaitKey::Queue("q".to_string())).expect("wake #2");
     assert_eq!(out2.fiber_id, 2);
     assert_eq!(out2.bind.as_deref(), Some("b"));
-    assert_eq!(out2.next, State::GlobalDivEntry);
+    assert_eq!(out2.next, State::Idle);
 
     assert!(wr.per_key.get(&WaitKey::Queue("q".to_string())).is_none());
   }
@@ -365,17 +356,14 @@ mod tests {
     registry.register_select(
       100500,
       vec![
-        SelectArm::Queue { queue_name: "q1".to_string(), bind: "var1".to_string(), next: State::GlobalDivEntry },
-        SelectArm::Queue { queue_name: "q2".to_string(), bind: "var2".to_string(), next: State::GlobalAddEntry },
-        SelectArm::Future { future_id: FutureLabel::new("f1"), bind: Some("var3".to_string()), next: State::Completed },
+        SelectArm::Queue { queue_name: "q1".to_string(), bind: "var1".to_string(), next: State::Completed },
+        SelectArm::Queue { queue_name: "q2".to_string(), bind: "var2".to_string(), next: State::Idle },
+        SelectArm::FutureVar { future_id: "id1".to_string(), bind: Some("var3".to_string()), next: State::Completed },
       ],
     );
 
     let result = registry.wake_one(&WaitKey::Queue("q2".to_string()));
-    assert_eq!(
-      Some(WakeOutcome { fiber_id: 100500, bind: Some("var2".to_string()), next: State::GlobalAddEntry }),
-      result
-    );
+    assert_eq!(Some(WakeOutcome { fiber_id: 100500, bind: Some("var2".to_string()), next: State::Idle }), result);
     assert!(registry.nodes.len() == 0, "{:?}", registry.nodes);
     assert!(registry.per_key.len() == 0, "{:?}", registry.nodes);
     assert!(registry.regs.len() == 0, "{:?}", registry.nodes);
@@ -481,26 +469,6 @@ mod tests {
     let b2 = wr.wake_one(&WaitKey::Queue("b".to_string())).unwrap();
 
     assert_eq!((a1.fiber_id, a2.fiber_id, b1.fiber_id, b2.fiber_id), (1, 2, 3, 4));
-  }
-
-  #[test]
-  fn bind_variants_some_and_none() {
-    let mut wr = WaitRegistry::default();
-    // Same fiber waiting on two different keys with and without bind
-    wr.register_select(
-      42,
-      vec![
-        SelectArm::Queue { queue_name: "a".to_string(), bind: "bind_a".to_string(), next: State::Idle },
-        SelectArm::Future { future_id: FutureLabel::new("fy"), bind: None, next: State::Completed },
-      ],
-    );
-
-    // Wake future arm first
-    let fy = WaitKey::Future(FutureId::from_label(FutureLabel::new("fy"), 42));
-    let out = wr.wake_one(&fy).unwrap();
-    assert_eq!(out.fiber_id, 42);
-    assert_eq!(out.bind, None);
-    assert_eq!(out.next, State::Completed);
   }
 
   #[test]

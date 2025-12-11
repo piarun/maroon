@@ -10,13 +10,13 @@ use axum::{
   serve,
 };
 use gateway::core::{Gateway, MonitorEvent};
-use generated::maroon_assembler::Value;
-use protocol::transaction::{FiberType, TaskBlueprint};
+use generated::maroon_assembler::{TestInfiniteSummatorQueueMessagePub, Value};
+use protocol::transaction::TaskBlueprint;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use types::range_key::KeyRange;
 
-async fn summarize_handler(
+async fn multiply_handler(
   State(gw): State<Arc<tokio::sync::Mutex<Gateway>>>,
   Path((a, b)): Path<(u64, u64)>,
   ws: WebSocketUpgrade,
@@ -27,9 +27,9 @@ async fn summarize_handler(
     gateway
       .send_request(
         TaskBlueprint {
-          fiber_type: FiberType::new("application"),
-          function_key: "async_foo".to_string(),
-          init_values: vec![Value::U64(a), Value::U64(b)],
+          // name of the queue in testInfiniteSummator fiber
+          queue_name: "testInfiniteCalculatorQueue".to_string(),
+          param: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a, b }),
         },
         Some(socket),
       )
@@ -131,7 +131,7 @@ async fn main() {
 
   // server
   let gw = Router::new()
-    .route("/summarize/{a}/{b}", get(summarize_handler))
+    .route("/multiply/{a}/{b}", get(multiply_handler))
     .route("/monitor", get(monitor_handler))
     .route("/request", get(request_ws_handler))
     .route("/new_request", post(new_request_handler))

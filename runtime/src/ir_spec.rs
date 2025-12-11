@@ -8,7 +8,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("root"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -17,6 +16,16 @@ pub fn sample_ir() -> IR {
               Func{in_vars: vec![],out: Type::Void, locals: vec![], steps: vec![
                 (
                   StepId::new("entry"),
+                  Step::CreateFibers {
+                    details: vec![CreateFiberDetail{
+                      f_name: FiberType::new("testInfiniteSummator"),
+                      init_vars: vec![],
+                    }],
+                    next: StepId::new("return"),
+                  },
+                ),
+                (
+                  StepId::new("return"),
                   Step::ReturnVoid,
                 ),
               ]},
@@ -29,7 +38,6 @@ pub fn sample_ir() -> IR {
         // awaits a new start counter value and then starts count
         FiberType::new("testSelectQueue"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -38,7 +46,7 @@ pub fn sample_ir() -> IR {
               Func{
                 in_vars: vec![],
                 out: Type::Void,
-                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String), LocalVar("futureId", Type::String)], 
+                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String), LocalVar("futureId", Type::String)],
                 steps: vec![
                 (
                   StepId::new("entry"),
@@ -90,7 +98,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testTaskExecutorIncrementer"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![
             InVar("in_taskQueueName", Type::String),
           ],
@@ -115,7 +122,7 @@ pub fn sample_ir() -> IR {
                 (
                   StepId::new("init_queue_name"),
                   Step::RustBlock {
-                    binds: vec![LocalVarRef("f_tasksQueueName")], 
+                    binds: vec![LocalVarRef("f_tasksQueueName")],
                     code: "heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone()".to_string(), 
                     next: StepId::new("debug_vars"),
                   }
@@ -174,7 +181,6 @@ pub fn sample_ir() -> IR {
         // fiber for testing create queue mechanism
         FiberType::new("testCreateQueue"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -203,8 +209,8 @@ pub fn sample_ir() -> IR {
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
                     ],
-                    success: SuccessCreateBranch { next: StepId::new("return"), id_binds: vec![LocalVarRef("created_queue_name"), LocalVarRef("created_queue_name")] }, 
-                    fail: FailCreateBranch { next: StepId::new("debug_vars"), error_binds: vec![LocalVarRef("f_queueCreationError"), LocalVarRef("f_queueCreationError")] }, 
+                    success: SuccessCreateBranch { next: StepId::new("return"), id_binds: vec![LocalVarRef("created_queue_name"), LocalVarRef("created_queue_name")] },
+                    fail: FailCreateBranch { next: StepId::new("debug_vars"), error_binds: vec![LocalVarRef("f_queueCreationError"), LocalVarRef("f_queueCreationError")] },
                   },
                 ),
                 (
@@ -228,8 +234,8 @@ pub fn sample_ir() -> IR {
                     primitives: vec![
                       RuntimePrimitive::Queue { name: LocalVarRef("f_queueName"), public: true },
                     ],
-                    success: SuccessCreateBranch { next: StepId::new("debug_vars_2"), id_binds: vec![LocalVarRef("created_queue_name")] }, 
-                    fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] }, 
+                    success: SuccessCreateBranch { next: StepId::new("debug_vars_2"), id_binds: vec![LocalVarRef("created_queue_name")] },
+                    fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("f_queueCreationError")] },
                   },
                 ),
                 (
@@ -283,7 +289,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testRootFiber"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![],
           heap: HashMap::new(),
           funcs: HashMap::from([
@@ -307,7 +312,7 @@ pub fn sample_ir() -> IR {
                 steps: vec![
                   (
                     StepId::new("entry"),
-                    Step::Let { 
+                    Step::Let {
                       local: "rootQueueName".to_string(), 
                       expr: Expr::Str("rootQueue".to_string()), 
                       next: StepId::new("create_queueues"),
@@ -315,20 +320,20 @@ pub fn sample_ir() -> IR {
                   ),
                   (
                     StepId::new("create_queueues"),
-                    Step::Create { 
+                    Step::Create {
                       primitives: vec![
-                        RuntimePrimitive::Queue { 
+                        RuntimePrimitive::Queue {
                           name: LocalVarRef("rootQueueName"), 
-                          public: true, 
+                          public: true,
                         },
-                      ], 
-                      success: SuccessCreateBranch { next: StepId::new("create_fiber"), id_binds: vec![LocalVarRef("rootQueueName")] }, 
-                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createQueueError")] }, 
+                      ],
+                      success: SuccessCreateBranch { next: StepId::new("create_fiber"), id_binds: vec![LocalVarRef("rootQueueName")] },
+                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createQueueError")] },
                     }
                   ),
                   (
                     StepId::new("create_fiber"),
-                    Step::CreateFibers { 
+                    Step::CreateFibers {
                       details: vec![
                         CreateFiberDetail {
                           f_name: FiberType::new("testCalculator"),
@@ -344,52 +349,52 @@ pub fn sample_ir() -> IR {
                   ),
                   (
                     StepId::new("create_future"),
-                    Step::Create { 
+                    Step::Create {
                       primitives: vec![
                         RuntimePrimitive::Future{},
                         RuntimePrimitive::Future{},
-                      ], 
-                      success: SuccessCreateBranch { 
+                      ],
+                      success: SuccessCreateBranch {
                         next: StepId::new("prepareCalculationRequests"), 
                         id_binds: vec![
                           LocalVarRef("responseFutureId"),
                           LocalVarRef("responseFutureId2"),
                         ],
-                      }, 
-                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createFutureError"),LocalVarRef("createFutureError2")] }, 
+                      },
+                      fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createFutureError"),LocalVarRef("createFutureError2")] },
                     },
                   ),
                   (
                     StepId::new("prepareCalculationRequests"),
-                    Step::RustBlock { 
+                    Step::RustBlock {
                       binds: vec![
                         LocalVarRef("calculatorTask"),
                         LocalVarRef("calculatorTask2"),
-                      ], 
+                      ],
                       code: "(TestCalculatorTask{a:10,b:15,responseFutureId: responseFutureId}, TestCalculatorTask{a:2,b:4,responseFutureId: responseFutureId2})".to_string(), 
                       next: StepId::new("send_calculation_request"),
                     },
                   ),
                   (
                     StepId::new("send_calculation_request"),
-                    Step::SetValues { 
+                    Step::SetValues {
                       values: vec![
-                        SetPrimitive::QueueMessage { 
+                        SetPrimitive::QueueMessage {
                           f_var_queue_name: LocalVarRef("rootQueueName"), 
                           var_name: LocalVarRef("calculatorTask"),
                         },
-                        SetPrimitive::QueueMessage { 
+                        SetPrimitive::QueueMessage {
                           f_var_queue_name: LocalVarRef("rootQueueName"), 
                           var_name: LocalVarRef("calculatorTask2"),
                         },
-                      ], 
+                      ],
                       next: StepId::new("await_response"),
                     },
                   ),
                   (
                     StepId::new("await_response"),
                     Step::Select { arms: vec![
-                      AwaitSpec::Future { 
+                      AwaitSpec::Future {
                         bind: Some(LocalVarRef("responseFromCalculator")), 
                         ret_to: StepId::new("await_response_2"), 
                         future_id: LocalVarRef("responseFutureId2"),
@@ -399,7 +404,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("await_response_2"),
                     Step::Select { arms: vec![
-                      AwaitSpec::Future { 
+                      AwaitSpec::Future {
                         bind: Some(LocalVarRef("responseFromCalculator2")), 
                         ret_to: StepId::new("return_dbg"), 
                         future_id: LocalVarRef("responseFutureId"),
@@ -423,7 +428,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testCalculator"),
         Fiber {
-          fibers_limit: 0,
           init_vars: vec![
             InVar("calculationRequestsQueueName", Type::String),
           ],
@@ -447,7 +451,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("select_queue"),
                     Step::Select { arms: vec![
-                      AwaitSpec::Queue { 
+                      AwaitSpec::Queue {
                         queue_name: LocalVarRef("calculationRequestsQueueName"), 
                         message_var: LocalVarRef("request"), 
                         next: StepId::new("debug_gotten_task"),
@@ -464,22 +468,22 @@ pub fn sample_ir() -> IR {
                   ),
                   (
                     StepId::new("calculate"),
-                    Step::RustBlock { 
+                    Step::RustBlock {
                       binds: vec![
                         LocalVarRef("result"), 
                         LocalVarRef("respFutureId"),
-                      ], 
+                      ],
                       code: "(request.a * request.b, request.responseFutureId)".to_string(), 
                       next: StepId::new("response"),
                     },
                   ),
                   (
                     StepId::new("response"),
-                    Step::SetValues { 
-                      values: vec![SetPrimitive::Future { 
+                    Step::SetValues {
+                      values: vec![SetPrimitive::Future {
                         f_var_name: LocalVarRef("respFutureId"), 
                         var_name: LocalVarRef("result"),
-                      }], 
+                      }],
                       next: StepId::new("return"),
                     },
                   ),
@@ -496,7 +500,6 @@ pub fn sample_ir() -> IR {
       (
         FiberType::new("testRootFiberSleepTest"),
         Fiber {
-          fibers_limit: 0,
           heap: HashMap::new(),
           init_vars:vec![],
           funcs: HashMap::from([
@@ -517,17 +520,17 @@ pub fn sample_ir() -> IR {
                   ),
                   (
                     StepId::new("create_primitives"),
-                    Step::Create { 
-                      primitives: vec![RuntimePrimitive::Schedule { ms_var: LocalVarRef("await_milliseconds") }], 
-                      success: SuccessCreateBranch { next: StepId::new("seelect"), id_binds: vec![LocalVarRef("scheduledFutId")] }, 
+                    Step::Create {
+                      primitives: vec![RuntimePrimitive::Schedule { ms_var: LocalVarRef("await_milliseconds") }],
+                      success: SuccessCreateBranch { next: StepId::new("seelect"), id_binds: vec![LocalVarRef("scheduledFutId")] },
                       fail: FailCreateBranch { next: StepId::new("return_dbg"), error_binds: vec![LocalVarRef("createScheduleError")] },
                     }
                   ),
                   (
                     StepId::new("seelect"),
                     Step::Select { arms: vec![
-                      AwaitSpec::Future { 
-                        bind: None, 
+                      AwaitSpec::Future {
+                        bind: None,
                         ret_to: StepId::new("return_dbg"), 
                         future_id: LocalVarRef("scheduledFutId"),
                       }] },
@@ -546,11 +549,99 @@ pub fn sample_ir() -> IR {
           ]),
         },
       ),
-      (
-        FiberType::new("global"),
+       (
+        FiberType::new("testInfiniteSummator"),
         Fiber {
-          fibers_limit: 100,
           init_vars: vec![],
+          heap: HashMap::new(),
+          funcs: HashMap::from([
+            (
+              "main".to_string(),
+              Func {
+                in_vars: vec![],
+                out: Type::Void,
+                locals: vec![
+                  LocalVar("infiniteCalculatorQueue", Type::String),
+                  LocalVar("request", Type::Custom("TestInfiniteSummatorQueueMessage".to_string())),
+                  LocalVar("result", Type::UInt64),
+                  LocalVar("createQueueError", Type::Option(Box::new(Type::String))),
+                  LocalVar("respFutureId", Type::Future(Box::new(Type::UInt64))),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::Let {
+                      local: "infiniteCalculatorQueue".to_string(), 
+                      expr: Expr::Str("testInfiniteCalculatorQueue".to_string()), 
+                      next: StepId::new("create_queue"),
+                    }
+                  ),
+                  (
+                    StepId::new("create_queue"),
+                    Step::Create {
+                      primitives: vec![RuntimePrimitive::Queue { name: LocalVarRef("infiniteCalculatorQueue"), public: true }],
+                      success: SuccessCreateBranch {
+                        next: StepId::new("select_queue"), 
+                        id_binds: vec![LocalVarRef("infiniteCalculatorQueue")],
+                      },
+                      fail: FailCreateBranch { next: StepId::new("return"), error_binds: vec![LocalVarRef("createQueueError")] },
+                    }
+                  ),
+                  (
+                    StepId::new("select_queue"),
+                    Step::Select { arms: vec![
+                      AwaitSpec::Queue {
+                        queue_name: LocalVarRef("infiniteCalculatorQueue"), 
+                        message_var: LocalVarRef("request"), 
+                        next: StepId::new("calculate"),
+                      },
+                    ] },
+                  ),
+                  (
+                    StepId::new("calculate"),
+                    Step::RustBlock {
+                      binds: vec![
+                        LocalVarRef("result"), 
+                        LocalVarRef("respFutureId"),
+                      ],
+                      code: "(request.a * request.b, request.publicFutureId)".to_string(), 
+                      next: StepId::new("response"),
+                    },
+                  ),
+                  (
+                    StepId::new("response"),
+                    Step::SetValues {
+                      values: vec![SetPrimitive::Future {
+                        f_var_name: LocalVarRef("respFutureId"), 
+                        var_name: LocalVarRef("result"),
+                      }],
+                      next: StepId::new("select_queue"), // loop here
+                    },
+                  ),
+                  (
+                    StepId::new("return"),
+                    Step::ReturnVoid,
+                  ),
+                ],
+              },
+            )
+          ]),
+        }
+      ),
+      (
+        // calls different functions to check that function call works:
+        // - simple function (multiply)
+        // - recursive function (factorial)
+        // - works with heap (binary search)
+        FiberType::new("testFunctionsCall"),
+        Fiber {
+          init_vars: vec![
+            InVar("multa", Type::UInt64),
+            InVar("multb", Type::UInt64),
+            InVar("factorialStart", Type::UInt64),
+            InVar("binarySearchArray", Type::Array(Box::new(Type::UInt64))),
+            InVar("binarySearchTarget", Type::UInt64),
+          ],
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           funcs: HashMap::from([
             (
@@ -558,26 +649,107 @@ pub fn sample_ir() -> IR {
               Func {
                 in_vars: vec![],
                 out: Type::Void,
-                locals:vec![],
-                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+                locals:vec![
+                  LocalVar("multResult", Type::UInt64),
+                  LocalVar("factorialResult", Type::UInt64),
+                  LocalVar("binarySearchResult", Type::Option(Box::new(Type::UInt64))),
+                  LocalVar("binarySearchLeft", Type::UInt64),
+                  LocalVar("binarySearchRight", Type::UInt64),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"), 
+                    Step::DebugPrintVars(StepId::new("multiply")),
+                  ),
+                  (
+                    StepId::new("multiply"), 
+                    Step::Call {
+                      target: FuncRef {
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "mult".to_string(),
+                      },
+                      args: vec![Expr::Var(LocalVarRef("multa")), Expr::Var(LocalVarRef("multb"))],
+                      bind: Some(LocalVarRef("multResult")), 
+                      ret_to: StepId::new("after_multiply"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_multiply"), 
+                    Step::DebugPrintVars(StepId::new("factorial")),
+                  ),
+                  (
+                    StepId::new("factorial"), 
+                    Step::Call {
+                      target: FuncRef {
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "factorial".to_string(),
+                      },
+                      args: vec![Expr::Var(LocalVarRef("factorialStart"))],
+                      bind: Some(LocalVarRef("factorialResult")), 
+                      ret_to: StepId::new("after_factorial"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_factorial"), 
+                    Step::DebugPrintVars(StepId::new("set_b_search_values")),
+                  ),
+                  (
+                    StepId::new("set_b_search_values"),
+                    Step::RustBlock {
+                      binds: vec![
+                        LocalVarRef("binarySearchLeft"),
+                        LocalVarRef("binarySearchRight"),
+                      ],
+                      code: r#"
+                      heap.testFunctionsCall.binarySearchValues = binarySearchArray.clone();
+                    (0u64, (binarySearchArray.len() as u64)-1)
+                      "#.to_string(), 
+                      next: StepId::new("binary_search"),
+                    },
+                  ),
+                  (
+                    StepId::new("binary_search"), 
+                    Step::Call {
+                      target: FuncRef {
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "binary_search".to_string(),
+                      },
+                      args: vec![
+                        Expr::Var(LocalVarRef("binarySearchTarget")),
+                        Expr::Var(LocalVarRef("binarySearchLeft")),
+                        Expr::Var(LocalVarRef("binarySearchRight")),
+                      ],
+                      bind: Some(LocalVarRef("binarySearchResult")), 
+                      ret_to: StepId::new("after_binary"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_binary"), 
+                    Step::DebugPrintVars(StepId::new("finish")),
+                  ),
+                  (
+                    StepId::new("finish"), 
+                    Step::ReturnVoid,
+                  )
+                ],
               },
             ),
             (
-              "add".to_string(),
+              "mult".to_string(),
               Func {
                 in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
                 out: Type::UInt64,
-                locals: vec![LocalVar("sum", Type::UInt64)],
+                locals: vec![LocalVar("mult", Type::UInt64)],
                 steps: vec![
                   (
                     StepId::new("entry"),
                     Step::RustBlock {
-                      binds: vec![LocalVarRef("sum")],
-                      code: "a+b".to_string(),
+                      binds: vec![LocalVarRef("mult")],
+                      code: "a*b".to_string(),
                       next: StepId::new("return"),
                     },
                   ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("mult")) }),
                 ],
               },
             ),
@@ -605,44 +777,6 @@ out
               },
             ),
             (
-              "mult".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("mult", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("mult")],
-                      code: "a*b".to_string(),
-                      next: StepId::new("return"),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("mult")) }),
-                ],
-              },
-            ),
-            (
-              "div".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("div", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::RustBlock {
-                      binds: vec![LocalVarRef("div")],
-                      code: "a/b".to_string(),
-                      next: StepId::new("return"),
-                    },
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("div")) }),
-                ],
-              },
-            ),
-            (
               // factorial(n) { if n == 1 { return 1 } return n * factorial(n - 1) }
               "factorial".to_string(),
               Func {
@@ -666,7 +800,7 @@ out
                   (
                     StepId::new("subtract"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "sub".to_string() },
                       args: vec![Expr::Var(LocalVarRef("n")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("subtract_res")),
                       ret_to: StepId::new("factorial_call"),
@@ -675,7 +809,7 @@ out
                   (
                     StepId::new("factorial_call"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "factorial".to_string() },
                       args: vec![Expr::Var(LocalVarRef("subtract_res"))],
                       bind: Some(LocalVarRef("fac_call_res")),
                       ret_to: StepId::new("multiply"),
@@ -684,42 +818,13 @@ out
                   (
                     StepId::new("multiply"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "mult".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "mult".to_string() },
                       args: vec![Expr::Var(LocalVarRef("n")), Expr::Var(LocalVarRef("fac_call_res"))],
                       bind: Some(LocalVarRef("result")),
                       ret_to: StepId::new("return"),
                     },
                   ),
                   (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("result")) }),
-                ],
-              },
-            ),
-            (
-              "subAdd".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64), InVar("c", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sumAB", Type::UInt64), LocalVar("subABC", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
-                      args: vec![Expr::Var(LocalVarRef("a")), Expr::Var(LocalVarRef("b"))],
-                      bind: Some(LocalVarRef("sumAB")),
-                      ret_to: StepId::new("sub_sum"),
-                    },
-                  ),
-                  (
-                    StepId::new("sub_sum"),
-                    Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
-                      args: vec![Expr::Var(LocalVarRef("sumAB")), Expr::Var(LocalVarRef("c"))],
-                      bind: Some(LocalVarRef("subABC")),
-                      ret_to: StepId::new("finalize"),
-                    },
-                  ),
-                  (StepId::new("finalize"), Step::Return { value: RetValue::Var(LocalVarRef("subABC")) }),
                 ],
               },
             ),
@@ -753,7 +858,7 @@ out
                       binds: vec![LocalVarRef("div"), LocalVarRef("v_by_index_div")],
                       code: r#"
                     let o_div = (left + right) / 2;
-                    let s = &heap.global;
+                    let s = &heap.testFunctionsCall;
                     (o_div, s.binarySearchValues[o_div as usize])
                     "#
                       .to_string(),
@@ -789,7 +894,7 @@ out
                   (
                     StepId::new("go_right"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "add".to_string() },
                       args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("left")),
                       ret_to: StepId::new("recursive_call"),
@@ -806,7 +911,7 @@ out
                   (
                     StepId::new("go_left"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "sub".to_string() },
                       args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("right")),
                       ret_to: StepId::new("recursive_call"),
@@ -815,7 +920,7 @@ out
                   (
                     StepId::new("recursive_call"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "binary_search".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "binary_search".to_string() },
                       args: vec![
                         Expr::Var(LocalVarRef("e")),
                         Expr::Var(LocalVarRef("left")),
@@ -826,57 +931,6 @@ out
                     },
                   ),
                   (StepId::new("return_result"), Step::Return { value: RetValue::Var(LocalVarRef("fac_call_res")) }),
-                ],
-              },
-            ),
-          ]),
-        },
-      ),
-      (
-        FiberType::new("application"),
-        Fiber {
-          fibers_limit: 2,
-          init_vars: vec![],
-          heap: HashMap::new(),
-          funcs: HashMap::from([
-            (
-              "main".to_string(),
-              Func {
-                in_vars: vec![],
-                out: Type::Void,
-                locals:vec![],
-                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
-              },
-            ),
-            (
-              "async_foo".to_string(),
-              Func {
-                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
-                out: Type::UInt64,
-                locals: vec![LocalVar("sum", Type::UInt64)],
-                steps: vec![
-                  (
-                    StepId::new("entry"),
-                    Step::SendToFiber {
-                      fiber: "global".to_string(),
-                      message: "add".to_string(),
-                      args: vec![
-                        ("a".to_string(), Expr::Var(LocalVarRef("a"))),
-                        ("b".to_string(), Expr::Var(LocalVarRef("b"))),
-                      ],
-                      next: StepId::new("await"),
-                      future_id: FutureLabel::new("async_add_future_1"),
-                    },
-                  ),
-                  (
-                    StepId::new("await"),
-                    Step::Await(AwaitSpecOld::Future {
-                      bind: Some(LocalVarRef("sum")),
-                      ret_to: StepId::new("return"),
-                      future_id: FutureLabel::new("async_add_future_1"),
-                    }),
-                  ),
-                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sum")) }),
                 ],
               },
             ),
@@ -914,6 +968,15 @@ out
         ],
         String::new(),
       ),
+      Type::PubQueueMessage{
+        name:"TestInfiniteSummatorQueueMessage".to_string(),
+        fields:vec![
+          StructField { name: "a".to_string(), ty: Type::UInt64},
+          StructField { name: "b".to_string(), ty: Type::UInt64},
+          StructField { name: "public_future_id".to_string(), ty: Type::Future(Box::new(Type::UInt64)) },
+        ],
+        rust_additions:String::new(),
+      },
   ],
   }
 }

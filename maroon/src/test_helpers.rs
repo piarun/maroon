@@ -6,9 +6,9 @@ use common::invoker_handler::InvokerInterface;
 use common::{duplex_channel::Endpoint, range_key::UniqueU64BlobId};
 #[cfg(test)]
 use epoch_coordinator::interface::ControllerInterface as CoordinatorControllerInterface;
-use generated::maroon_assembler::Value;
+use generated::maroon_assembler::{TestInfiniteSummatorQueueMessagePub, Value};
 use libp2p::PeerId;
-use protocol::transaction::{FiberType, Meta, TaskBlueprint, Transaction, TxStatus};
+use protocol::transaction::{Meta, TaskBlueprint, Transaction, TxStatus};
 use runtime::runtime::A2BEndpoint as RuntimeA2BEndpoint;
 use std::time::Duration;
 
@@ -47,9 +47,8 @@ pub fn test_tx(id: u64) -> Transaction {
   Transaction {
     meta: Meta { id, status: TxStatus::Pending },
     blueprint: TaskBlueprint {
-      fiber_type: FiberType::new("application"),
-      function_key: "async_foo".to_string(),
-      init_values: vec![Value::U64(1), Value::U64(1)],
+      queue_name: "testInfiniteCalculatorQueue".to_string(),
+      param: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a: 5, b: 7 }),
     },
   }
 }

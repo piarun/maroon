@@ -8,7 +8,7 @@ use common::{
   range_key::{KeyOffset, KeyRange, UniqueU64BlobId},
 };
 use gateway::core::Gateway;
-use generated::maroon_assembler::Value;
+use generated::maroon_assembler::{TestInfiniteSummatorQueueMessagePub, Value};
 use maroon::{
   app::{App, CurrentOffsets, Params, Request as AppRequest, Response as AppResponse},
   stack,
@@ -102,8 +102,7 @@ fn test_add_blueprint(
   b: u64,
 ) -> TaskBlueprint {
   TaskBlueprint {
-    fiber_type: FiberType::new("global"),
-    function_key: "add".to_string(),
-    init_values: vec![Value::U64(a), Value::U64(b)],
+    queue_name: "testInfiniteCalculatorQueue".to_string(),
+    param: Value::TestInfiniteSummatorQueueMessagePub(TestInfiniteSummatorQueueMessagePub { a, b }),
   }
 }
