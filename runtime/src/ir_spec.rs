@@ -637,10 +637,20 @@ pub fn sample_ir() -> IR {
         }
       ),
       (
-        FiberType::new("global"),
+        // calls different functions to check that function call works:
+        // - simple function (multiply)
+        // - recursive function (factorial)
+        // - works with heap (binary search)
+        FiberType::new("testFunctionsCall"),
         Fiber {
           fibers_limit: 100,
-          init_vars: vec![],
+          init_vars: vec![
+            InVar("multa", Type::UInt64),
+            InVar("multb", Type::UInt64),
+            InVar("factorialStart", Type::UInt64),
+            InVar("binarySearchArray", Type::Array(Box::new(Type::UInt64))),
+            InVar("binarySearchTarget", Type::UInt64),
+          ],
           heap: HashMap::from([("binary_search_values".to_string(), Type::Array(Box::new(Type::UInt64)))]),
           funcs: HashMap::from([
             (
@@ -648,8 +658,89 @@ pub fn sample_ir() -> IR {
               Func {
                 in_vars: vec![],
                 out: Type::Void,
-                locals:vec![],
-                steps: vec![(StepId::new("entry"), Step::ReturnVoid)],
+                locals:vec![
+                  LocalVar("multResult", Type::UInt64),
+                  LocalVar("factorialResult", Type::UInt64),
+                  LocalVar("binarySearchResult", Type::Option(Box::new(Type::UInt64))),
+                  LocalVar("binarySearchLeft", Type::UInt64),
+                  LocalVar("binarySearchRight", Type::UInt64),
+                ],
+                steps: vec![
+                  (
+                    StepId::new("entry"), 
+                    Step::DebugPrintVars(StepId::new("multiply")),
+                  ),
+                  (
+                    StepId::new("multiply"), 
+                    Step::Call { 
+                      target: FuncRef { 
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "mult".to_string(),
+                      }, 
+                      args: vec![Expr::Var(LocalVarRef("multa")), Expr::Var(LocalVarRef("multb"))], 
+                      bind: Some(LocalVarRef("multResult")), 
+                      ret_to: StepId::new("after_multiply"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_multiply"), 
+                    Step::DebugPrintVars(StepId::new("factorial")),
+                  ),
+                  (
+                    StepId::new("factorial"), 
+                    Step::Call { 
+                      target: FuncRef { 
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "factorial".to_string(),
+                      }, 
+                      args: vec![Expr::Var(LocalVarRef("factorialStart"))], 
+                      bind: Some(LocalVarRef("factorialResult")), 
+                      ret_to: StepId::new("after_factorial"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_factorial"), 
+                    Step::DebugPrintVars(StepId::new("set_b_search_values")),
+                  ),
+                  (
+                    StepId::new("set_b_search_values"),
+                    Step::RustBlock { 
+                      binds: vec![
+                        LocalVarRef("binarySearchLeft"),
+                        LocalVarRef("binarySearchRight"),
+                      ], 
+                      code: r#"
+                      heap.testFunctionsCall.binarySearchValues = binarySearchArray.clone();
+                    (0u64, (binarySearchArray.len() as u64)-1)
+                      "#.to_string(), 
+                      next: StepId::new("binary_search"),
+                    },
+                  ),
+                  (
+                    StepId::new("binary_search"), 
+                    Step::Call { 
+                      target: FuncRef { 
+                        fiber: "testFunctionsCall".to_string(), 
+                        func: "binary_search".to_string(),
+                      }, 
+                      args: vec![
+                        Expr::Var(LocalVarRef("binarySearchTarget")),
+                        Expr::Var(LocalVarRef("binarySearchLeft")),
+                        Expr::Var(LocalVarRef("binarySearchRight")),
+                      ], 
+                      bind: Some(LocalVarRef("binarySearchResult")), 
+                      ret_to: StepId::new("after_binary"),
+                    }
+                  ),
+                  (
+                    StepId::new("after_binary"), 
+                    Step::DebugPrintVars(StepId::new("finish")),
+                  ),
+                  (
+                    StepId::new("finish"), 
+                    Step::ReturnVoid,
+                  )
+                ],
               },
             ),
             (
@@ -668,6 +759,29 @@ pub fn sample_ir() -> IR {
                     },
                   ),
                   (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("mult")) }),
+                ],
+              },
+            ),
+            (
+              "sub".to_string(),
+              Func {
+                in_vars: vec![InVar("a", Type::UInt64), InVar("b", Type::UInt64)],
+                out: Type::UInt64,
+                locals: vec![LocalVar("sub", Type::UInt64)],
+                steps: vec![
+                  (
+                    StepId::new("entry"),
+                    Step::RustBlock {
+                      binds: vec![LocalVarRef("sub")],
+                      code: r#"
+let out = a - b;
+out
+"#
+                      .to_string(),
+                      next: StepId::new("return"),
+                    },
+                  ),
+                  (StepId::new("return"), Step::Return { value: RetValue::Var(LocalVarRef("sub")) }),
                 ],
               },
             ),
@@ -695,7 +809,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("subtract"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "sub".to_string() },
                       args: vec![Expr::Var(LocalVarRef("n")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("subtract_res")),
                       ret_to: StepId::new("factorial_call"),
@@ -704,7 +818,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("factorial_call"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "factorial".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "factorial".to_string() },
                       args: vec![Expr::Var(LocalVarRef("subtract_res"))],
                       bind: Some(LocalVarRef("fac_call_res")),
                       ret_to: StepId::new("multiply"),
@@ -713,7 +827,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("multiply"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "mult".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "mult".to_string() },
                       args: vec![Expr::Var(LocalVarRef("n")), Expr::Var(LocalVarRef("fac_call_res"))],
                       bind: Some(LocalVarRef("result")),
                       ret_to: StepId::new("return"),
@@ -753,7 +867,7 @@ pub fn sample_ir() -> IR {
                       binds: vec![LocalVarRef("div"), LocalVarRef("v_by_index_div")],
                       code: r#"
                     let o_div = (left + right) / 2;
-                    let s = &heap.global;
+                    let s = &heap.testFunctionsCall;
                     (o_div, s.binarySearchValues[o_div as usize])
                     "#
                       .to_string(),
@@ -789,7 +903,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("go_right"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "add".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "add".to_string() },
                       args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("left")),
                       ret_to: StepId::new("recursive_call"),
@@ -806,7 +920,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("go_left"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "sub".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "sub".to_string() },
                       args: vec![Expr::Var(LocalVarRef("div")), Expr::UInt64(1)],
                       bind: Some(LocalVarRef("right")),
                       ret_to: StepId::new("recursive_call"),
@@ -815,7 +929,7 @@ pub fn sample_ir() -> IR {
                   (
                     StepId::new("recursive_call"),
                     Step::Call {
-                      target: FuncRef { fiber: "global".to_string(), func: "binary_search".to_string() },
+                      target: FuncRef { fiber: "testFunctionsCall".to_string(), func: "binary_search".to_string() },
                       args: vec![
                         Expr::Var(LocalVarRef("e")),
                         Expr::Var(LocalVarRef("left")),

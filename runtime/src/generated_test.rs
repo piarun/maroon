@@ -1,5 +1,6 @@
 use crate::{
   fiber::{Fiber, RunResult},
+  test_helpers::assert_str_eq_by_lines,
   trace::TraceEvent,
 };
 use dsl::ir::FiberType;
@@ -232,4 +233,42 @@ fn test_select_resume_mechanism() {
     expected_future_trace.extend(expected_inc_and_compare_tail);
     assert_eq!(expected_future_trace, future_response.trace_sink);
   }
+}
+
+#[test]
+fn fiber_call_different_functions() {
+  // Pass init_vars via constructor
+  let mut fiber = Fiber::new(
+    FiberType::new("testFunctionsCall"),
+    0,
+    &vec![Value::U64(2), Value::U64(3), Value::U64(5), Value::ArrayU64(vec![1, 2, 3, 4, 5, 6, 7, 8]), Value::U64(4)],
+  );
+  let mut dbg = String::new();
+  let run_result = fiber.run(&mut dbg);
+  assert_eq!(RunResult::Done, run_result);
+
+  assert_str_eq_by_lines(
+    r#"multResult=0
+factorialResult=0
+binarySearchResult=OptionU64(None)
+binarySearchLeft=0
+binarySearchRight=0
+multResult=6
+factorialResult=0
+binarySearchResult=OptionU64(None)
+binarySearchLeft=0
+binarySearchRight=0
+multResult=6
+factorialResult=120
+binarySearchResult=OptionU64(None)
+binarySearchLeft=0
+binarySearchRight=0
+multResult=6
+factorialResult=120
+binarySearchResult=OptionU64(Some(3))
+binarySearchLeft=0
+binarySearchRight=7
+"#,
+    &dbg,
+  );
 }

@@ -330,7 +330,7 @@ impl IR {
           }
         }
 
-        if let Some(correct) = uses_correct_variables(self, func.1) {
+        if let Some(correct) = uses_correct_variables(self, fiber.1, func.1) {
           explanation.push_str(&correct);
         }
 
@@ -385,6 +385,7 @@ impl IR {
 
 fn uses_correct_variables(
   ir: &IR,
+  fiber: &Fiber,
   f: &Func,
 ) -> Option<String> {
   let mut explanation = String::new();
@@ -399,6 +400,11 @@ fn uses_correct_variables(
     if let Some(previous) = vars_map.insert(v.0.to_string(), v.1.clone()) {
       explanation.push_str(&format!("duplicate var name {} for types: {:?} and {:?}\n", v.0, v.1, previous));
     }
+  }
+  // include fiber init_vars as in-scope vars for all functions within the fiber
+  for InVar(name, ty) in &fiber.init_vars {
+    // do not treat shadowing as error here; last-in wins
+    vars_map.entry(name.to_string()).or_insert_with(|| ty.clone());
   }
 
   for (id, step) in &f.steps {

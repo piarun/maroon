@@ -54,11 +54,6 @@ pub struct FutureU64(pub String);
 pub struct FutureUnit(pub String);
 
 #[derive(Clone, Debug, Default)]
-pub struct GlobalHeap {
-  pub binarySearchValues: Vec<u64>,
-}
-
-#[derive(Clone, Debug, Default)]
 pub struct RootHeap {}
 
 #[derive(Clone, Debug, Default)]
@@ -73,6 +68,21 @@ pub struct TestCalculatorInVars {
 
 #[derive(Clone, Debug, Default)]
 pub struct TestCreateQueueHeap {}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestFunctionsCallHeap {
+  pub binarySearchValues: Vec<u64>,
+  pub in_vars: TestFunctionsCallInVars,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestFunctionsCallInVars {
+  pub binarySearchArray: Vec<u64>,
+  pub binarySearchTarget: u64,
+  pub factorialStart: u64,
+  pub multa: u64,
+  pub multb: u64,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct TestInfiniteSummatorHeap {}
@@ -98,10 +108,10 @@ pub struct TestTaskExecutorIncrementerInVars {
 
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
-  pub global: GlobalHeap,
   pub root: RootHeap,
   pub testCalculator: TestCalculatorHeap,
   pub testCreateQueue: TestCreateQueueHeap,
+  pub testFunctionsCall: TestFunctionsCallHeap,
   pub testInfiniteSummator: TestInfiniteSummatorHeap,
   pub testRootFiber: TestRootFiberHeap,
   pub testRootFiberSleepTest: TestRootFiberSleepTestHeap,
@@ -113,25 +123,6 @@ pub struct Heap {
 pub enum State {
   Completed,
   Idle,
-  GlobalBinarySearchCalculateDiv,
-  GlobalBinarySearchCmpLess,
-  GlobalBinarySearchEntry,
-  GlobalBinarySearchGoLeft,
-  GlobalBinarySearchGoLeftCheckOverflow,
-  GlobalBinarySearchGoRight,
-  GlobalBinarySearchRecursiveCall,
-  GlobalBinarySearchReturnNone,
-  GlobalBinarySearchReturnFound,
-  GlobalBinarySearchReturnIfEqual,
-  GlobalBinarySearchReturnResult,
-  GlobalFactorialEntry,
-  GlobalFactorialFactorialCall,
-  GlobalFactorialMultiply,
-  GlobalFactorialReturn,
-  GlobalFactorialReturn1,
-  GlobalFactorialSubtract,
-  GlobalMainEntry,
-  GlobalMultEntry,
   RootMainEntry,
   RootMainReturn,
   TestCalculatorMainCalculate,
@@ -152,6 +143,34 @@ pub enum State {
   TestCreateQueueMainExtractFutAndInc,
   TestCreateQueueMainReturn,
   TestCreateQueueMainWrongQueueCreation,
+  TestFunctionsCallBinarySearchCalculateDiv,
+  TestFunctionsCallBinarySearchCmpLess,
+  TestFunctionsCallBinarySearchEntry,
+  TestFunctionsCallBinarySearchGoLeft,
+  TestFunctionsCallBinarySearchGoLeftCheckOverflow,
+  TestFunctionsCallBinarySearchGoRight,
+  TestFunctionsCallBinarySearchRecursiveCall,
+  TestFunctionsCallBinarySearchReturnNone,
+  TestFunctionsCallBinarySearchReturnFound,
+  TestFunctionsCallBinarySearchReturnIfEqual,
+  TestFunctionsCallBinarySearchReturnResult,
+  TestFunctionsCallFactorialEntry,
+  TestFunctionsCallFactorialFactorialCall,
+  TestFunctionsCallFactorialMultiply,
+  TestFunctionsCallFactorialReturn,
+  TestFunctionsCallFactorialReturn1,
+  TestFunctionsCallFactorialSubtract,
+  TestFunctionsCallMainAfterBinary,
+  TestFunctionsCallMainAfterFactorial,
+  TestFunctionsCallMainAfterMultiply,
+  TestFunctionsCallMainBinarySearch,
+  TestFunctionsCallMainEntry,
+  TestFunctionsCallMainFactorial,
+  TestFunctionsCallMainFinish,
+  TestFunctionsCallMainMultiply,
+  TestFunctionsCallMainSetBSearchValues,
+  TestFunctionsCallMultEntry,
+  TestFunctionsCallSubEntry,
   TestInfiniteSummatorMainCalculate,
   TestInfiniteSummatorMainCreateQueue,
   TestInfiniteSummatorMainEntry,
@@ -193,6 +212,7 @@ pub enum State {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
+  ArrayU64(Vec<u64>),
   FutureTestIncrementTask(FutureTestIncrementTask),
   FutureU64(FutureU64),
   FutureUnit(FutureUnit),
@@ -332,25 +352,6 @@ pub enum StepResult {
 
 pub fn func_args_count(e: &State) -> usize {
   match e {
-    State::GlobalBinarySearchEntry => 6,
-    State::GlobalBinarySearchCalculateDiv => 6,
-    State::GlobalBinarySearchCmpLess => 6,
-    State::GlobalBinarySearchGoLeft => 6,
-    State::GlobalBinarySearchGoLeftCheckOverflow => 6,
-    State::GlobalBinarySearchGoRight => 6,
-    State::GlobalBinarySearchRecursiveCall => 6,
-    State::GlobalBinarySearchReturnNone => 6,
-    State::GlobalBinarySearchReturnFound => 6,
-    State::GlobalBinarySearchReturnIfEqual => 6,
-    State::GlobalBinarySearchReturnResult => 6,
-    State::GlobalFactorialEntry => 4,
-    State::GlobalFactorialFactorialCall => 4,
-    State::GlobalFactorialMultiply => 4,
-    State::GlobalFactorialReturn => 4,
-    State::GlobalFactorialReturn1 => 4,
-    State::GlobalFactorialSubtract => 4,
-    State::GlobalMainEntry => 0,
-    State::GlobalMultEntry => 3,
     State::RootMainEntry => 0,
     State::RootMainReturn => 0,
     State::TestCalculatorMainEntry => 3,
@@ -371,6 +372,34 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestCreateQueueMainExtractFutAndInc => 6,
     State::TestCreateQueueMainReturn => 6,
     State::TestCreateQueueMainWrongQueueCreation => 6,
+    State::TestFunctionsCallBinarySearchEntry => 6,
+    State::TestFunctionsCallBinarySearchCalculateDiv => 6,
+    State::TestFunctionsCallBinarySearchCmpLess => 6,
+    State::TestFunctionsCallBinarySearchGoLeft => 6,
+    State::TestFunctionsCallBinarySearchGoLeftCheckOverflow => 6,
+    State::TestFunctionsCallBinarySearchGoRight => 6,
+    State::TestFunctionsCallBinarySearchRecursiveCall => 6,
+    State::TestFunctionsCallBinarySearchReturnNone => 6,
+    State::TestFunctionsCallBinarySearchReturnFound => 6,
+    State::TestFunctionsCallBinarySearchReturnIfEqual => 6,
+    State::TestFunctionsCallBinarySearchReturnResult => 6,
+    State::TestFunctionsCallFactorialEntry => 4,
+    State::TestFunctionsCallFactorialFactorialCall => 4,
+    State::TestFunctionsCallFactorialMultiply => 4,
+    State::TestFunctionsCallFactorialReturn => 4,
+    State::TestFunctionsCallFactorialReturn1 => 4,
+    State::TestFunctionsCallFactorialSubtract => 4,
+    State::TestFunctionsCallMainEntry => 5,
+    State::TestFunctionsCallMainAfterBinary => 5,
+    State::TestFunctionsCallMainAfterFactorial => 5,
+    State::TestFunctionsCallMainAfterMultiply => 5,
+    State::TestFunctionsCallMainBinarySearch => 5,
+    State::TestFunctionsCallMainFactorial => 5,
+    State::TestFunctionsCallMainFinish => 5,
+    State::TestFunctionsCallMainMultiply => 5,
+    State::TestFunctionsCallMainSetBSearchValues => 5,
+    State::TestFunctionsCallMultEntry => 3,
+    State::TestFunctionsCallSubEntry => 3,
     State::TestInfiniteSummatorMainEntry => 5,
     State::TestInfiniteSummatorMainCalculate => 5,
     State::TestInfiniteSummatorMainCreateQueue => 5,
@@ -420,152 +449,6 @@ pub fn global_step(
   match state {
     State::Completed => StepResult::Done,
     State::Idle => panic!("shoudnt be here"),
-    State::GlobalBinarySearchEntry => {
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      if left > right {
-        StepResult::GoTo(State::GlobalBinarySearchReturnNone)
-      } else {
-        StepResult::GoTo(State::GlobalBinarySearchCalculateDiv)
-      }
-    }
-    State::GlobalBinarySearchCalculateDiv => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let facCallRes: Option<u64> =
-        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
-      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      {
-        let out = {
-          let o_div = (left + right) / 2;
-          let s = &heap.global;
-          (o_div, s.binarySearchValues[o_div as usize])
-        };
-        let (o0, o1) = out;
-        StepResult::Next(vec![
-          StackEntry::FrameAssign(vec![(3, Value::U64(o0)), (4, Value::U64(o1))]),
-          StackEntry::State(State::GlobalBinarySearchReturnIfEqual),
-        ])
-      }
-    }
-    State::GlobalBinarySearchCmpLess => {
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      if vByIndexDiv < e {
-        StepResult::GoTo(State::GlobalBinarySearchGoRight)
-      } else {
-        StepResult::GoTo(State::GlobalBinarySearchGoLeftCheckOverflow)
-      }
-    }
-    State::GlobalBinarySearchGoLeft => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::GoTo(State::GlobalBinarySearchRecursiveCall)
-    }
-    State::GlobalBinarySearchGoLeftCheckOverflow => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      if div < 0u64 {
-        StepResult::GoTo(State::GlobalBinarySearchReturnNone)
-      } else {
-        StepResult::GoTo(State::GlobalBinarySearchGoLeft)
-      }
-    }
-    State::GlobalBinarySearchGoRight => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::GoTo(State::GlobalBinarySearchRecursiveCall)
-    }
-    State::GlobalBinarySearchRecursiveCall => {
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalBinarySearchReturnResult),
-        StackEntry::Retrn(Some(2)),
-        StackEntry::Value("e".to_string(), Value::U64(e)),
-        StackEntry::Value("left".to_string(), Value::U64(left)),
-        StackEntry::Value("right".to_string(), Value::U64(right)),
-        StackEntry::Value("div".to_string(), Value::U64(0u64)),
-        StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)),
-        StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)),
-        StackEntry::State(State::GlobalBinarySearchEntry),
-      ])
-    }
-    State::GlobalBinarySearchReturnNone => StepResult::Return(Value::OptionU64(None)),
-    State::GlobalBinarySearchReturnFound => {
-      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::OptionU64(Some(div)))
-    }
-    State::GlobalBinarySearchReturnIfEqual => {
-      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let vByIndexDiv: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
-      if vByIndexDiv == e {
-        StepResult::GoTo(State::GlobalBinarySearchReturnFound)
-      } else {
-        StepResult::GoTo(State::GlobalBinarySearchCmpLess)
-      }
-    }
-    State::GlobalBinarySearchReturnResult => {
-      let facCallRes: Option<u64> =
-        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::OptionU64(facCallRes))
-    }
-    State::GlobalFactorialEntry => {
-      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      if n == 1u64 {
-        StepResult::GoTo(State::GlobalFactorialReturn1)
-      } else {
-        StepResult::GoTo(State::GlobalFactorialSubtract)
-      }
-    }
-    State::GlobalFactorialFactorialCall => {
-      let subtractRes: u64 =
-        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalFactorialMultiply),
-        StackEntry::Retrn(Some(4)),
-        StackEntry::Value("n".to_string(), Value::U64(subtractRes)),
-        StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)),
-        StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)),
-        StackEntry::Value("result".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalFactorialEntry),
-      ])
-    }
-    State::GlobalFactorialMultiply => {
-      let facCallRes: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      StepResult::Next(vec![
-        StackEntry::State(State::GlobalFactorialReturn),
-        StackEntry::Retrn(Some(2)),
-        StackEntry::Value("a".to_string(), Value::U64(n)),
-        StackEntry::Value("b".to_string(), Value::U64(facCallRes)),
-        StackEntry::Value("mult".to_string(), Value::U64(0u64)),
-        StackEntry::State(State::GlobalMultEntry),
-      ])
-    }
-    State::GlobalFactorialReturn => {
-      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
-      StepResult::Return(Value::U64(result))
-    }
-    State::GlobalFactorialReturn1 => StepResult::Return(Value::U64(1u64)),
-    State::GlobalFactorialSubtract => {
-      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      StepResult::GoTo(State::GlobalFactorialFactorialCall)
-    }
-    State::GlobalMainEntry => StepResult::ReturnVoid,
-    State::GlobalMultEntry => {
-      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
-      let mult: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
-      {
-        let out = { a * b };
-        StepResult::Return(Value::U64(out))
-      }
-    }
     State::RootMainEntry => StepResult::CreateFibers {
       details: vec![(FiberType::new("testInfiniteSummator"), vec![])],
       next: State::RootMainReturn,
@@ -573,6 +456,7 @@ pub fn global_step(
     State::RootMainReturn => StepResult::ReturnVoid,
     State::TestCalculatorMainEntry => StepResult::DebugPrintVars(State::TestCalculatorMainSelectQueue),
     State::TestCalculatorMainCalculate => {
+      let calculationRequestsQueueName: String = heap.testCalculator.in_vars.calculationRequestsQueueName.clone();
       let request: TestCalculatorTask =
         if let StackEntry::Value(_, Value::TestCalculatorTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let respFutureId: FutureU64 =
@@ -711,6 +595,268 @@ pub fn global_step(
         success_kinds: vec![SuccessBindKind::String, SuccessBindKind::String],
         fail_next: State::TestCreateQueueMainDebugVars,
         fail_binds: vec!["f_queueCreationError".to_string(), "f_queueCreationError".to_string()],
+      }
+    }
+    State::TestFunctionsCallBinarySearchEntry => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      if left > right {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchReturnNone)
+      } else {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchCalculateDiv)
+      }
+    }
+    State::TestFunctionsCallBinarySearchCalculateDiv => {
+      let binarySearchArray: Vec<u64> = heap.testFunctionsCall.in_vars.binarySearchArray.clone();
+      let binarySearchTarget: u64 = heap.testFunctionsCall.in_vars.binarySearchTarget.clone();
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let facCallRes: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      let factorialStart: u64 = heap.testFunctionsCall.in_vars.factorialStart.clone();
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let multa: u64 = heap.testFunctionsCall.in_vars.multa.clone();
+      let multb: u64 = heap.testFunctionsCall.in_vars.multb.clone();
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let vByIndexDiv: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      {
+        let out = {
+          let o_div = (left + right) / 2;
+          let s = &heap.testFunctionsCall;
+          (o_div, s.binarySearchValues[o_div as usize])
+        };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::U64(o0)), (4, Value::U64(o1))]),
+          StackEntry::State(State::TestFunctionsCallBinarySearchReturnIfEqual),
+        ])
+      }
+    }
+    State::TestFunctionsCallBinarySearchCmpLess => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let vByIndexDiv: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      if vByIndexDiv < e {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchGoRight)
+      } else {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchGoLeftCheckOverflow)
+      }
+    }
+    State::TestFunctionsCallBinarySearchGoLeft => {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallBinarySearchRecursiveCall),
+        StackEntry::Retrn(Some(5)),
+        StackEntry::Value("a".to_string(), Value::U64(div)),
+        StackEntry::Value("b".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallSubEntry),
+      ])
+    }
+    State::TestFunctionsCallBinarySearchGoLeftCheckOverflow => {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      if div < 0u64 {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchReturnNone)
+      } else {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchGoLeft)
+      }
+    }
+    State::TestFunctionsCallBinarySearchGoRight => {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::GoTo(State::TestFunctionsCallBinarySearchRecursiveCall)
+    }
+    State::TestFunctionsCallBinarySearchRecursiveCall => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let left: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let right: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallBinarySearchReturnResult),
+        StackEntry::Retrn(Some(2)),
+        StackEntry::Value("e".to_string(), Value::U64(e)),
+        StackEntry::Value("left".to_string(), Value::U64(left)),
+        StackEntry::Value("right".to_string(), Value::U64(right)),
+        StackEntry::Value("div".to_string(), Value::U64(0u64)),
+        StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)),
+        StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)),
+        StackEntry::State(State::TestFunctionsCallBinarySearchEntry),
+      ])
+    }
+    State::TestFunctionsCallBinarySearchReturnNone => StepResult::Return(Value::OptionU64(None)),
+    State::TestFunctionsCallBinarySearchReturnFound => {
+      let div: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::OptionU64(Some(div)))
+    }
+    State::TestFunctionsCallBinarySearchReturnIfEqual => {
+      let e: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let vByIndexDiv: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      if vByIndexDiv == e {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchReturnFound)
+      } else {
+        StepResult::GoTo(State::TestFunctionsCallBinarySearchCmpLess)
+      }
+    }
+    State::TestFunctionsCallBinarySearchReturnResult => {
+      let facCallRes: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[5] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::OptionU64(facCallRes))
+    }
+    State::TestFunctionsCallFactorialEntry => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      if n == 1u64 {
+        StepResult::GoTo(State::TestFunctionsCallFactorialReturn1)
+      } else {
+        StepResult::GoTo(State::TestFunctionsCallFactorialSubtract)
+      }
+    }
+    State::TestFunctionsCallFactorialFactorialCall => {
+      let subtractRes: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallFactorialMultiply),
+        StackEntry::Retrn(Some(4)),
+        StackEntry::Value("n".to_string(), Value::U64(subtractRes)),
+        StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("result".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallFactorialEntry),
+      ])
+    }
+    State::TestFunctionsCallFactorialMultiply => {
+      let facCallRes: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallFactorialReturn),
+        StackEntry::Retrn(Some(2)),
+        StackEntry::Value("a".to_string(), Value::U64(n)),
+        StackEntry::Value("b".to_string(), Value::U64(facCallRes)),
+        StackEntry::Value("mult".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallMultEntry),
+      ])
+    }
+    State::TestFunctionsCallFactorialReturn => {
+      let result: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      StepResult::Return(Value::U64(result))
+    }
+    State::TestFunctionsCallFactorialReturn1 => StepResult::Return(Value::U64(1u64)),
+    State::TestFunctionsCallFactorialSubtract => {
+      let n: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallFactorialFactorialCall),
+        StackEntry::Retrn(Some(3)),
+        StackEntry::Value("a".to_string(), Value::U64(n)),
+        StackEntry::Value("b".to_string(), Value::U64(1u64)),
+        StackEntry::Value("sub".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallSubEntry),
+      ])
+    }
+    State::TestFunctionsCallMainEntry => StepResult::DebugPrintVars(State::TestFunctionsCallMainMultiply),
+    State::TestFunctionsCallMainAfterBinary => StepResult::DebugPrintVars(State::TestFunctionsCallMainFinish),
+    State::TestFunctionsCallMainAfterFactorial => {
+      StepResult::DebugPrintVars(State::TestFunctionsCallMainSetBSearchValues)
+    }
+    State::TestFunctionsCallMainAfterMultiply => StepResult::DebugPrintVars(State::TestFunctionsCallMainFactorial),
+    State::TestFunctionsCallMainBinarySearch => {
+      let binarySearchLeft: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let binarySearchRight: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let binarySearchTarget: u64 = heap.testFunctionsCall.in_vars.binarySearchTarget.clone();
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallMainAfterBinary),
+        StackEntry::Retrn(Some(4)),
+        StackEntry::Value("e".to_string(), Value::U64(binarySearchTarget)),
+        StackEntry::Value("left".to_string(), Value::U64(binarySearchLeft)),
+        StackEntry::Value("right".to_string(), Value::U64(binarySearchRight)),
+        StackEntry::Value("div".to_string(), Value::U64(0u64)),
+        StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)),
+        StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)),
+        StackEntry::State(State::TestFunctionsCallBinarySearchEntry),
+      ])
+    }
+    State::TestFunctionsCallMainFactorial => {
+      let factorialStart: u64 = heap.testFunctionsCall.in_vars.factorialStart.clone();
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallMainAfterFactorial),
+        StackEntry::Retrn(Some(5)),
+        StackEntry::Value("n".to_string(), Value::U64(factorialStart)),
+        StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)),
+        StackEntry::Value("result".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallFactorialEntry),
+      ])
+    }
+    State::TestFunctionsCallMainFinish => StepResult::ReturnVoid,
+    State::TestFunctionsCallMainMultiply => {
+      let multa: u64 = heap.testFunctionsCall.in_vars.multa.clone();
+      let multb: u64 = heap.testFunctionsCall.in_vars.multb.clone();
+      StepResult::Next(vec![
+        StackEntry::State(State::TestFunctionsCallMainAfterMultiply),
+        StackEntry::Retrn(Some(6)),
+        StackEntry::Value("a".to_string(), Value::U64(multa)),
+        StackEntry::Value("b".to_string(), Value::U64(multb)),
+        StackEntry::Value("mult".to_string(), Value::U64(0u64)),
+        StackEntry::State(State::TestFunctionsCallMultEntry),
+      ])
+    }
+    State::TestFunctionsCallMainSetBSearchValues => {
+      let binarySearchArray: Vec<u64> = heap.testFunctionsCall.in_vars.binarySearchArray.clone();
+      let binarySearchLeft: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let binarySearchResult: Option<u64> =
+        if let StackEntry::Value(_, Value::OptionU64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let binarySearchRight: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      let binarySearchTarget: u64 = heap.testFunctionsCall.in_vars.binarySearchTarget.clone();
+      let factorialResult: u64 =
+        if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let factorialStart: u64 = heap.testFunctionsCall.in_vars.factorialStart.clone();
+      let multResult: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let multa: u64 = heap.testFunctionsCall.in_vars.multa.clone();
+      let multb: u64 = heap.testFunctionsCall.in_vars.multb.clone();
+      {
+        let out = {
+          heap.testFunctionsCall.binarySearchValues = binarySearchArray.clone();
+          (0u64, (binarySearchArray.len() as u64) - 1)
+        };
+        let (o0, o1) = out;
+        StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(3, Value::U64(o0)), (4, Value::U64(o1))]),
+          StackEntry::State(State::TestFunctionsCallMainBinarySearch),
+        ])
+      }
+    }
+    State::TestFunctionsCallMultEntry => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let binarySearchArray: Vec<u64> = heap.testFunctionsCall.in_vars.binarySearchArray.clone();
+      let binarySearchTarget: u64 = heap.testFunctionsCall.in_vars.binarySearchTarget.clone();
+      let factorialStart: u64 = heap.testFunctionsCall.in_vars.factorialStart.clone();
+      let mult: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      let multa: u64 = heap.testFunctionsCall.in_vars.multa.clone();
+      let multb: u64 = heap.testFunctionsCall.in_vars.multb.clone();
+      {
+        let out = { a * b };
+        StepResult::Return(Value::U64(out))
+      }
+    }
+    State::TestFunctionsCallSubEntry => {
+      let a: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      let b: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
+      let binarySearchArray: Vec<u64> = heap.testFunctionsCall.in_vars.binarySearchArray.clone();
+      let binarySearchTarget: u64 = heap.testFunctionsCall.in_vars.binarySearchTarget.clone();
+      let factorialStart: u64 = heap.testFunctionsCall.in_vars.factorialStart.clone();
+      let multa: u64 = heap.testFunctionsCall.in_vars.multa.clone();
+      let multb: u64 = heap.testFunctionsCall.in_vars.multb.clone();
+      let sub: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[2] { x.clone() } else { unreachable!() };
+      {
+        let out = {
+          let out = a - b;
+          out
+        };
+        StepResult::Return(Value::U64(out))
       }
     }
     State::TestInfiniteSummatorMainEntry => StepResult::Next(vec![
@@ -1027,6 +1173,7 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let fTasksqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let inTaskqueuename: String = heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone();
       {
         let out = {
           let mut t_m = fTask;
@@ -1053,6 +1200,7 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::TestIncrementTask(x)) = &vars[0] { x.clone() } else { unreachable!() };
       let fTasksqueuename: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let inTaskqueuename: String = heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone();
       {
         let out = { heap.testTaskExecutorIncrementer.in_vars.inTaskqueuename.clone() };
         StepResult::Next(vec![
@@ -1087,132 +1235,6 @@ pub fn global_step(
 // Registry: function key -> (prepare_from_values, result_to_value)
 pub type PrepareFn = fn(Vec<Value>) -> Vec<StackEntry>;
 pub type ResultFn = fn(&[StackEntry]) -> Value;
-
-pub fn global_prepare_binarySearch(
-  e: u64,
-  left: u64,
-  right: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("e".to_string(), Value::U64(e)));
-  stack.push(StackEntry::Value("left".to_string(), Value::U64(left)));
-  stack.push(StackEntry::Value("right".to_string(), Value::U64(right)));
-  stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)));
-  stack.push(StackEntry::State(State::GlobalBinarySearchEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_binarySearch(stack: &[StackEntry]) -> Option<u64> {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_binarySearch_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let e: u64 =
-    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
-  let left: u64 =
-    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
-  let right: u64 =
-    if let Value::U64(x) = &args[2] { x.clone() } else { unreachable!("invalid args for global.binary_search") };
-  let (stack, _heap) = global_prepare_binarySearch(e, left, right);
-  stack
-}
-
-fn global_result_binarySearch_value(stack: &[StackEntry]) -> Value {
-  Value::OptionU64(global_result_binarySearch(stack))
-}
-
-pub fn global_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("n".to_string(), Value::U64(n)));
-  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalFactorialEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_factorial(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_factorial_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let n: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.factorial") };
-  let (stack, _heap) = global_prepare_factorial(n);
-  stack
-}
-
-fn global_result_factorial_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_factorial(stack))
-}
-
-pub fn global_prepare_main() -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::State(State::GlobalMainEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_main(stack: &[StackEntry]) -> () {
-  let _ = stack;
-  ()
-}
-
-fn global_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let (stack, _heap) = global_prepare_main();
-  stack
-}
-
-fn global_result_main_value(stack: &[StackEntry]) -> Value {
-  Value::Unit(global_result_main(stack))
-}
-
-pub fn global_prepare_mult(
-  a: u64,
-  b: u64,
-) -> (Vec<StackEntry>, Heap) {
-  let mut stack: Vec<StackEntry> = Vec::new();
-  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::Retrn(Some(1)));
-  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
-  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
-  stack.push(StackEntry::Value("mult".to_string(), Value::U64(0u64)));
-  stack.push(StackEntry::State(State::GlobalMultEntry));
-  let heap = Heap::default();
-  (stack, heap)
-}
-
-pub fn global_result_mult(stack: &[StackEntry]) -> u64 {
-  match stack.last() {
-    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
-    _ => unreachable!("result not found on stack"),
-  }
-}
-
-fn global_prepare_mult_from_values(args: Vec<Value>) -> Vec<StackEntry> {
-  let a: u64 = if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for global.mult") };
-  let b: u64 = if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for global.mult") };
-  let (stack, _heap) = global_prepare_mult(a, b);
-  stack
-}
-
-fn global_result_mult_value(stack: &[StackEntry]) -> Value {
-  Value::U64(global_result_mult(stack))
-}
 
 pub fn root_prepare_main() -> (Vec<StackEntry>, Heap) {
   let mut stack: Vec<StackEntry> = Vec::new();
@@ -1287,6 +1309,184 @@ fn testCreateQueue_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry>
 
 fn testCreateQueue_result_main_value(stack: &[StackEntry]) -> Value {
   Value::Unit(testCreateQueue_result_main(stack))
+}
+
+pub fn testFunctionsCall_prepare_binarySearch(
+  e: u64,
+  left: u64,
+  right: u64,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::OptionU64(None)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("e".to_string(), Value::U64(e)));
+  stack.push(StackEntry::Value("left".to_string(), Value::U64(left)));
+  stack.push(StackEntry::Value("right".to_string(), Value::U64(right)));
+  stack.push(StackEntry::Value("div".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("v_by_index_div".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::OptionU64(None)));
+  stack.push(StackEntry::State(State::TestFunctionsCallBinarySearchEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testFunctionsCall_result_binarySearch(stack: &[StackEntry]) -> Option<u64> {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::OptionU64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn testFunctionsCall_prepare_binarySearch_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let e: u64 = if let Value::U64(x) = &args[0] {
+    x.clone()
+  } else {
+    unreachable!("invalid args for testFunctionsCall.binary_search")
+  };
+  let left: u64 = if let Value::U64(x) = &args[1] {
+    x.clone()
+  } else {
+    unreachable!("invalid args for testFunctionsCall.binary_search")
+  };
+  let right: u64 = if let Value::U64(x) = &args[2] {
+    x.clone()
+  } else {
+    unreachable!("invalid args for testFunctionsCall.binary_search")
+  };
+  let (stack, _heap) = testFunctionsCall_prepare_binarySearch(e, left, right);
+  stack
+}
+
+fn testFunctionsCall_result_binarySearch_value(stack: &[StackEntry]) -> Value {
+  Value::OptionU64(testFunctionsCall_result_binarySearch(stack))
+}
+
+pub fn testFunctionsCall_prepare_factorial(n: u64) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("n".to_string(), Value::U64(n)));
+  stack.push(StackEntry::Value("fac_call_res".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("subtract_res".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("result".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestFunctionsCallFactorialEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testFunctionsCall_result_factorial(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn testFunctionsCall_prepare_factorial_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let n: u64 =
+    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for testFunctionsCall.factorial") };
+  let (stack, _heap) = testFunctionsCall_prepare_factorial(n);
+  stack
+}
+
+fn testFunctionsCall_result_factorial_value(stack: &[StackEntry]) -> Value {
+  Value::U64(testFunctionsCall_result_factorial(stack))
+}
+
+pub fn testFunctionsCall_prepare_main() -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("multResult".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("factorialResult".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("binarySearchResult".to_string(), Value::OptionU64(None)));
+  stack.push(StackEntry::Value("binarySearchLeft".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Value("binarySearchRight".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestFunctionsCallMainEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testFunctionsCall_result_main(stack: &[StackEntry]) -> () {
+  let _ = stack;
+  ()
+}
+
+fn testFunctionsCall_prepare_main_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let (stack, _heap) = testFunctionsCall_prepare_main();
+  stack
+}
+
+fn testFunctionsCall_result_main_value(stack: &[StackEntry]) -> Value {
+  Value::Unit(testFunctionsCall_result_main(stack))
+}
+
+pub fn testFunctionsCall_prepare_mult(
+  a: u64,
+  b: u64,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("mult".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestFunctionsCallMultEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testFunctionsCall_result_mult(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn testFunctionsCall_prepare_mult_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let a: u64 =
+    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for testFunctionsCall.mult") };
+  let b: u64 =
+    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for testFunctionsCall.mult") };
+  let (stack, _heap) = testFunctionsCall_prepare_mult(a, b);
+  stack
+}
+
+fn testFunctionsCall_result_mult_value(stack: &[StackEntry]) -> Value {
+  Value::U64(testFunctionsCall_result_mult(stack))
+}
+
+pub fn testFunctionsCall_prepare_sub(
+  a: u64,
+  b: u64,
+) -> (Vec<StackEntry>, Heap) {
+  let mut stack: Vec<StackEntry> = Vec::new();
+  stack.push(StackEntry::Value("ret".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::Retrn(Some(1)));
+  stack.push(StackEntry::Value("a".to_string(), Value::U64(a)));
+  stack.push(StackEntry::Value("b".to_string(), Value::U64(b)));
+  stack.push(StackEntry::Value("sub".to_string(), Value::U64(0u64)));
+  stack.push(StackEntry::State(State::TestFunctionsCallSubEntry));
+  let heap = Heap::default();
+  (stack, heap)
+}
+
+pub fn testFunctionsCall_result_sub(stack: &[StackEntry]) -> u64 {
+  match stack.last() {
+    Some(StackEntry::Value(_, Value::U64(v))) => v.clone(),
+    _ => unreachable!("result not found on stack"),
+  }
+}
+
+fn testFunctionsCall_prepare_sub_from_values(args: Vec<Value>) -> Vec<StackEntry> {
+  let a: u64 =
+    if let Value::U64(x) = &args[0] { x.clone() } else { unreachable!("invalid args for testFunctionsCall.sub") };
+  let b: u64 =
+    if let Value::U64(x) = &args[1] { x.clone() } else { unreachable!("invalid args for testFunctionsCall.sub") };
+  let (stack, _heap) = testFunctionsCall_prepare_sub(a, b);
+  stack
+}
+
+fn testFunctionsCall_result_sub_value(stack: &[StackEntry]) -> Value {
+  Value::U64(testFunctionsCall_result_sub(stack))
 }
 
 pub fn testInfiniteSummator_prepare_main() -> (Vec<StackEntry>, Heap) {
@@ -1434,13 +1634,14 @@ fn testTaskExecutorIncrementer_result_main_value(stack: &[StackEntry]) -> Value 
 
 pub fn get_prepare_fn(key: &str) -> PrepareFn {
   match key {
-    "global.binary_search" => global_prepare_binarySearch_from_values,
-    "global.factorial" => global_prepare_factorial_from_values,
-    "global.main" => global_prepare_main_from_values,
-    "global.mult" => global_prepare_mult_from_values,
     "root.main" => root_prepare_main_from_values,
     "testCalculator.main" => testCalculator_prepare_main_from_values,
     "testCreateQueue.main" => testCreateQueue_prepare_main_from_values,
+    "testFunctionsCall.binary_search" => testFunctionsCall_prepare_binarySearch_from_values,
+    "testFunctionsCall.factorial" => testFunctionsCall_prepare_factorial_from_values,
+    "testFunctionsCall.main" => testFunctionsCall_prepare_main_from_values,
+    "testFunctionsCall.mult" => testFunctionsCall_prepare_mult_from_values,
+    "testFunctionsCall.sub" => testFunctionsCall_prepare_sub_from_values,
     "testInfiniteSummator.main" => testInfiniteSummator_prepare_main_from_values,
     "testRootFiber.main" => testRootFiber_prepare_main_from_values,
     "testRootFiberSleepTest.main" => testRootFiberSleepTest_prepare_main_from_values,
@@ -1451,15 +1652,6 @@ pub fn get_prepare_fn(key: &str) -> PrepareFn {
 }
 
 pub type HeapInitFn = fn(Vec<Value>) -> Heap;
-
-pub fn global_prepare_heap() -> Heap {
-  let mut heap = Heap::default();
-  heap
-}
-
-fn global_prepare_heap_from_values(args: Vec<Value>) -> Heap {
-  global_prepare_heap()
-}
 
 pub fn root_prepare_heap() -> Heap {
   let mut heap = Heap::default();
@@ -1478,7 +1670,7 @@ pub fn testCalculator_prepare_heap(calculationRequestsQueueName: String) -> Heap
 
 fn testCalculator_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   let calculationRequestsQueueName: String =
-    if let Value::String(x) = &args[0] { x.clone() } else { unreachable!("invalid init var for testCalculator") };
+    if let Some(Value::String(x)) = args.get(0) { x.clone() } else { String::new() };
   testCalculator_prepare_heap(calculationRequestsQueueName)
 }
 
@@ -1489,6 +1681,32 @@ pub fn testCreateQueue_prepare_heap() -> Heap {
 
 fn testCreateQueue_prepare_heap_from_values(args: Vec<Value>) -> Heap {
   testCreateQueue_prepare_heap()
+}
+
+pub fn testFunctionsCall_prepare_heap(
+  multa: u64,
+  multb: u64,
+  factorialStart: u64,
+  binarySearchArray: Vec<u64>,
+  binarySearchTarget: u64,
+) -> Heap {
+  let mut heap = Heap::default();
+  heap.testFunctionsCall.in_vars.multa = multa;
+  heap.testFunctionsCall.in_vars.multb = multb;
+  heap.testFunctionsCall.in_vars.factorialStart = factorialStart;
+  heap.testFunctionsCall.in_vars.binarySearchArray = binarySearchArray;
+  heap.testFunctionsCall.in_vars.binarySearchTarget = binarySearchTarget;
+  heap
+}
+
+fn testFunctionsCall_prepare_heap_from_values(args: Vec<Value>) -> Heap {
+  let multa: u64 = if let Some(Value::U64(x)) = args.get(0) { x.clone() } else { 0u64 };
+  let multb: u64 = if let Some(Value::U64(x)) = args.get(1) { x.clone() } else { 0u64 };
+  let factorialStart: u64 = if let Some(Value::U64(x)) = args.get(2) { x.clone() } else { 0u64 };
+  let binarySearchArray: Vec<u64> =
+    if let Some(Value::ArrayU64(x)) = args.get(3) { x.clone() } else { Vec::<u64>::new() };
+  let binarySearchTarget: u64 = if let Some(Value::U64(x)) = args.get(4) { x.clone() } else { 0u64 };
+  testFunctionsCall_prepare_heap(multa, multb, factorialStart, binarySearchArray, binarySearchTarget)
 }
 
 pub fn testInfiniteSummator_prepare_heap() -> Heap {
@@ -1534,20 +1752,16 @@ pub fn testTaskExecutorIncrementer_prepare_heap(inTaskqueuename: String) -> Heap
 }
 
 fn testTaskExecutorIncrementer_prepare_heap_from_values(args: Vec<Value>) -> Heap {
-  let inTaskqueuename: String = if let Value::String(x) = &args[0] {
-    x.clone()
-  } else {
-    unreachable!("invalid init var for testTaskExecutorIncrementer")
-  };
+  let inTaskqueuename: String = if let Some(Value::String(x)) = args.get(0) { x.clone() } else { String::new() };
   testTaskExecutorIncrementer_prepare_heap(inTaskqueuename)
 }
 
 pub fn get_heap_init_fn(fiber: &FiberType) -> HeapInitFn {
   match fiber.0.as_str() {
-    "global" => global_prepare_heap_from_values,
     "root" => root_prepare_heap_from_values,
     "testCalculator" => testCalculator_prepare_heap_from_values,
     "testCreateQueue" => testCreateQueue_prepare_heap_from_values,
+    "testFunctionsCall" => testFunctionsCall_prepare_heap_from_values,
     "testInfiniteSummator" => testInfiniteSummator_prepare_heap_from_values,
     "testRootFiber" => testRootFiber_prepare_heap_from_values,
     "testRootFiberSleepTest" => testRootFiberSleepTest_prepare_heap_from_values,

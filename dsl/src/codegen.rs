@@ -742,9 +742,10 @@ fn generate_heap_init_helpers(ir: &IR) -> String {
     for (idx, InVar(n, t)) in fiber.init_vars.iter().enumerate() {
       let vname = type_variant_name(t);
       let rty = rust_type(t);
+      let def = default_value_expr(t);
       out.push_str(&format!(
-        "  let {}: {} = if let Value::{}(x) = &args[{}] {{ x.clone() }} else {{ unreachable!(\"invalid init var for {}\") }};\n",
-        camel_ident(n), rty, vname, idx, fiber_name.0
+        "  let {}: {} = if let Some(Value::{}(x)) = args.get({}) {{ x.clone() }} else {{ {} }};\n",
+        camel_ident(n), rty, vname, idx, def
       ));
     }
     let call_params = fiber.init_vars.iter().map(|iv| camel_ident(iv.0)).collect::<Vec<_>>().join(", ");
@@ -1160,11 +1161,15 @@ fn generate_global_step(ir: &IR) -> String {
             Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
             Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
             Step::RustBlock { .. } => {
+              // Expose all function params, locals, and fiber init_vars to RustBlock scope
               for p in &func.in_vars {
                 referenced.insert(p.0.to_string());
               }
               for l in &func.locals {
                 referenced.insert(l.0.to_string());
+              }
+              for iv in &fiber.init_vars {
+                referenced.insert(iv.0.to_string());
               }
             }
           }
@@ -1612,11 +1617,15 @@ fn generate_global_step(ir: &IR) -> String {
           Step::If { cond, .. } => collect_vars_from_expr(&cond, &mut referenced),
           Step::Let { expr, .. } => collect_vars_from_expr(&expr, &mut referenced),
           Step::RustBlock { .. } => {
+            // Expose all function params, locals, and fiber init_vars to RustBlock scope
             for p in &func.in_vars {
               referenced.insert(p.0.to_string());
             }
             for l in &func.locals {
               referenced.insert(l.0.to_string());
+            }
+            for iv in &fiber.init_vars {
+              referenced.insert(iv.0.to_string());
             }
           }
         }
