@@ -8,6 +8,7 @@ pub mod parser;
 // #[cfg(feature = "dsl_sketch")]
 mod dsl;
 mod dsl_to_ir;
+mod generated_ir;
 #[cfg(test)]
 mod ir_test;
 #[cfg(test)]

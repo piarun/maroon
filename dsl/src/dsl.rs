@@ -1,3 +1,5 @@
+use std::any;
+
 // Minimal function-like macro: `fiber!("name", { /* items */ })` or `fiber!("name" { /* items */ })`
 // For now, it simply expands to the provided items so the code remains type-checkable.
 // Later, it will also construct IR alongside preserving the items.
@@ -18,38 +20,66 @@ impl MrnQueue {
   fn send(&mut self) {}
 }
 
-struct Error;
-struct MrnQueueCreateInfo {
-  name: String,
-  public: bool,
+struct MrnFuture {}
+
+impl MrnFuture {
+  fn resolve(&mut self) {}
 }
 
-macro_rules! mrn_create_queues {
-    ( vec![ $($req:expr),* $(,)? ] ) => {
-        (
-            $(
-                { let _ = &$req; ::core::result::Result::<MrnQueue, Error>::Ok(MrnQueue {}) }
-            ),*
-        )
-    };
+#[derive(Debug)]
+enum Error {}
+enum MrnCreateAsyncPrimitives {
+  Queue { name: String, public: bool },
+  Future,
+}
+
+// Helper: expand a single request into a typed expression
+macro_rules! __mrn_create_primitive_expr {
+  ( MrnCreateAsyncPrimitives::Queue { $($rest:tt)* } ) => {
+    ::core::result::Result::<MrnQueue, Error>::Ok(MrnQueue {})
+  };
+  ( MrnCreateAsyncPrimitives::Future ) => {
+    ::core::result::Result::<MrnFuture, Error>::Ok(MrnFuture {})
+  };
+}
+
+macro_rules! mrn_create_primitives {
+  ( vec![ $($t:tt)* ] ) => {
+    mrn_create_primitives!(@as_tuple [] $($t)* )
+  };
+  (@as_tuple [ $($out:tt)* ] ) => { ( $($out)* ) };
+  (@as_tuple [ $($out:tt)* ] MrnCreateAsyncPrimitives::Queue { $($q:tt)* } $(, $($rest:tt)* )? ) => {
+    mrn_create_primitives!(
+      @as_tuple [ $($out)* ::core::result::Result::<MrnQueue, Error>::Ok(MrnQueue {}), ]
+      $($($rest)*)?
+    )
+  };
+  (@as_tuple [ $($out:tt)* ] MrnCreateAsyncPrimitives::Future $(, $($rest:tt)* )? ) => {
+    mrn_create_primitives!(
+      @as_tuple [ $($out)* ::core::result::Result::<MrnFuture, Error>::Ok(MrnFuture {}), ]
+      $($($rest)*)?
+    )
+  };
 }
 
 // end maroon `library` functions section
 
 // fibers definition
+
 fiber!("minimalRoot", {
   fn main() {
     println!("hello");
-    match mrn_create_queues!(vec![
-      MrnQueueCreateInfo { name: "rootQueue".to_string(), public: false },
-      MrnQueueCreateInfo { name: "rootQueue".to_string(), public: false }
+    match mrn_create_primitives!(vec![
+      MrnCreateAsyncPrimitives::Queue { name: "rootQueue".to_string(), public: false },
+      MrnCreateAsyncPrimitives::Future,
+      MrnCreateAsyncPrimitives::Future,
     ]) {
-      (Ok(mut queue_1), Ok(mut queue_2)) => {
+      (Ok(mut queue), Ok(mut future_1), Ok(mut future_2)) => {
         println!("created queues");
-        queue_1.send();
-        queue_2.send();
       }
-      (Err(err_1), Err(err_2)) => {}
+      (Err(err_1), Err(err_2), Err(err_3)) => {
+        println!("{:?} {:?} {:?}", err_1, err_2, err_3);
+      }
       _ => {}
     }
 
