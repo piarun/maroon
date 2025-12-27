@@ -14,9 +14,9 @@
     - `tests/integration` local-runnable integration tests
     - `metrics` OTLP/Prometheus/Grafana local stacks
     - `docs` high-level description of key components and principles
-    - `scripts` scripts for simplifiin local development/running test scenarious
+    - `scripts` scripts for simplifying local development/running test scenarios
     - PoC
-        - `cpp_ir/rust` preprocessor-based DSL and toolchain to prorotype Maroon IR
+        - `cpp_ir/rust` preprocessor-based DSL and toolchain to prototype Maroon IR
         - `state` Maroon assembler PoC
     - experimental maroon-gateway work visualisation
         - `schema` events definition   
@@ -25,6 +25,7 @@
 
 ## Per-Crate Guides & deep create maps
 - `maroon/AGENTS.md`
+- `runtime/AGENTS.md`
 
 ## Commit & Pull Request Guidelines
 - Commit messages: imperative mood, concise summary, optional scope (e.g., "gateway: add request validation").

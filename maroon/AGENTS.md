@@ -12,12 +12,14 @@ Compact guide for coding agents: core flow, interfaces, edit points, and constra
    - Advertise `NodeState`, detect gaps, request/provide missing txs.
    - On tick, compute epoch increments (consensus vs committed) and request commit.
    - On commit, linearize and send tasks to `runtime`; on results, `NotifyGWs`.
+   - Batch runtime results via `receiver.recv_many` before emitting `NotifyGWs`.
 
 ## Key Interfaces
 - App state: `app::interface::{Request::GetState, Response::State(CurrentOffsets)}`.
 - Node wire: `network::interface::{Outbox, Inbox, NodeState}`.
 - Epochs: `epoch_coordinator::interface::{EpochRequest, EpochUpdates}`.
 - Runtime: `runtime::runtime::{TaskBlueprint, Input, Output}`.
+- Runtime endpoint: `Endpoint<(LogicalTimeAbsoluteMs, Vec<TaskBlueprint>), (UniqueU64BlobId, Value)>`.
 
 ## Edit Points
 - App logic: `src/app/app.rs` (offsets, consensus, epochs, inbox handling, runtime I/O).
