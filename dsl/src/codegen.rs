@@ -3,6 +3,7 @@ use crate::ir::*;
 fn is_copy_type(t: &Type) -> bool {
   match t {
     Type::UInt64 => true,
+    Type::Bool => true,
     Type::Void => true,
     Type::Option(inner) => is_copy_type(inner),
     // Be conservative by default
@@ -22,6 +23,7 @@ fn type_variant_name(t: &Type) -> String {
   match t {
     Type::UInt64 => "U64".into(),
     Type::String => "String".into(),
+    Type::Bool => "Bool".into(),
     Type::Void => "Unit".into(),
     Type::MaxQueue(inner) => format!("MaxQueue{}", type_variant_name(inner)),
     Type::MinQueue(inner) => format!("MinQueue{}", type_variant_name(inner)),
@@ -39,6 +41,7 @@ fn rust_type(t: &Type) -> String {
   match t {
     Type::UInt64 => "u64".into(),
     Type::String => "String".into(),
+    Type::Bool => "bool".into(),
     Type::Void => "()".into(),
     Type::MaxQueue(inner) => format!("std::collections::BinaryHeap<{}>", rust_type(inner)),
     Type::MinQueue(inner) => format!("std::collections::BinaryHeap<std::cmp::Reverse<{}>>", rust_type(inner)),
@@ -776,7 +779,7 @@ fn collect_vars_from_expr(
   acc: &mut BTreeSet<String>,
 ) {
   match expr {
-    Expr::UInt64(_) | Expr::Str(_) => {}
+    Expr::UInt64(_) | Expr::Str(_) | Expr::Bool(_) => {}
     Expr::Var(name) => {
       acc.insert(name.0.to_string());
     }
@@ -827,6 +830,7 @@ fn render_expr_code(
     Expr::UInt64(x) => format!("{}u64", x),
     Expr::Var(name) => camel_ident(name.0),
     Expr::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
+    Expr::Bool(b) => format!("{}", if *b { "true" } else { "false" }),
     Expr::Equal(a, b) => format!("{} == {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Greater(a, b) => format!("{} > {}", render_expr_code(a, _func), render_expr_code(b, _func)),
     Expr::Less(a, b) => format!("{} < {}", render_expr_code(a, _func), render_expr_code(b, _func)),
@@ -852,6 +856,7 @@ fn render_ret_value(
   match rv {
     RetValue::UInt64(x) => format!("{}u64", x),
     RetValue::Str(s) => format!("\"{}\".to_string()", s.replace('"', "\\\"")),
+    RetValue::Bool(b) => format!("{}", if *b { "true" } else { "false" }),
     RetValue::Var(name) => camel_ident(name.0),
     RetValue::Some(inner) => {
       if let Type::Option(inner_ty) = expected_ty {
@@ -870,6 +875,7 @@ fn default_value_expr(t: &Type) -> String {
   match t {
     Type::UInt64 => "0u64".to_string(),
     Type::String => "String::new()".to_string(),
+    Type::Bool => "false".to_string(),
     Type::Void => "()".to_string(),
     Type::MaxQueue(inner) => format!("std::collections::BinaryHeap::<{}>::new()", rust_type(inner)),
     Type::MinQueue(inner) => format!("std::collections::BinaryHeap::<std::cmp::Reverse<{}>>::new()", rust_type(inner)),
@@ -962,7 +968,7 @@ fn collect_vars_from_retvalue(
     RetValue::Var(name) => {
       acc.insert(name.0.to_string());
     }
-    RetValue::UInt64(_) | RetValue::Str(_) => {}
+    RetValue::UInt64(_) | RetValue::Str(_) | RetValue::Bool(_) => {}
     RetValue::Some(inner) => collect_vars_from_retvalue(inner, acc),
     RetValue::None => {}
   }

@@ -244,6 +244,7 @@ pub enum AwaitSpec {
 pub enum Expr {
   UInt64(u64),
   Str(String),
+  Bool(bool),
   Var(LocalVarRef),
   Equal(Box<Expr>, Box<Expr>),
   Greater(Box<Expr>, Box<Expr>),
@@ -261,6 +262,7 @@ pub enum RetValue {
   /// Return a literal
   UInt64(u64),
   Str(String),
+  Bool(bool),
   /// Return an Option constructor
   Some(Box<RetValue>),
   None,
@@ -276,6 +278,7 @@ pub struct FuncRef {
 pub enum Type {
   UInt64,
   String,
+  Bool,
   Void,
   Map(Box<Type>, Box<Type>),
   Array(Box<Type>),
@@ -502,17 +505,31 @@ fn uses_correct_variables(
       Step::ReturnVoid => {}
       Step::If { cond, .. } => {
         collect_vars_from_expr(cond, &vars_map, &mut explanation, id);
-        // best-effort operand checks for comparisons
+        // best-effort checks: if we can infer the cond type it must be Bool
+        if let Some(cty) = infer_expr_type(ir, f, cond, &vars_map) {
+          if cty != Type::Bool {
+            explanation.push_str(&format!(
+              "{:?} condition must be Bool, got {:?}\n",
+              id, cty
+            ));
+          }
+        }
+        // for comparison nodes, also check operand compatibility
         if let Expr::Equal(l, r) | Expr::Greater(l, r) | Expr::Less(l, r) = cond {
           let lt = infer_expr_type(ir, f, l, &vars_map);
           let rt = infer_expr_type(ir, f, r, &vars_map);
           if let (Some(lt), Some(rt)) = (lt, rt) {
             if std::mem::discriminant(&lt) != std::mem::discriminant(&rt) {
-              explanation
-                .push_str(&format!("{:?} condition operand types mismatch: left {:?}, right {:?}\n", id, lt, rt));
+              explanation.push_str(&format!(
+                "{:?} condition operand types mismatch: left {:?}, right {:?}\n",
+                id, lt, rt
+              ));
             }
             if matches!(cond, Expr::Greater(_, _) | Expr::Less(_, _)) && lt != Type::UInt64 {
-              explanation.push_str(&format!("{:?} comparison expects UInt64 operands, got {:?}\n", id, lt));
+              explanation.push_str(&format!(
+                "{:?} comparison expects UInt64 operands, got {:?}\n",
+                id, lt
+              ));
             }
           }
         }
@@ -719,19 +736,16 @@ fn infer_expr_type(
   match expr {
     Expr::UInt64(_) => Some(Type::UInt64),
     Expr::Str(_) => Some(Type::String),
+    Expr::Bool(_) => Some(Type::Bool),
     Expr::Var(LocalVarRef(name)) => vars.get::<str>(name).cloned(),
     Expr::Equal(a, b) | Expr::Greater(a, b) | Expr::Less(a, b) => {
-      // boolean-like, not represented in Type enum
-      // validate operands elsewhere; no concrete type returned
+      // comparisons yield Bool; operand validation is done by callers
       let _ = (infer_expr_type(ir, _func, a, vars), infer_expr_type(ir, _func, b, vars));
-      None
+      Some(Type::Bool)
     }
     Expr::IsSome(inner) => {
-      if let Some(Type::Option(_)) = infer_expr_type(ir, _func, inner, vars) {
-        None
-      } else {
-        None
-      }
+      let _ = infer_expr_type(ir, _func, inner, vars);
+      Some(Type::Bool)
     }
     Expr::Unwrap(inner) => match infer_expr_type(ir, _func, inner, vars) {
       Some(Type::Option(inner)) => Some(*inner.clone()),
@@ -771,6 +785,7 @@ fn infer_ret_value_type(
     RetValue::Var(LocalVarRef(name)) => vars.get::<str>(name).cloned(),
     RetValue::UInt64(_) => Some(Type::UInt64),
     RetValue::Str(_) => Some(Type::String),
+    RetValue::Bool(_) => Some(Type::Bool),
     RetValue::Some(inner) => infer_ret_value_type(ir, _func, inner, vars).map(|t| Type::Option(Box::new(t))),
     RetValue::None => Some(Type::Option(Box::new(Type::Void))), // marker for Option<_>
   }
@@ -844,6 +859,7 @@ fn collect_vars_from_expr(
       }
     }
     Expr::UInt64(_) | Expr::Str(_) => {}
+    Expr::Bool(_) => {}
   }
 }
 
@@ -860,6 +876,6 @@ fn collect_vars_from_ret_value(
       }
     }
     RetValue::Some(inner) => collect_vars_from_ret_value(inner, vars, explanation, id),
-    RetValue::UInt64(_) | RetValue::Str(_) | RetValue::None => {}
+    RetValue::UInt64(_) | RetValue::Str(_) | RetValue::Bool(_) | RetValue::None => {}
   }
 }
