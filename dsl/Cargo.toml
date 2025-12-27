@@ -7,3 +7,5 @@ common = { path = "../common" }
 pest = "2.8.1"
 pest_derive = "2.8.1"
 rand = "0.8"
+syn = { version = "2", features = ["full"] }
+quote = "1"
