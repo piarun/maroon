@@ -46,7 +46,13 @@ pub fn sample_ir() -> IR {
               Func{
                 in_vars: vec![],
                 out: Type::Void,
-                locals: vec![LocalVar("counter", Type::UInt64), LocalVar("responseFromFut", Type::UInt64), LocalVar("counterStartQueueName", Type::String), LocalVar("futureId", Type::String)],
+                locals: vec![
+                  LocalVar("counter", Type::UInt64),
+                  LocalVar("responseFromFut", Type::UInt64),
+                  LocalVar("counterStartQueueName", Type::String),
+                  LocalVar("futureId", Type::String),
+                  LocalVar("isThree", Type::Bool),
+                ],
                 steps: vec![
                 (
                   StepId::new("entry"),
@@ -76,15 +82,19 @@ pub fn sample_ir() -> IR {
                 (
                   // added this artificial step to see the difference in path in tests
                   StepId::new("inc_from_fut"),
-                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "responseFromFut - 1".to_string(), next: StepId::new("compare") },
+                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "responseFromFut - 1".to_string(), next: StepId::new("prepare_cond") },
                 ),
                 (
                   StepId::new("start_work"),
-                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "counter + 1".to_string(), next: StepId::new("compare") },
+                  Step::RustBlock { binds: vec![LocalVarRef("counter")], code: "counter + 1".to_string(), next: StepId::new("prepare_cond") },
+                ),
+                (
+                  StepId::new("prepare_cond"),
+                  Step::Let { local: "isThree".to_string(), expr: Expr::Equal(Box::new(Expr::Var(LocalVarRef("counter"))), Box::new(Expr::UInt64(3))), next: StepId::new("compare") },
                 ),
                 (
                   StepId::new("compare"),
-                  Step::If { cond: Expr::Equal(Box::new(Expr::Var(LocalVarRef("counter"))), Box::new(Expr::UInt64(3))), then_: StepId::new("return"), else_: StepId::new("start_work") },
+                  Step::If { cond: Expr::Var(LocalVarRef("isThree")), then_: StepId::new("return"), else_: StepId::new("start_work") },
                 ),
                 (
                   StepId::new("return"),

@@ -154,6 +154,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(2))]),
+          StackEntry::State(State::TestSelectQueueMainPrepareCond),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainPrepareCond,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(4, Value::Bool(false))]),
           StackEntry::State(State::TestSelectQueueMainCompare),
         ]),
       },
@@ -165,6 +172,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainStartWork,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(3))]),
+          StackEntry::State(State::TestSelectQueueMainPrepareCond),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainPrepareCond,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(4, Value::Bool(true))]),
           StackEntry::State(State::TestSelectQueueMainCompare),
         ]),
       },
@@ -222,6 +236,13 @@ fn test_select_resume_mechanism() {
         state: State::TestSelectQueueMainIncFromFut,
         result: StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(1))]),
+          StackEntry::State(State::TestSelectQueueMainPrepareCond),
+        ]),
+      },
+      TraceEvent {
+        state: State::TestSelectQueueMainPrepareCond,
+        result: StepResult::Next(vec![
+          StackEntry::FrameAssign(vec![(4, Value::Bool(false))]),
           StackEntry::State(State::TestSelectQueueMainCompare),
         ]),
       },

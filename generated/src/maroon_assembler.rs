@@ -196,6 +196,7 @@ pub enum State {
   TestSelectQueueMainEntry,
   TestSelectQueueMainIncFromFut,
   TestSelectQueueMainInitFutureId,
+  TestSelectQueueMainPrepareCond,
   TestSelectQueueMainReturn,
   TestSelectQueueMainSelectCounter,
   TestSelectQueueMainStartWork,
@@ -213,6 +214,7 @@ pub enum State {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
   ArrayU64(Vec<u64>),
+  Bool(bool),
   FutureTestIncrementTask(FutureTestIncrementTask),
   FutureU64(FutureU64),
   FutureUnit(FutureUnit),
@@ -421,13 +423,14 @@ pub fn func_args_count(e: &State) -> usize {
     State::TestRootFiberSleepTestMainReturn => 3,
     State::TestRootFiberSleepTestMainReturnDbg => 3,
     State::TestRootFiberSleepTestMainSeelect => 3,
-    State::TestSelectQueueMainEntry => 4,
-    State::TestSelectQueueMainCompare => 4,
-    State::TestSelectQueueMainIncFromFut => 4,
-    State::TestSelectQueueMainInitFutureId => 4,
-    State::TestSelectQueueMainReturn => 4,
-    State::TestSelectQueueMainSelectCounter => 4,
-    State::TestSelectQueueMainStartWork => 4,
+    State::TestSelectQueueMainEntry => 5,
+    State::TestSelectQueueMainCompare => 5,
+    State::TestSelectQueueMainIncFromFut => 5,
+    State::TestSelectQueueMainInitFutureId => 5,
+    State::TestSelectQueueMainPrepareCond => 5,
+    State::TestSelectQueueMainReturn => 5,
+    State::TestSelectQueueMainSelectCounter => 5,
+    State::TestSelectQueueMainStartWork => 5,
     State::TestTaskExecutorIncrementerMainEntry => 4,
     State::TestTaskExecutorIncrementerMainAwait => 4,
     State::TestTaskExecutorIncrementerMainDebug2 => 4,
@@ -1081,8 +1084,8 @@ pub fn global_step(
       StackEntry::State(State::TestSelectQueueMainInitFutureId),
     ]),
     State::TestSelectQueueMainCompare => {
-      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
-      if counter == 3u64 {
+      let isThree: bool = if let StackEntry::Value(_, Value::Bool(x)) = &vars[4] { x.clone() } else { unreachable!() };
+      if isThree {
         StepResult::GoTo(State::TestSelectQueueMainReturn)
       } else {
         StepResult::GoTo(State::TestSelectQueueMainStartWork)
@@ -1094,13 +1097,14 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let futureId: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let isThree: bool = if let StackEntry::Value(_, Value::Bool(x)) = &vars[4] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { responseFromFut - 1 };
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
-          StackEntry::State(State::TestSelectQueueMainCompare),
+          StackEntry::State(State::TestSelectQueueMainPrepareCond),
         ])
       }
     }
@@ -1108,6 +1112,13 @@ pub fn global_step(
       StackEntry::FrameAssign(vec![(3, Value::String("testSelectQueue_future_1".to_string()))]),
       StackEntry::State(State::TestSelectQueueMainSelectCounter),
     ]),
+    State::TestSelectQueueMainPrepareCond => {
+      let counter: u64 = if let StackEntry::Value(_, Value::U64(x)) = &vars[0] { x.clone() } else { unreachable!() };
+      StepResult::Next(vec![
+        StackEntry::FrameAssign(vec![(4, Value::Bool(counter == 3u64))]),
+        StackEntry::State(State::TestSelectQueueMainCompare),
+      ])
+    }
     State::TestSelectQueueMainReturn => StepResult::ReturnVoid,
     State::TestSelectQueueMainSelectCounter => {
       let counterStartQueueName: String =
@@ -1133,13 +1144,14 @@ pub fn global_step(
         if let StackEntry::Value(_, Value::String(x)) = &vars[2] { x.clone() } else { unreachable!() };
       let futureId: String =
         if let StackEntry::Value(_, Value::String(x)) = &vars[3] { x.clone() } else { unreachable!() };
+      let isThree: bool = if let StackEntry::Value(_, Value::Bool(x)) = &vars[4] { x.clone() } else { unreachable!() };
       let responseFromFut: u64 =
         if let StackEntry::Value(_, Value::U64(x)) = &vars[1] { x.clone() } else { unreachable!() };
       {
         let out = { counter + 1 };
         StepResult::Next(vec![
           StackEntry::FrameAssign(vec![(0, Value::U64(out))]),
-          StackEntry::State(State::TestSelectQueueMainCompare),
+          StackEntry::State(State::TestSelectQueueMainPrepareCond),
         ])
       }
     }
@@ -1584,6 +1596,7 @@ pub fn testSelectQueue_prepare_main() -> (Vec<StackEntry>, Heap) {
   stack.push(StackEntry::Value("responseFromFut".to_string(), Value::U64(0u64)));
   stack.push(StackEntry::Value("counterStartQueueName".to_string(), Value::String(String::new())));
   stack.push(StackEntry::Value("futureId".to_string(), Value::String(String::new())));
+  stack.push(StackEntry::Value("isThree".to_string(), Value::Bool(false)));
   stack.push(StackEntry::State(State::TestSelectQueueMainEntry));
   let heap = Heap::default();
   (stack, heap)
