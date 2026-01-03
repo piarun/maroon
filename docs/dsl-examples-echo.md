@@ -1,6 +1,6 @@
 # Maroon DSL — Echo and Migration Examples (Draft)
 
-These examples illustrate how the DSL in `docs/dsl-language.md` maps to fibers, queues, `select`, and schema migration using a minimal Echo fiber. Syntax here follows the conceptual spec (fibers, `state vN`, `send`/`recv`, `after(ms)`, `await`, `select`, `external`) rather than the current parser status.
+These examples illustrate how the DSL in `docs/dsl-language.md` maps to fibers, queues, `select`, and schema migration using a minimal Echo fiber. Syntax here follows the conceptual spec (fibers, `state current/next`, `send`/`recv`, `after(ms)`, `await`, `select`, `external`) rather than the current parser status.
 
 ## Example 1 — Minimal Echo Fiber
 
@@ -16,7 +16,7 @@ struct EchoOut {
 
 // Explicit constructor parameters: fiber identity + typed directional queues
 fiber Echo(name: String, in_queue_first: RecvQueue<String>,  in_queue_second: RecvQueue<String>, out_queue: SendQueue<EchoOut>) {
-  state v1 {
+  state current {
     seen: U64,
   }
 
@@ -55,37 +55,37 @@ Ingress/egress queues (illustrative bindings):
 
 Note: The runtime’s underlying channel is duplex, but the DSL encourages directional capability types for clarity and static safety. Use `DuplexQueue<T>` only when both directions are truly needed (e.g., brokers/tests), or split a duplex handle into `(RecvQueue<T>, SendQueue<T>)` for explicit usage.
 
-## Example 2 — Migration Walkthrough: Echo v1 -> v2
+## Example 2 — Two-Version Migration: current -> next
 
 Goal: demonstrate an explicit state migration that both renames a field and adds a new one.
 
-v1 state (current in the example above):
+Current state (from the example above):
 
 ```dsl
-state v1 {
+state current {
   seen: U64,
 }
 ```
 
-Desired v2 state (phased rename):
+Desired next state (phased rename):
 - Add `last_input: Option<String>` with an explicit default
 - Introduce `count: U64` alongside existing `seen` to allow code to switch safely
 
 ```dsl
-migrate v1 -> v2 {
+migrate current -> next {
   // `from.<field>` is the old snapshot; `self.<field>` is the new state
   self.last_input = None;   // explicit default
   self.count = from.seen;   // first step of renaming field
 }
 
-state v2 {
+state next {
   seen: U64,
   count: U64,
   last_input: Option<String>,
 }
 ```
 
-- Here we deploy new version and migration starts. But before the migration is finished we can't use new fields.
+- Deploy with `state next` present: migration runs to completion in the background. Before migration finishes, code continues to use the `current` shape for reads/writes.
 - After migration, update the main logic to use `self.count` instead of `self.seen`, and optionally track the last input when receiving a message:
 
 ```dsl
@@ -96,20 +96,16 @@ self.last_input = Some(msg);
 self.out_queue.send(EchoOut { echo_of: msg + " first", count: n, fiber: self.name });
 ```
 
-After rolling out the code that uses `self.count`, complete the rename by removing `seen`:
+Finalize/promotion: after rolling out the code that uses `self.count`, promote `next` -> `current` by removing the old `current` and the `migrate` block, leaving only the new `current`:
 
 ```dsl
-migrate v2 -> v3 {
-  // no new fields, we're only removing
-}
-
-state v3 {
+state next {
   count: U64,
   last_input: Option<String>,
 }
 ```
 
-After migrating to v3, any reference to the removed `seen` field is a compile error.
+After promotion, any reference to the removed `seen` field is a compile error.
 
 Notes on migration:
 - Migrations are pure and must not perform I/O or waits; no `await`/`select`/`external` inside `migrate`.

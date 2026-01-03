@@ -38,8 +38,8 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 
 ## Fiber State and Persistence
 - No global app state. Each fiber owns its own persistent state, defined inside that fiber.
-- Define per‑fiber state in the DSL: within a `fiber` block, declare `state vN { ... }`. Only these schema types are persisted for that fiber.
-- First activation initializes state deterministically. Upgrades use per‑fiber migrations: `migrate vN -> vN+1 { ... }`.
+- Define per‑fiber state in the DSL: within a `fiber` block, declare `state current { ... }`. Optionally, during upgrades, also declare `state next { ... }`. Only these schema types are persisted for that fiber.
+- Creation initializes `current` deterministically. Upgrades use a two‑version migration: `migrate current -> next { ... }` with at most two states present at any time.
 - All writes happen within the owning fiber, driven by messages/timers. Other fibers cannot mutate this state; they must send messages.
 - Reads see the fiber’s deterministic view for the current step. The runtime snapshots each fiber’s state in canonical form and replays that fiber’s message stream to recover.
 
@@ -57,12 +57,12 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
   - Can read constructor params (e.g., `self.name`) and assign to state fields.
   - Must leave the base state version fully initialized, either via field defaults or explicit assignments.
 - Migrations and init:
-  - Existing fibers never run `init` during upgrades; they transition via `migrate vN -> vN+1` only.
-  - Creation when migrations exist (multiple `state vN` declared):
-    - Construct the earliest declared state version (typically `v1`) using its field defaults and `init(self)`.
-    - Apply the migration chain in order (`v1 -> v2 -> ... -> vK`) until the active version is reached.
-    - Only after migrations complete is the fiber considered created; `main`/handlers may run thereafter.
-    - `init(self)` executes against the base version’s shape; fields introduced in later versions must be initialized in their respective `migrate` steps.
+  - Existing fibers never run `init` during upgrades; they transition via `migrate current -> next` only.
+  - Creation when `state next` exists:
+    - Construct `state current` using its field defaults and `init`.
+    - Apply the migration `current -> next`.
+    - Only after migration completes is the fiber considered created; `main`/handlers may run thereafter.
+    - `init` executes against the `current` shape; fields introduced in `next` must be initialized in `migrate current -> next`.
   - For effectful bootstrapping at creation, use a bootstrap message pattern; keep `init` pure.
 
 ### Constructor parameters
@@ -71,28 +71,32 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 - Parameters cannot be reassigned; locals remain bare identifiers. Shadowing parameter names is not allowed.
 - In `select`, the sugar `self.queue.await` is valid when `self.queue` is a `RecvQueue<_>` (or `DuplexQueue<_>`, though using `RecvQueue` is preferred) and desugars to `await recv(self.queue)`.
 
-### State migrations
-- Syntax: `migrate vN -> vN+1 { /* transforms */ }` placed inside the `fiber` block before the next `state vN+1`.
+### State migrations (two‑version model)
+- Syntax: `migrate current -> next { /* transforms */ }` placed inside the `fiber` block before `state next`.
 - Scope:
-  - `from.<field>`: read-only view of the previous state snapshot (version N).
-  - `self.<field>`: the new state (version N+1) you must initialize.
+  - `from.<field>`: read-only view of the previous `current` state snapshot.
+  - `self.<field>`: the `next` state you must initialize.
 - Rules:
   - Pure only: no `await`, `select`, `send`, or `external` calls inside `migrate`.
     - that's questionable. Of course pure migrations are easier, but I can easily imagine migration where I need to make an http call for some data
     - maybe in the first version if external data is needed, use a two-phase pattern: add new fields, deploy code to backfill via normal runtime flows, then finalize with a follow-up migration
-  - Explicit init: every newly introduced or type-changed field in `state vN+1` must be assigned; unchanged fields carry forward implicitly.
+  - Explicit init: every newly introduced or type-changed field in `state next` must be assigned; unchanged fields carry forward implicitly.
   - Determinism: transformations must be deterministic and terminate.
   - Type changes: allowed if you provide an explicit transform; otherwise keep the same type.
   - Collections: when changing key types in `Map`/`Set`, ensure canonical encoding order is preserved by re-encoding keys.
 - Example (direct rename + add default):
   ```dsl
-  migrate v1 -> v2 {
+  migrate current -> next {
     self.count = from.seen;
     self.last_input = None;
   }
 
-  state v2 { count: U64, last_input: Option<String> }
+  state next { count: U64, last_input: Option<String> }
   ```
+
+#### Finalize/Promotion
+- After migration completes and code uses the `next` fields, promote `next` -> `current` by removing the old `current` and the `migrate` block, leaving only `state current { ... }`.
+- At any time, there must be at most two states present (`current` and optionally `next`).
 
 ## Transactions and IDs
 - Each transaction has a unique `UniqueU64BlobId` (from the gateway’s key range).
