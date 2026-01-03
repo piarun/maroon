@@ -17,7 +17,7 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 
 ## How Code Runs
 - Unit of work: a lightweight [fiber](./fiber.md).
-- Communication: named FIFO queues (`send`/`recv`).
+- Communication: named FIFO queues with directional capability types (`RecvQueue<T>`, `SendQueue<T>`, optional `DuplexQueue<T>` for both directions).
 - Time: logical monotonic ms via timers (`after(ms)`), not wall-clock.
 
 ## External Effects
@@ -52,7 +52,7 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 - Fiber constructor parameters (identity, handles like queues, config) are read-only fields of the fiber instance.
 - Access them as `self.<param>` inside the fiber (e.g., `self.name`, `self.inbox_queue`).
 - Parameters cannot be reassigned; locals remain bare identifiers. Shadowing parameter names is not allowed.
-- In `select`, the sugar `self.queue.await` is valid and desugars to `await recv(self.queue)`.
+- In `select`, the sugar `self.queue.await` is valid when `self.queue` is a `RecvQueue<_>` (or `DuplexQueue<_>`, though using `RecvQueue` is preferred) and desugars to `await recv(self.queue)`.
 
 ### State migrations
 - Syntax: `migrate vN -> vN+1 { /* transforms */ }` placed inside the `fiber` block before the next `state vN+1`.
@@ -98,15 +98,24 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 
 ## Core Building Blocks (maps 1:1 to runtime)
 - Values: `Unit | Bool | I64 | U64 | Decimal{s} | Bytes | String | Vec<T> | Map<K,V> | Set<T> | struct | enum`.
-- Queues: named FIFO channels of `Value`.
+- Queues: named FIFO channels of `Value`, with directional capabilities (`RecvQueue<T>`, `SendQueue<T>`, and `DuplexQueue<T>` when both are required).
 - Futures/Timers: one-shot futures; `after(ms)` creates a timer; `await` resolves.
  - Fibers: define a fiber type with parameters (identity) and its private `state` and handlers.
 
-### Queue API (explicit and sugar)
-- Send: `queue.send(value)` enqueues a value on a `Queue<T>`.
-- Receive (canonical): `recv(queue: Queue<T>) -> Future<T>` produces a waitable future.
-- Await (outside select): `let v: T = await recv(queue)`.
-- Await sugar (inside select only): `queue.await` is shorthand for `await recv(queue)`.
+### Queue Capability Types and API
+- Types:
+  - `RecvQueue<T>`: receive-only capability for a named channel of `T`.
+  - `SendQueue<T>`: send-only capability for a named channel of `T`.
+  - `DuplexQueue<T>`: full capability (both send and receive). Prefer directional types for clarity; reserve `DuplexQueue` for cases that truly need both directions.
+- API:
+  - Send: `queue.send(value)` where `queue: SendQueue<T> | DuplexQueue<T>` and `value: T`.
+  - Receive (canonical): `recv(queue) -> Future<T>` where `queue: RecvQueue<T> | DuplexQueue<T>`.
+  - Await (outside select): `let v: T = await recv(queue)`.
+  - Await sugar (inside select): `queue.await` is shorthand for `await recv(queue)` and requires `queue: RecvQueue<T> | DuplexQueue<T>`.
+- Conversions/helpers (conceptual):
+  - `split(q: DuplexQueue<T>) -> (RecvQueue<T>, SendQueue<T>)`.
+  - `join(rx: RecvQueue<T>, tx: SendQueue<T>) -> DuplexQueue<T>` if they reference the same named channel.
+- Alias (optional for ergonomics/back-compat in docs): `type Queue<T> = DuplexQueue<T>`.
 
 ### Select Syntax and Waitables
 - Waitables: any `Future<T>` can be selected: `recv(queue)`, `after(ms)`, `external(...)`, etc.
@@ -114,7 +123,7 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
   - `case await recv(queue) as v: T => { ... }`
   - `case await after(ms) => { ... }  // T = Unit`
 - Concise let-binding arms (sugar, only in `select`):
-  - `let v: T = queue.await => { ... }        // desugars to case await recv(queue)`
+  - `let v: T = queue.await => { ... }        // requires RecvQueue<_> (or DuplexQueue<_>); desugars to case await recv(queue)`
   - `let _: Unit = after(ms).await => { ... } // desugars to case await after(ms)`
 - Semantics: first-ready arm runs; other pending waitables are cancelled deterministically.
 

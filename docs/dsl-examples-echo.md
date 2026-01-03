@@ -14,8 +14,8 @@ struct EchoOut {
   fiber: String,
 }
 
-// Explicit constructor parameters: fiber identity + typed queues
-fiber Echo(name: String, in_queue_first: Queue<String>,  in_queue_second: Queue<String>, out_queue: Queue<EchoOut>) {
+// Explicit constructor parameters: fiber identity + typed directional queues
+fiber Echo(name: String, in_queue_first: RecvQueue<String>,  in_queue_second: RecvQueue<String>, out_queue: SendQueue<EchoOut>) {
   state v1 {
     seen: U64,
   }
@@ -29,14 +29,14 @@ fiber Echo(name: String, in_queue_first: Queue<String>,  in_queue_second: Queue<
   fn main() {
     loop {
       select {
-        // Arm 1: receive from the first queue
+        // Arm 1: receive from the first queue (RecvQueue)
         let msg: String = self.in_queue_first.await => {
           let n = self.seen + 1;
           self.seen = n;
           self.out_queue.send(EchoOut { echo_of: msg + " first", count: n, fiber: self.name });
         }
 
-        // Arm 2: receive from the second queue
+        // Arm 2: receive from the second queue (RecvQueue)
         let msg: String = self.in_queue_second.await => {
           let n = self.seen + 1;
           self.seen = n;
@@ -49,9 +49,11 @@ fiber Echo(name: String, in_queue_first: Queue<String>,  in_queue_second: Queue<
 ```
 
 Ingress/egress queues (illustrative bindings):
-- In 1: `queue("echo.in.first.<name>")` -> `in_queue_first: Queue<String>`
-- In 2: `queue("echo.in.second.<name>")` -> `in_queue_second: Queue<String>`
-- Out:  `queue("echo.out.<name>")` -> `out_queue: Queue<EchoOut>`
+- In 1: `queue("echo.in.first.<name>")` -> `in_queue_first: RecvQueue<String>`
+- In 2: `queue("echo.in.second.<name>")` -> `in_queue_second: RecvQueue<String>`
+- Out:  `queue("echo.out.<name>")` -> `out_queue: SendQueue<EchoOut>`
+
+Note: The runtime’s underlying channel is duplex, but the DSL encourages directional capability types for clarity and static safety. Use `DuplexQueue<T>` only when both directions are truly needed (e.g., brokers/tests), or split a duplex handle into `(RecvQueue<T>, SendQueue<T>)` for explicit usage.
 
 ## Example 2 — Migration Walkthrough: Echo v1 -> v2
 
