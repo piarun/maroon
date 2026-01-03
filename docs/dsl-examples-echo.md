@@ -20,8 +20,8 @@ fiber Echo(name: String, in_queue_first: RecvQueue<String>,  in_queue_second: Re
     seen: U64,
   }
 
-  // Explicit initialization on first activation
-  on start {
+  // Pure constructor: runs once on fiber creation
+  fn init {
     self.seen = 0;
   }
 

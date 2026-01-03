@@ -46,7 +46,24 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 ### State access inside a fiber
 - Access persistent fields with `self.<field>` for both reads and writes (e.g., `let n = self.count + 1; self.count = n`).
 - Local variables use bare identifiers (e.g., `let n = 0;`). Shadowing state field names is not allowed.
-- Initialize state explicitly in `on start { ... }` or during `migrate` steps; avoid relying on implicit defaults.
+- Initialize state via field defaults, a pure initializer `fn init { ... }`, or during `migrate` steps; avoid relying on implicit, unspecified defaults.
+
+### Initialization
+- Purpose: set up newly created fibers deterministically before handling any messages.
+- Syntax: place a `fn init { /* pure */ }` inside the `fiber` block.
+- Semantics:
+  - Runs exactly once, only on creation of a new fiber instance, after constructor params are bound and before the first activation of `main`/handlers.
+  - Pure only: no `await`, `select`, `send`, or `external` inside `init`.
+  - Can read constructor params (e.g., `self.name`) and assign to state fields.
+  - Must leave the base state version fully initialized, either via field defaults or explicit assignments.
+- Migrations and init:
+  - Existing fibers never run `init` during upgrades; they transition via `migrate vN -> vN+1` only.
+  - Creation when migrations exist (multiple `state vN` declared):
+    - Construct the earliest declared state version (typically `v1`) using its field defaults and `init(self)`.
+    - Apply the migration chain in order (`v1 -> v2 -> ... -> vK`) until the active version is reached.
+    - Only after migrations complete is the fiber considered created; `main`/handlers may run thereafter.
+    - `init(self)` executes against the base version’s shape; fields introduced in later versions must be initialized in their respective `migrate` steps.
+  - For effectful bootstrapping at creation, use a bootstrap message pattern; keep `init` pure.
 
 ### Constructor parameters
 - Fiber constructor parameters (identity, handles like queues, config) are read-only fields of the fiber instance.
