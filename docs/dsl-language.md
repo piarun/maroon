@@ -3,11 +3,13 @@
 This doc describes a small, purpose-built language for Maroon. Code in this DSL compiles to Maroon IR (our “assembler”) and runs on the runtime. The goal is simple: you write business logic; the platform guarantees durable compute by determenistic execution on several nodes.
 
 ## Why a DSL
-- Deterministic by default: no hidden time/RNG(random number generator)/float surprises, stable iteration order, one standard way to encode data.
+- Deterministic by default: no hidden time/RNG(random number generator)/float surprises, stable iteration order
 - Fits Maroon’s model: fibers, queues, futures, and timers are native concepts with deterministic scheduling.
 - Safe to replay: re-running the same history yields the same state and outputs.
 - Easy to check: we can warn/error on unbounded loops, impure code in `pure` functions, and risky waits.
 - Smooth upgrades: state has versions and migrations, so rolling upgrades don’t corrupt data.
+- Concurrency model: v1 runs under a single logical total order for simplicity and replayability; future versions may relax this with explicit primitives (compare‑and‑swap, CRDTs) where
+commutativity makes it safe without sacrificing deterministic outcomes.
 
 ## Out of Scope (on purpose)
 - No arbitrary threads/syscalls/FFI(foreign function interface).
@@ -77,9 +79,6 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
   - `from.<field>`: read-only view of the previous `current` state snapshot.
   - `self.<field>`: the `next` state you must initialize.
 - Rules:
-  - Pure only: no `await`, `select`, `send`, or `external` calls inside `migrate`.
-    - that's questionable. Of course pure migrations are easier, but I can easily imagine migration where I need to make an http call for some data
-    - maybe in the first version if external data is needed, use a two-phase pattern: add new fields, deploy code to backfill via normal runtime flows, then finalize with a follow-up migration
   - Explicit init: every newly introduced or type-changed field in `state next` must be assigned; unchanged fields carry forward implicitly.
   - Determinism: transformations must be deterministic and terminate.
   - Type changes: allowed if you provide an explicit transform; otherwise keep the same type.
@@ -99,7 +98,7 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 - At any time, there must be at most two states present (`current` and optionally `next`).
 
 ## Transactions and IDs
-- Each transaction has a unique `UniqueU64BlobId` (from the gateway’s key range).
+- Each transaction has a unique `idempotency ID` (assigned by gateways layer).
 - Idempotency by design: re-applying a transaction yields the same result.
 
 ## Resource Limits
