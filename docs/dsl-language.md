@@ -8,19 +8,30 @@ This doc describes a small, purpose-built language for Maroon. Code in this DSL 
 - Safe to replay: re-running the same history yields the same state and outputs.
 - Easy to check: we can warn/error on unbounded loops, impure code in `pure` functions, and risky waits.
 - Smooth upgrades: state has versions and migrations, so rolling upgrades don’t corrupt data.
-- Concurrency model: v1 runs under a single logical total order for simplicity and replayability; future versions may relax this with explicit primitives (compare‑and‑swap, CRDTs) where
-commutativity makes it safe without sacrificing deterministic outcomes.
+- Concurrency model: v1 runs under a single logical total order for simplicity and replayability; future versions may relax this with explicit primitives (compare-and-swap, CRDTs) where commutativity makes it safe—without sacrificing deterministic outcomes. 
 
 ## Out of Scope (on purpose)
 - No arbitrary threads/syscalls/FFI(foreign function interface).
 - No host-specific behavior (wall-clock reads, RNG, hash-map iteration order, IEEE float edge cases).
 - No DIY persistence: only schema-defined types go to storage; the runtime handles format and migrations.
 - No implicit I/O: external calls must be declared with types, timeouts, and retry policies.
+- No relaxed consistency primitives (CAS/CRDTs) in v1: all effects are sequenced by the single total order.
 
 ## How Code Runs
 - Unit of work: a lightweight [fiber](./fiber.md).
 - Communication: named FIFO queues with directional capability types (`RecvQueue<T>`, `SendQueue<T>`, optional `DuplexQueue<T>` for both directions).
 - Time: logical monotonic ms via timers (`after(ms)`), not wall-clock.
+
+### Source Organization (design note)
+- Declaration order and file/dir layout are not part of semantics; the compiler builds a single module graph from all inputs.
+- Interfaces (ingress/egress, queues, external gateways) are declared in the DSL and compiled together with the code that uses them.
+
+### Concurrency and Ordering (design note)
+- v1 uses a single logical total order of events/effects, which makes execution, replay, and debugging straightforward.
+- Over time, we may introduce opt-in, scoped primitives that allow concurrency without global coordination:
+  - Compare-and-swap (CAS) on targeted state fields.
+  - CRDTs (conflict-free replicated data types) for commutative/associative updates (e.g., counters, OR-sets) with deterministic merge semantics.
+- Any relaxation will remain compatible with deterministic replay by using canonical encodings, explicit merge rules, and well-defined failure/retry behavior.
 
 ## External Effects
 - Three kinds: `pure` (no effects), `timer` (logical), `external(service)` (declared capability).
@@ -31,7 +42,7 @@ commutativity makes it safe without sacrificing deterministic outcomes.
 - Integers: `I64`, `U64` (optionally `I128` later). Overflow behavior is explicit: checked (default), saturating, or wrapping.
 - Decimals: fixed-point `Decimal{scale}` (no floats/NaNs/inf). Rounding mode is explicit and stable.
 - Text/bytes: `String` (UTF‑8) and `Bytes`.
-- Collections: `Vec<T>` (stable order), `Map<K,V>` and `Set<T>` with keys ordered by their byte encoding. No hash maps/sets.
+- Collections: `Vec<T>` (stable order), `Map<K,V>` and `Set<T>` with keys ordered by their byte encoding. A hash‑map (`HashMap<K,V>`) may be provided for performance, but all observable operations are deterministic (e.g., iteration defined as canonical key order); non‑deterministic iteration is not exposed.
 - Types: `struct`, `enum`, and `type` aliases with explicit field/variant order.
 
 ## Canonical Encoding (why ordering is stable)
@@ -83,7 +94,10 @@ commutativity makes it safe without sacrificing deterministic outcomes.
   - Determinism: transformations must be deterministic and terminate.
   - Type changes: allowed if you provide an explicit transform; otherwise keep the same type.
   - Collections: when changing key types in `Map`/`Set`, ensure canonical encoding order is preserved by re-encoding keys.
-- Example (direct rename + add default):
+
+Design note (v1 scope): migrations are defined per‑fiber using a two‑version model (`current` and `next`). Alternative models (e.g., per‑type/era migrations applied across instances) are under consideration and may be adopted if they provide better ergonomics without sacrificing determinism.
+
+Example (direct rename + add default):
   ```dsl
   migrate current -> next {
     self.count = from.seen;
@@ -97,13 +111,18 @@ commutativity makes it safe without sacrificing deterministic outcomes.
 - After migration completes and code uses the `next` fields, promote `next` -> `current` by removing the old `current` and the `migrate` block, leaving only `state current { ... }`.
 - At any time, there must be at most two states present (`current` and optionally `next`).
 
+### Interface Schema Versioning (queues/gateways)
+- Priority: define versioning for fiber interfaces (cross‑fiber queues and external gateway APIs) so producers/consumers can upgrade safely.
+- Compatibility: interface types evolve via eras/versions with explicit upgrade rules; mixed‑version communication must be either rejected or mediated via canonical transforms.
+- Storage vs. interface: internal fiber state shape is important, but interface compatibility governs safe rolling deploys and should be specified first.
+
 ## Transactions and IDs
 - Each transaction has a unique `idempotency ID` (assigned by gateways layer).
 - Idempotency by design: re-applying a transaction yields the same result.
 
 ## Resource Limits
 - We track CPU/memory/I/O “cost”.
-- Per-transaction and per-fiber limits apply; hit a limit -> get a backpressure.
+- Per-transaction and per-fiber limits apply with prioritization classes; the system avoids starving main business logic. Hitting a limit triggers backpressure on lower‑priority work first.
 
 ## Build Pipeline
 - DSL -> typed AST -> Maroon IR -> generated code that the runtime executes.
@@ -113,7 +132,7 @@ commutativity makes it safe without sacrificing deterministic outcomes.
 ## Static Checks (examples)
 - `pure` functions can’t call effects or timers.
 - `Map`/`Set` keys must be orderable (canonical encoding available).
-- `select` cases must be cancellable or time-bounded.
+- `select` cases must be cancellable or time-bounded; if a waitable is non‑cancellable it must be a single‑step arm.
 - Reads/writes are validated against the active schema version during upgrades.
 
 ## Core Building Blocks (maps 1:1 to runtime)
@@ -146,6 +165,8 @@ commutativity makes it safe without sacrificing deterministic outcomes.
   - `let v: T = queue.await => { ... }        // requires RecvQueue<_> (or DuplexQueue<_>); desugars to case await recv(queue)`
   - `let _: Unit = after(ms).await => { ... } // desugars to case await after(ms)`
 - Semantics: first-ready arm runs; other pending waitables are cancelled deterministically.
+### Rust Interop (design note)
+- To remain Rust‑friendly, we expose `await`/`select` as macros (e.g., `await!`, `maroon_await!`) when embedding; the core primitive is `select` and `await` is its single‑arm form.
 
 ## Open Questions
 - Exact syntax vs. minimal IR friendliness.
