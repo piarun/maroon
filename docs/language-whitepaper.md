@@ -40,17 +40,33 @@ Most stateful systems re-implement the same hard problems: durability, recovery,
 
 Maroon is:
 
-* a **DSL** with a small, strict semantic surface
-* compiled to **Maroon IR**
-* executed by a runtime that provides:
+* a **Rust-embedded DSL**: Maroon programs are **valid Rust** that compile with the standard Rust toolchain.
+* a **small semantic subset** of Rust with additional restrictions required for deterministic replay.
+* compiled by a **Maroon compiler** (in addition to `rustc`) to **Maroon IR** and then to an executable form for the durable runtime.
 
-  * durable fibers
-  * typed queues (message passing)
-  * futures / `await` / `select`
-  * logical timers
-  * declared external effects
+Maroon is executed in two practical modes:
+
+1. **Native Rust mode (local / non-durable):** the same source compiles with `rustc` and can run as ordinary single-node code. This mode is intended for fast iteration, unit testing, and IDE/tooling compatibility; it does not provide durability or distributed execution guarantees.
+2. **Durable mode:** the Maroon compiler lowers the same source into Maroon IR / assembler, and the runtime executes it as durable fibers with deterministic replay.
+
+The **language semantics** in this document describe **Durable mode**. Native Rust mode is a convenience execution mode; any behavioral differences that arise from missing durability features (e.g., replay, durable queues) are considered outside the language guarantees.
 
 Given the same **event history** (message deliveries, logical timer firings, and recorded external-effect results), replay MUST produce identical state transitions and outputs. You can think about it in a way that a Maroon fiber behaves as if it were a pure function from an append-only event log to durable state and emitted messages.
+
+---
+
+## 2.1 Rust subset and surface syntax
+
+Maroon intentionally reuses Rust syntax and tooling.
+
+**Surface mapping (v0.1):**
+
+* Fibers, state blocks, queues, and effects are expressed using Rust items plus a small set of Maroon-provided procedural macros / attributes and library types.
+* The exact macro names are not specified in this whitepaper; they are part of the standard library / SDK surface.
+
+**Subset rule:** only a restricted subset of Rust is permitted inside durable fibers (e.g., no ambient I/O, no threads, no access to nondeterministic OS APIs). These restrictions are specified throughout this document (notably §6 Determinism contract).
+
+**Why Rust (informative):** using Rust as the concrete syntax is a deliberate ergonomics choice to reuse existing IDE support, linters, formatters, test frameworks, and the broader ecosystem. The Maroon compiler enforces the additional semantic rules required for durable execution.
 
 ---
 
