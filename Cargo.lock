@@ -1008,7 +1008,9 @@ dependencies = [
  "common",
  "pest",
  "pest_derive",
+ "quote",
  "rand 0.8.5",
+ "syn",
 ]
 
 [[package]]

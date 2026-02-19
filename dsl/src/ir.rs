@@ -32,13 +32,13 @@ impl std::borrow::Borrow<str> for FiberType {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IR {
   pub types: Vec<Type>,
   pub fibers: HashMap<FiberType, Fiber>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fiber {
   pub heap: HashMap<String, Type>,
   pub init_vars: Vec<InVar>,
@@ -46,7 +46,7 @@ pub struct Fiber {
   pub funcs: HashMap<String, Func>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
   pub in_vars: Vec<InVar>,
   pub out: Type,
@@ -54,17 +54,17 @@ pub struct Func {
   pub steps: Vec<(StepId, Step)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InVar(pub &'static str, pub Type);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalVar(pub &'static str, pub Type);
 
 /// this reference should be used in ir specification where I want to reference LocalVar existed in the current stack frame
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocalVarRef(pub &'static str);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
   /// `ret_to` is the continuation step in the caller
   /// bind - local variable into which response will be written
@@ -150,7 +150,7 @@ pub enum Step {
   DebugPrintVars(StepId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateFiberDetail {
   /// Target fiber type name as declared in `IR.fibers`
   /// Must match an existing fiber key. The new fiber starts at its `main` function
@@ -162,7 +162,7 @@ pub struct CreateFiberDetail {
   pub init_vars: Vec<LocalVarRef>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SuccessCreateBranch {
   /// where to go in case of success
   pub next: StepId,
@@ -171,7 +171,7 @@ pub struct SuccessCreateBranch {
   pub id_binds: Vec<LocalVarRef>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FailCreateBranch {
   /// where to go in case of failure
   pub next: StepId,
@@ -181,7 +181,7 @@ pub struct FailCreateBranch {
   pub error_binds: Vec<LocalVarRef>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimePrimitive {
   Future,
   /// `name` should be unique and should reference LocalVar typed as String
@@ -197,7 +197,7 @@ pub enum RuntimePrimitive {
   },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetPrimitive {
   QueueMessage {
     /// `f_var_queue_name` - variable where queue name is located
@@ -221,7 +221,7 @@ pub enum Opcode {
   SubU64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AwaitSpec {
   Future {
     bind: Option<LocalVarRef>,
@@ -240,7 +240,7 @@ pub enum AwaitSpec {
   },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
   UInt64(u64),
   Str(String),
@@ -255,7 +255,7 @@ pub enum Expr {
   StructUpdate { base: Box<Expr>, updates: Vec<(String, Expr)> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RetValue {
   /// Return a variable by name
   Var(LocalVarRef),
@@ -268,7 +268,7 @@ pub enum RetValue {
   None,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncRef {
   pub fiber: String,
   pub func: String,
