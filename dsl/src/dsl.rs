@@ -66,7 +66,7 @@ macro_rules! mrn_create_primitives {
 
 // fibers definition
 
-fiber!("minimalRoot", {
+fiber!("root", {
   fn main() {
     println!("hello");
     match mrn_create_primitives!(vec![

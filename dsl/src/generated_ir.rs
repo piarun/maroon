@@ -7,33 +7,7 @@ fn generated_ir_valid() {
     types: vec![],
     fibers: HashMap::from([
       (
-        FiberType::new("minimalRoot2"),
-        Fiber {
-          heap: HashMap::new(),
-          init_vars: vec![],
-          funcs: HashMap::from([(
-            "main".to_string(),
-            Func {
-              in_vars: vec![],
-              out: Type::Void,
-              locals: vec![],
-              steps: vec![
-                (
-                  StepId::new("entry"),
-                  Step::RustBlock {
-                    binds: vec![],
-                    code: "println!(\"hello\");".to_string(),
-                    next: StepId::new("return"),
-                  },
-                ),
-                (StepId::new("return"), Step::ReturnVoid),
-              ],
-            },
-          )]),
-        },
-      ),
-      (
-        FiberType::new("minimalRoot"),
+        FiberType::new("root"),
         Fiber {
           heap: HashMap::new(),
           init_vars: vec![],
@@ -99,6 +73,32 @@ fn generated_ir_valid() {
                   Step::RustBlock {
                     binds: vec![],
                     code: "println!(\"return\");".to_string(),
+                    next: StepId::new("return"),
+                  },
+                ),
+                (StepId::new("return"), Step::ReturnVoid),
+              ],
+            },
+          )]),
+        },
+      ),
+      (
+        FiberType::new("minimalRoot2"),
+        Fiber {
+          heap: HashMap::new(),
+          init_vars: vec![],
+          funcs: HashMap::from([(
+            "main".to_string(),
+            Func {
+              in_vars: vec![],
+              out: Type::Void,
+              locals: vec![],
+              steps: vec![
+                (
+                  StepId::new("entry"),
+                  Step::RustBlock {
+                    binds: vec![],
+                    code: "println!(\"hello\");".to_string(),
                     next: StepId::new("return"),
                   },
                 ),

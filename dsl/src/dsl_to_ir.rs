@@ -522,8 +522,15 @@ fn format_ir_as_rust(ir: &IR) -> String {
     "IR {{ types: vec![{}], fibers: HashMap::from([{}]) }}",
     ir.types.iter().map(|t| fmt_type(t)).collect::<Vec<_>>().join(","),
     {
+      let mut sorted_fibers: Vec<_> = ir.fibers.iter().collect();
+      sorted_fibers.sort_by(|(left, _), (right, _)| match (left.0 == "root", right.0 == "root") {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => left.0.cmp(&right.0),
+      });
+
       let mut fibers = Vec::new();
-      for (ft, fdef) in &ir.fibers {
+      for (ft, fdef) in sorted_fibers {
         let locals = fdef
           .funcs
           .get(&"main".to_string())
